@@ -15,6 +15,7 @@ import math
 from pathlib import Path
 
 import pandas as pd
+import torch
 from datasets import load_from_disk
 from tqdm.auto import tqdm
 from transformers import (
@@ -89,9 +90,9 @@ class _EpochProgress(TrainerCallback):
         self.bar.close()
 
 
-def finetune_dapt(domain: str, base_model: str = DEFAULT_MODEL, epochs: int = 30,
-                  save_every: int = 10, block_size: int = 512,
-                  batch_size: int = 8, val_frac: float = 0.05,
+def finetune_dapt(domain: str, base_model: str = DEFAULT_MODEL, epochs: int = 10,
+                  save_every: int = 2, block_size: int = 512,
+                  batch_size: int = 64, grad_accum: int = 1, val_frac: float = 0.05,
                   out_dir=None, max_docs=None) -> pd.DataFrame:
     """DAPT-fine-tune ``base_model`` on one domain; return a checkpoint manifest.
 
@@ -114,11 +115,21 @@ def finetune_dapt(domain: str, base_model: str = DEFAULT_MODEL, epochs: int = 30
     lm = _tokenize_and_chunk(raw, tokenizer, block_size)
     split = lm.train_test_split(test_size=val_frac, seed=0)
 
+    # 12 GB VRAM, 124M-param GPT-2: VRAM is slack, so optimise for throughput.
+    # bf16 where the GPU supports it (Ampere+), else fp16; tf32 matmuls are free
+    # on Ampere+. grad_accum lifts the effective batch without more memory.
+    use_cuda = torch.cuda.is_available()
+    use_bf16 = use_cuda and torch.cuda.is_bf16_supported()
     args = TrainingArguments(
         output_dir=str(out_dir / "_hf"),
         num_train_epochs=epochs,
         per_device_train_batch_size=batch_size,
-        per_device_eval_batch_size=batch_size,
+        per_device_eval_batch_size=batch_size * 2,
+        gradient_accumulation_steps=grad_accum,
+        bf16=use_bf16,
+        fp16=use_cuda and not use_bf16,
+        tf32=use_cuda,
+        dataloader_num_workers=4,
         eval_strategy="epoch",
         save_strategy="no",            # checkpointing handled by the callback
         logging_steps=50,

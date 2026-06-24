@@ -127,7 +127,7 @@ def main() -> None:
     print("Step 4 — DAPT fine-tuning")
     from src import finetune as ft
 
-    manifest = ft.finetune_dapt("physics", epochs=30, save_every=10)
+    manifest = ft.finetune_dapt("physics", epochs=10, save_every=2)
     fig, ax = plt.subplots()
     viz.perplexity_curve(manifest, ax=ax)
     save_fig(ax, "perplexity_curve")
