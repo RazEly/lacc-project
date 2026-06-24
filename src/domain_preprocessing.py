@@ -83,7 +83,7 @@ def calibrate_nli_threshold(potec_dir, classifier):
         records.append({
             "text_id": os.path.basename(f).replace("word_features_","").replace(".tsv",""),
             "gold":    df["text_domain"].iloc[0],
-            "text":    " ".join(df["word"].astype(str).tolist()),
+            "text":    " ".join(df["word"].fillna("").astype(str).tolist()),
         })
 
     hyps = list(NLI_LABELS.values())
