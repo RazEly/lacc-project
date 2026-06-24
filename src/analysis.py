@@ -1,0 +1,169 @@
+"""Correlation and regression of model scores against reading times (step 5).
+
+All functions take the per-reader cleaned reading measures so that the
+``participants`` (experts / novices / all) and ``mode`` (mean / median) options
+can be applied before aggregating to one value per word.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+from scipy.stats import pearsonr, spearmanr
+from statsmodels.stats.multitest import multipletests
+
+from src.attention import eyetracking_features, pca_eyetracking
+from src.config import ET_MEASURE_MAP
+
+WORD_KEY = ["text_id", "word_index_in_text"]
+
+
+# ── filters ──────────────────────────────────────────────────────────────────
+def _filter_domain(df, domain):
+    return df if domain == "all" else df[df["text_domain"] == domain]
+
+
+def _filter_participants(df, participants):
+    if participants == "all":
+        return df
+    flag = 1 if participants == "experts" else 0
+    return df[df["expert_reading_label_numeric"] == flag]
+
+
+def _filter_domain_only(df, domain_only):
+    if not domain_only:
+        return df
+    return df[
+        (df["is_expert_technical_term"] == 1) | (df["is_general_technical_term"] == 1)
+    ]
+
+
+# ── surprisal <-> reading time ───────────────────────────────────────────────
+def merge_surprisal_rt(surprisal_df: pd.DataFrame, rt_df: pd.DataFrame) -> pd.DataFrame:
+    """Inner-join per-word surprisal onto the per-reader reading measures."""
+    return surprisal_df.merge(rt_df, on=WORD_KEY, how="inner")
+
+
+def _aggregate_words(df, measure, mode):
+    """One row per word: surprisal + aggregated reading time."""
+    agg = (
+        df.groupby(WORD_KEY)
+        .agg(surprisal=("surprisal", "first"), rt=(measure, mode))
+        .reset_index()
+    )
+    return agg.dropna(subset=["surprisal", "rt"])
+
+
+def correlate_surprisal(
+    merged: pd.DataFrame,
+    domain="all",
+    domain_only=False,
+    mode="mean",
+    participants="all",
+    measure="TFT",
+) -> dict:
+    """Pearson and Spearman correlation between surprisal and reading time.
+
+    Filters by text ``domain``, reader ``participants`` group, and (optionally)
+    ``domain_only`` technical-term words, then aggregates reading time per word
+    with ``mode`` ('mean'/'median') before correlating.
+    """
+    df = _filter_domain(merged, domain)
+    df = _filter_participants(df, participants)
+    df = _filter_domain_only(df, domain_only)
+    agg = _aggregate_words(df, measure, mode)
+    if len(agg) < 3:
+        return {
+            "n": len(agg),
+            "pearson": np.nan,
+            "pearson_p": np.nan,
+            "spearman": np.nan,
+            "spearman_p": np.nan,
+        }
+    r, rp = pearsonr(agg["surprisal"], agg["rt"])
+    rho, sp = spearmanr(agg["surprisal"], agg["rt"])
+    return {
+        "n": len(agg),
+        "pearson": r,
+        "pearson_p": rp,
+        "spearman": rho,
+        "spearman_p": sp,
+    }
+
+
+def regress_rt(
+    merged: pd.DataFrame, mode="mean", participants="all", domain="all", measure="TFT"
+):
+    """OLS reading time ~ surprisal. Returns the fitted statsmodels result."""
+    df = _filter_domain(merged, domain)
+    df = _filter_participants(df, participants)
+    agg = _aggregate_words(df, measure, mode)
+    X = sm.add_constant(agg["surprisal"])
+    return sm.OLS(agg["rt"], X).fit()
+
+
+# ── attention <-> eye-tracking ───────────────────────────────────────────────
+def build_et_table(rm: pd.DataFrame, domain="all", participants="all"):
+    """Per-word eye-tracking features (+ per-domain PCA component).
+
+    Applies the ``participants`` filter before averaging across readers, so the
+    feature table reflects the chosen reader group. PCA is fit per domain and
+    concatenated.
+    """
+    rm = _filter_participants(rm, participants)
+    et = eyetracking_features(rm)
+    et = _filter_domain(et, domain)
+    pcas = []
+    for dom in et["text_domain"].unique():
+        scored, _ = pca_eyetracking(et, dom)
+        pcas.append(scored)
+    if pcas:
+        et = et.merge(pd.concat(pcas), on=WORD_KEY, how="left")
+    return et
+
+
+def correlate_attention(
+    attn_df: pd.DataFrame, et_df: pd.DataFrame, layer="all", attention_method="raw"
+) -> pd.DataFrame:
+    """Layer-wise Spearman of attention against each eye-tracking feature.
+
+    Returns a table with columns ``layer``, ``feature``, ``attention_method``,
+    ``spearman``, ``p``, ``n`` — one row per (layer, feature). Features are the
+    six mapped eye-tracking measures plus the ``pca`` component.
+    """
+    attn = attn_df[attn_df["attention_method"] == attention_method]
+    if layer != "all":
+        attn = attn[attn["layer"] == layer]
+
+    features = [m for m in dict.fromkeys(ET_MEASURE_MAP.values()) if m in et_df.columns]
+    if "pca" in et_df.columns:
+        features.append("pca")
+
+    merged = attn.merge(et_df, on=WORD_KEY, how="inner")
+    rows = []
+    for lyr, g in merged.groupby("layer"):
+        for feat in features:
+            sub = g[["attention", feat]].dropna()
+            if len(sub) < 3:
+                rho, p = np.nan, np.nan
+            else:
+                rho, p = spearmanr(sub["attention"], sub[feat])
+            rows.append((lyr, feat, attention_method, rho, p, len(sub)))
+    return pd.DataFrame(
+        rows, columns=["layer", "feature", "attention_method", "spearman", "p", "n"]
+    )
+
+
+# ── multiple-comparison correction (plan TODO, line 100) ─────────────────────
+def bh_correct(pvalues, alpha=0.05):
+    """Benjamini-Hochberg FDR correction. Returns (reject, p_adjusted)."""
+    p = np.asarray(pvalues, dtype=float)
+    mask = ~np.isnan(p)
+    reject = np.zeros(len(p), bool)
+    p_adj = np.full(len(p), np.nan)
+    if mask.sum():
+        rej, padj, _, _ = multipletests(p[mask], alpha=alpha, method="fdr_bh")
+        reject[mask] = rej
+        p_adj[mask] = padj
+    return reject, p_adj
