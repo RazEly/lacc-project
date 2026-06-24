@@ -155,6 +155,31 @@ def correlate_attention(
     )
 
 
+# ── fine-tuning progress: correlation per checkpoint ─────────────────────────
+def correlation_over_epochs(surp_versions: pd.DataFrame, rt_df: pd.DataFrame,
+                            domain_only=False, mode="mean", domain="all",
+                            measure="TFT",
+                            groups=("experts", "novices")) -> pd.DataFrame:
+    """Surprisal-RT correlation at each fine-tuning checkpoint, per reader group.
+
+    ``surp_versions`` is the output of
+    ``finetune.recompute_surprisal_over_checkpoints`` (per-word surprisal tagged
+    with ``epoch``). For every epoch and reader group, surprisal is merged with
+    ``rt_df`` and correlated. Returns long-form columns ``epoch``, ``group``,
+    ``pearson``, ``spearman``, ``n``.
+    """
+    rows = []
+    for epoch, sv in surp_versions.groupby("epoch"):
+        merged = merge_surprisal_rt(sv[WORD_KEY + ["surprisal"]], rt_df)
+        for grp in groups:
+            r = correlate_surprisal(merged, domain=domain, domain_only=domain_only,
+                                    mode=mode, participants=grp, measure=measure)
+            rows.append({"epoch": epoch, "group": grp,
+                         "pearson": r["pearson"], "spearman": r["spearman"],
+                         "n": r["n"]})
+    return pd.DataFrame(rows).sort_values(["group", "epoch"])
+
+
 # ── multiple-comparison correction (plan TODO, line 100) ─────────────────────
 def bh_correct(pvalues, alpha=0.05):
     """Benjamini-Hochberg FDR correction. Returns (reject, p_adjusted)."""

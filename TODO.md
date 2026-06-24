@@ -14,3 +14,7 @@ Model structure also undecided: random intercepts only vs. random slopes for sur
 ## Papers to read / cite
 
 - **Gururangan et al. (2020)** — "Don't Stop Pretraining: Adapt Language Models to Domains and Tasks". Justification for DAPT (continued pre-training on domain text) as fine-tuning objective in Step 4.
+
+- DAPT
+- LORA
+-

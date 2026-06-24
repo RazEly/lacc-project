@@ -38,6 +38,20 @@ def expert_novice_slopes(slopes_df, ax=None):
     return ax
 
 
+def finetune_correlation_curve(curve_df, metric="pearson", ax=None):
+    """Surprisal-RT correlation vs fine-tuning epoch, one line per reader group.
+
+    ``curve_df`` is the output of ``analysis.correlation_over_epochs``.
+    """
+    ax = ax or plt.gca()
+    for group, g in curve_df.groupby("group"):
+        g = g.sort_values("epoch")
+        ax.plot(g["epoch"], g[metric], marker="o", label=group)
+    ax.set(xlabel="fine-tuning epoch", ylabel=f"{metric} r (surprisal vs RT)")
+    ax.legend(title="readers")
+    return ax
+
+
 def perplexity_curve(manifest_df, ax=None):
     """Fine-tuning progress: validation perplexity vs words processed."""
     ax = ax or plt.gca()
