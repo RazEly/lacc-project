@@ -1,0 +1,30 @@
+# data + assets (downloaded / large)
+papers/
+data/
+handout/*.pdf
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# uv / virtualenv
+.venv/
+venv/
+.python-version
+
+# jupyter
+.ipynb_checkpoints/
+
+# model / hub caches (if pointed at repo)
+.cache/
+*.pt
+*.bin
+*.safetensors
+
+# os / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
