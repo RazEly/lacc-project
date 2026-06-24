@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 from datasets import load_from_disk
+from tqdm.auto import tqdm
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -75,6 +76,19 @@ class _CheckpointEveryN(TrainerCallback):
               f"perplexity={ppl:.2f}")
 
 
+class _EpochProgress(TrainerCallback):
+    """tqdm bar over training epochs."""
+
+    def __init__(self, epochs, domain):
+        self.bar = tqdm(total=epochs, desc=f"DAPT {domain}", unit="epoch")
+
+    def on_epoch_end(self, args, state, control, **kwargs):
+        self.bar.update(1)
+
+    def on_train_end(self, args, state, control, **kwargs):
+        self.bar.close()
+
+
 def finetune_dapt(domain: str, base_model: str = DEFAULT_MODEL, epochs: int = 30,
                   save_every: int = 10, block_size: int = 512,
                   batch_size: int = 8, val_frac: float = 0.05,
@@ -117,6 +131,7 @@ def finetune_dapt(domain: str, base_model: str = DEFAULT_MODEL, epochs: int = 30
     manifest: list[dict] = []
     trainer.add_callback(_CheckpointEveryN(
         trainer, out_dir, save_every, words_per_epoch, manifest))
+    trainer.add_callback(_EpochProgress(epochs, domain))
     trainer.train()
 
     df = pd.DataFrame(manifest)
