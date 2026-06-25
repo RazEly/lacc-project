@@ -17,6 +17,10 @@ venv/
 # jupyter
 .ipynb_checkpoints/
 
+# fine-tuned model checkpoints (DAPT artifacts); keep the tracked label-id map
+artifacts/*
+!artifacts/domain_label_ids.json
+
 # model / hub caches (if pointed at repo)
 .cache/
 *.pt

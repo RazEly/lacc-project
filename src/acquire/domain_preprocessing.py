@@ -6,7 +6,7 @@ Two-pass weak labelling:
            gold-labelled PoTeC texts.
 
 Run from the project root:
-    python -m src.domain_preprocessing
+    python -m src.acquire.domain_preprocessing
 """
 import glob
 import json
@@ -20,15 +20,21 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from transformers import XLMRobertaTokenizer, pipeline
 
-from src.config import COMMONS_DIR, DOMAIN_BIO_DIR, DOMAIN_PHY_DIR, POTEC_DIR
+from src.config import (
+    COMMONS_DIR,
+    DOMAIN_BIO_DIR,
+    DOMAIN_PHY_DIR,
+    LABEL_IDS_PATH,
+    POTEC_DIR,
+)
 
 TEXT_CHARS  = 1024
 BATCH_SIZE  = 128   # tune to VRAM
 TFIDF_THRESHOLD = 0.05
 
-# Cache of the final physics/biology document ids. When present, the labelling
-# (TF-IDF + NLI) is skipped and the datasets are rebuilt straight from these ids.
-LABEL_IDS_PATH = COMMONS_DIR / "domain_label_ids.json"
+# Cache of the final physics/biology document ids (``config.LABEL_IDS_PATH``).
+# When present, the labelling (TF-IDF + NLI) is skipped and the datasets are
+# rebuilt straight from these ids.
 
 NLI_LABELS = {
     "physics": "Dieser Text handelt von Physik.",

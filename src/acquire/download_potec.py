@@ -5,12 +5,12 @@ by ``init.sh``); the clone alone provides the stimuli / ``word_features`` TSVs
 that ``domain_preprocessing`` needs. This script adds the large eye-tracking
 data on top.
 
-    python -m src.download_potec
+    python -m src.acquire.download_potec
 """
 import sys
 
 from src.config import POTEC_DIR, POTEC_EYETRACKING_DIR
-from src.download_data_files import download_data
+from src.acquire.download_data_files import download_data
 
 
 def download_eyetracking() -> None:

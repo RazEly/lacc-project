@@ -30,7 +30,7 @@ from transformers import (
 )
 
 from src.config import CHECKPOINTS_DIR, DEFAULT_MODEL, DOMAIN_BIO_DIR, DOMAIN_PHY_DIR
-from src.surprisal import compute_surprisal, load_causal_lm
+from src.features.surprisal import compute_surprisal, load_causal_lm
 
 DOMAIN_DIRS = {"physics": DOMAIN_PHY_DIR, "biology": DOMAIN_BIO_DIR}
 
@@ -144,7 +144,7 @@ class _EpochProgress(TrainerCallback):
 def finetune_dapt(
     domain: str,
     base_model: str = DEFAULT_MODEL,
-    epochs: int = 3,
+    epochs: float = 3,
     n_checkpoints: int = 10,
     include_baseline: bool = True,
     block_size: int = 512,

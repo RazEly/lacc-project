@@ -30,32 +30,28 @@ def attention_layer_curve(corr_table, feature="pca", ax=None):
     return ax
 
 
-def expert_novice_slopes(slopes_df, ax=None):
-    """Bar chart of regression slope (ms/bit) per reader group."""
-    ax = ax or plt.gca()
-    sns.barplot(data=slopes_df, x="group", y="slope", ax=ax)
-    ax.set(xlabel="reader group", ylabel="slope (ms/bit)")
-    return ax
-
-
 def finetune_correlation_curve(curve_df, metric="pearson", ax=None):
-    """Surprisal-RT correlation vs fine-tuning epoch, one line per reader group.
+    """Surprisal-RT correlation vs fine-tuning epoch, per reader group × domain.
 
-    ``curve_df`` is the output of ``analysis.correlation_over_epochs``.
+    ``curve_df`` is the output of ``correlation.correlation_over_epochs``, which
+    holds BOTH fine-tuning domains (physics model on physics texts, biology on
+    biology). Each (group, domain) is its own line — pooling the two domains into
+    one line per group would weave a single series through both runs' checkpoints,
+    whose ``epoch`` floats differ, and conflate physics with biology adaptation.
     """
     ax = ax or plt.gca()
-    for group, g in curve_df.groupby("group"):
+    for (group, domain), g in curve_df.groupby(["group", "domain"]):
         g = g.sort_values("epoch")
-        ax.plot(g["epoch"], g[metric], marker="o", label=group)
+        ax.plot(g["epoch"], g[metric], marker="o", label=f"{group}·{domain}")
     ax.set(xlabel="fine-tuning epoch", ylabel=f"{metric} r (surprisal vs RT)")
-    ax.legend(title="readers")
+    ax.legend(title="readers·domain")
     return ax
 
 
 def model_comparison_curve(cmp_df, metric="delta_ll", ax=None):
     """Four-model surprisal fit vs fine-tuning epoch, one line per surprisal model.
 
-    ``cmp_df`` is the output of ``analysis.model_comparison_over_epochs``: the
+    ``cmp_df`` is the output of ``model_comparison.model_comparison_over_epochs``: the
     ``baseline`` / ``physics`` / ``biology`` / ``aligned`` surprisal sources. With
     ``metric="delta_ll"`` a higher line = that source improves the fit more. If
     ``aligned`` sits above the three single-model sources, matching the language

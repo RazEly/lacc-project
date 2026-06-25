@@ -6,7 +6,7 @@ openalex, ...); we concatenate them into a single flat dataset and
 ``save_to_disk`` so ``domain_preprocessing`` can read it with
 ``load_from_disk`` as one table.
 
-    python -m src.download_commons
+    python -m src.acquire.download_commons
 """
 from datasets import concatenate_datasets, load_dataset
 

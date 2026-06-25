@@ -1,8 +1,8 @@
-"""Non-notebook driver for the PoTeC decoder-LM pipeline (steps 1-6).
+"""Driver for the PoTeC decoder-LM pipeline (steps 1-6).
 
-Mirrors ``notebooks/pipeline.ipynb``: reading-time cleaning, causal-LM
-surprisal, attention (raw + flow), the surprisal/attention vs gaze analysis, and
-(optional) DAPT fine-tuning. Prints the same summaries the notebook shows and
+Reading-time cleaning, causal-LM surprisal, attention (raw + flow), the
+surprisal/attention vs gaze analysis, DAPT fine-tuning, and the reader-aligned
+model comparison with its significance tests. Prints a summary per step and
 writes every plot to ``figures/``.
 
 Runs all steps end to end (step 4 DAPT included; GPU recommended).
@@ -20,12 +20,14 @@ matplotlib.use("Agg")  # headless: write files, never open a window
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from src import analysis as an
-from src import attention as at
-from src import data
-from src import reading_time as rt
-from src import surprisal as su
-from src import viz
+from src import config
+from src.features import attention as at
+from src.analysis import correlation as co
+from src.features import data
+from src.analysis import model_comparison as mc
+from src.features import reading_time as rt
+from src.features import surprisal as su
+from src.analysis import viz
 
 MEASURE = "TFT"  # total fixation time == TRT
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -66,20 +68,31 @@ def main() -> None:
     surp = su.compute_surprisal(words, model, tok)  # prompt=None
     print(surp.head().to_string())
 
+    # prompted-baseline surprisal: the un-adapted model with a discipline-matched
+    # system prompt prepended (the prompting analogue of fine-tuning). One column
+    # per discipline; the comparison mixes them by reader discipline (S_prompted).
+    s_pp = su.compute_surprisal(
+        words, model, tok, prompt=config.GRAD_STUDENT_PROMPTS["physics"]
+    ).rename(columns={"surprisal": "s_prompt_phys"})
+    s_pb = su.compute_surprisal(
+        words, model, tok, prompt=config.GRAD_STUDENT_PROMPTS["biology"]
+    ).rename(columns={"surprisal": "s_prompt_bio"})
+    prompt_surp = s_pp.merge(s_pb, on=["text_id", "word_index_in_text"])
+
     # ── Step 3 — attention (raw on full corpus) ──────────────────────────────
     print("Step 3 — attention (raw)")
     amodel, atok = su.load_causal_lm(attn=True)
     attn_raw = at.extract_attention(words, amodel, atok, method="raw")
-    et = an.build_et_table(rm_raw, domain="all", participants="all")
+    et = co.build_et_table(rm_raw, domain="all", participants="all")
     print(f"  attn_raw={attn_raw.shape}  et={et.shape}")
 
     # ── Step 5 — analysis ────────────────────────────────────────────────────
     print("Step 5 — analysis")
-    merged = an.merge_surprisal_rt(surp, rm)
+    merged = co.merge_surprisal_rt(surp, rm)
     rows = []
     for grp in ["all", "experts", "novices"]:
         for dom_only in (False, True):
-            r = an.correlate_surprisal(
+            r = co.correlate_surprisal(
                 merged, participants=grp, domain_only=dom_only, mode="mean"
             )
             rows.append({"group": grp, "domain_only": dom_only, **r})
@@ -88,7 +101,7 @@ def main() -> None:
     ]
     print(corr_df.to_string(index=False))
 
-    fit = an.regress_rt(merged, participants="all")
+    fit = co.regress_rt(merged, participants="all")
     print(
         f"  slope={fit.params['surprisal']:.2f} ms/bit  R2={fit.rsquared:.3f}"
     )
@@ -96,43 +109,29 @@ def main() -> None:
     # ── Figures ──────────────────────────────────────────────────────────────
     print("Figures")
     # surprisal vs reading time (binned scatter + OLS fit)
-    agg_words = an._aggregate_words(
-        an._filter_participants(merged, "all"), MEASURE, "mean"
+    agg_words = co._aggregate_words(
+        co._filter_participants(merged, "all"), MEASURE, "mean"
     )
     fig, ax = plt.subplots()
     viz.surprisal_scatter(agg_words, ax=ax)
     save_fig(ax, "surprisal_scatter")
 
-    # regression slope per reader group
-    slopes = pd.DataFrame(
-        [
-            {
-                "group": grp,
-                "slope": an.regress_rt(merged, participants=grp).params["surprisal"],
-            }
-            for grp in ["all", "experts", "novices"]
-        ]
-    )
-    fig, ax = plt.subplots()
-    viz.expert_novice_slopes(slopes, ax=ax)
-    save_fig(ax, "expert_novice_slopes")
-
     # attention layer curve (raw)
-    attn_corr = an.correlate_attention(attn_raw, et, attention_method="raw")
+    attn_corr = co.correlate_attention(attn_raw, et, attention_method="raw")
     fig, ax = plt.subplots()
     viz.attention_layer_curve(attn_corr, feature="pca", ax=ax)
     save_fig(ax, "attention_layer_curve")
 
     # ── Step 4 — DAPT fine-tuning (GPU recommended) ──────────────────────────
     print("Step 4 — DAPT fine-tuning")
-    from src import finetune as ft
+    from src.modeling import finetune as ft
 
     # Fine-tune both domains — the four-model comparison needs physics- and
     # biology-adapted surprisal (plus the shared step-0 baseline).
     manifest = pd.concat(
         [
-            ft.finetune_dapt("physics", epochs=2, n_checkpoints=7),
-            ft.finetune_dapt("biology", epochs=2, n_checkpoints=7),
+            ft.finetune_dapt("physics", epochs=0.5, n_checkpoints=7, batch_size=8),
+            ft.finetune_dapt("biology", epochs=0.5, n_checkpoints=7, batch_size=8),
         ],
         ignore_index=True,
     )
@@ -141,21 +140,50 @@ def main() -> None:
     save_fig(ax, "perplexity_curve")
 
     surp_versions = ft.recompute_surprisal_over_checkpoints(words, manifest)
-    curve = an.correlation_over_epochs(
+    curve = co.correlation_over_epochs(
         surp_versions, rm, domain_only=True, mode="mean"
     )
     fig, ax = plt.subplots()
     viz.finetune_correlation_curve(curve, metric="pearson", ax=ax)
     save_fig(ax, "finetune_correlation_curve")
 
-    # Four-model surprisal comparison on the whole corpus (all readers × words):
+    # Five-model surprisal comparison on the whole corpus (all readers × words):
     # does reader-aligned surprisal (physics LM for physicists, biology LM for
-    # biologists) fit better than any single model (baseline / physics / biology)?
-    cmp = an.model_comparison_over_epochs(surp_versions, rm, measure=MEASURE)
-    print(cmp.to_string(index=False))
-    fig, ax = plt.subplots()
-    viz.model_comparison_curve(cmp, metric="delta_ll", ax=ax)
-    save_fig(ax, "finetune_model_comparison")
+    # biologists) fit better than any single model? Repeated under each
+    # fixed-effects spec (covariates / expertise-only / full), since the right
+    # control structure is itself an open question.
+    from src.analysis import stats as st  # Step 6 tests, run per spec
+
+    cmps, vuongs = [], []
+    for spec in mc.MODEL_SPECS:
+        print(f"Step 5/6 — model comparison + tests (spec={spec})")
+        cmp = mc.model_comparison_over_epochs(
+            surp_versions, rm, prompt_surp, measure=MEASURE, spec=spec
+        )
+        cmp["spec"] = spec
+        cmps.append(cmp)
+        print(cmp.to_string(index=False))
+
+        fig, ax = plt.subplots()
+        viz.model_comparison_curve(cmp, metric="delta_ll", ax=ax)
+        save_fig(ax, f"finetune_model_comparison_{spec}")
+
+        # Reader-clustered Vuong test at the checkpoint where aligned peaks.
+        aligned = cmp[cmp["model"] == "aligned"]
+        best_index = aligned.loc[aligned["delta_ll"].idxmax(), "index"]
+        vuong = st.aligned_vs_single_models(
+            surp_versions, rm, prompt_surp, measure=MEASURE,
+            index=best_index, spec=spec,
+        )
+        vuong["spec"] = spec
+        vuongs.append(vuong)
+        print(vuong.to_string(index=False))
+
+    cmp_all = pd.concat(cmps, ignore_index=True)
+    cmp_all.to_csv(PROJECT_ROOT / "results.csv", index=False)
+    pd.concat(vuongs, ignore_index=True).to_csv(
+        PROJECT_ROOT / "results_vuong.csv", index=False
+    )
 
     print(f"Done. Figures in {FIG_DIR.relative_to(PROJECT_ROOT)}/")
 

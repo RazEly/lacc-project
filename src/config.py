@@ -33,7 +33,13 @@ POTEC_PARTICIPANTS = POTEC_DIR / "participants" / "participant_data.tsv"
 DEFAULT_MODEL = "dbmdz/german-gpt2"
 
 OUTPUTS_DIR = PROJECT_ROOT / "outputs"          # surprisal/attention/analysis tables
-CHECKPOINTS_DIR = PROJECT_ROOT / "checkpoints"  # fine-tuned model weights (DAPT)
+# Run artifacts (checkpoints + the domain label-id map). Relative -> resolved
+# against the cwd at run time, so artifacts land in ./artifacts/ wherever the
+# pipeline is launched.
+ARTIFACTS_DIR = Path("artifacts")
+CHECKPOINTS_DIR = ARTIFACTS_DIR                 # fine-tuned model weights (DAPT)
+# domain_preprocessing's expensive NLI labelling output (tracked in git).
+LABEL_IDS_PATH = ARTIFACTS_DIR / "domain_label_ids.json"
 
 # Eye-tracking measure name mapping: plan name -> PoTeC column.
 ET_MEASURE_MAP = {
@@ -47,3 +53,14 @@ ET_MEASURE_MAP = {
 
 # The 4 informative measures kept for PCA (drop SFD, GPT per plan / Mouratidi & Poesio 2025).
 PCA_MEASURES = ["FPRT", "TFT", "FFD", "TFC"]
+
+# ── reader-discipline system prompt (prompted-surprisal variant) ─────────────
+# Baseline-model surprisal under a discipline-matched system prompt — the
+# prompting analogue of the fine-tuned "aligned" model. The prompt is chosen by
+# the READER's discipline (a physicist gets the physics prompt on any text), so
+# the variant needs both columns per word; the per-reader mix is built in
+# model_comparison._prep_models. German to match the german-gpt2 base model.
+GRAD_STUDENT_PROMPTS = {
+    "physics": "Du bist Doktorand der Physik. ",
+    "biology": "Du bist Doktorand der Biologie. ",
+}
