@@ -22,7 +22,9 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import torch
+from joblib import Parallel, delayed
 from sklearn.decomposition import PCA
+from tqdm.auto import tqdm
 
 from src.config import ET_MEASURE_MAP, PCA_MEASURES
 
@@ -76,42 +78,45 @@ def raw_attention(word_list, model, tokenizer) -> np.ndarray:
 
 
 # ── attention flow ───────────────────────────────────────────────────────────
-def _flow_graph(atts_upto, residual=0.5):
-    """Layered flow network over tokens; capacities = head-avg attention.
+def _add_flow_layer(G, A_layer, l, seq, residual=0.5):
+    """Add layer ``l``'s edges (l, j) -> (l+1, i) to a layered flow network.
 
-    Adds an identity residual (Abnar & Zeng 2020) and row-renormalizes so each
-    token's incoming capacities form a distribution. Node = (layer, token).
+    Capacities = head-avg attention with an identity residual (Abnar & Zeng 2020),
+    row-renormalized so each token's incoming capacities form a distribution.
+    Node = (layer, token). Mutates ``G`` in place — the graph is built up one
+    layer at a time so the network for layer L is the network for L-1 plus this
+    layer, never rebuilt from scratch.
     """
-    n_layers, seq, _ = atts_upto.shape
-    G = nx.DiGraph()
-    for l in range(n_layers):
-        A = atts_upto[l].copy()
-        A = residual * np.eye(seq) + (1 - residual) * A
-        A = A / A.sum(axis=1, keepdims=True).clip(min=1e-12)
-        for i in range(seq):  # query (receiver at layer l+1)
-            for j in range(seq):  # key   (source at layer l)
-                c = A[i, j]
-                if c > 0:
-                    G.add_edge((l, j), (l + 1, i), capacity=float(c))
-    return G, n_layers, seq
+    A = residual * np.eye(seq) + (1 - residual) * A_layer
+    A = A / A.sum(axis=1, keepdims=True).clip(min=1e-12)
+    for i in range(seq):  # query (receiver at layer l+1)
+        for j in range(seq):  # key   (source at layer l)
+            c = A[i, j]
+            if c > 0:
+                G.add_edge((l, j), (l + 1, i), capacity=float(c))
 
 
-def attention_flow(word_list, model, tokenizer, decay=1.0) -> np.ndarray:
-    """Attention-flow score per word per layer. -> [n_words, n_layers].
+def _flow_scores(atts, word_ids, n_words, decay=1.0) -> np.ndarray:
+    """Attention-flow score per word per layer from precomputed attentions.
 
-    ``decay`` controls the Metzger et al. (2022) position correction: each input
-    token's flow is multiplied by ``(position+1) ** decay`` to offset the bias
-    toward early tokens before normalization (decay=0 disables it).
+    Pure CPU (networkx max-flow) — no model, so it parallelizes across sentences.
+    ``decay`` is the Metzger et al. (2022) position correction: each input token's
+    flow is multiplied by ``(position+1) ** decay`` to offset the early-token bias
+    before normalization (decay=0 disables it).
+
+    The flow network is grown incrementally: after adding layer L's edges, the
+    sink for layer L is node ``(L+1, target)``. Max-flow value to that sink is
+    identical whether computed on the L+1-layer subgraph or a full rebuild — the
+    network is a layered DAG, so layers above the sink carry no s-t flow.
     """
-    atts, word_ids = _forward_attentions(word_list, model, tokenizer)
     n_layers, seq, _ = atts.shape
-    n_words = len(word_list)
     positions = _word_positions(word_ids, n_words)
     target = seq - 1  # sentence-final token = sink
 
+    G = nx.DiGraph()
     out = np.zeros((n_words, n_layers))
     for L in range(n_layers):
-        G, _, _ = _flow_graph(atts[: L + 1])
+        _add_flow_layer(G, atts[L], L, seq)
         sink = (L + 1, target)
         tok_flow = np.zeros(seq)
         for i in range(seq):
@@ -127,35 +132,70 @@ def attention_flow(word_list, model, tokenizer, decay=1.0) -> np.ndarray:
     return out
 
 
+def attention_flow(word_list, model, tokenizer, decay=1.0) -> np.ndarray:
+    """Attention-flow score per word per layer. -> [n_words, n_layers].
+
+    ``decay`` controls the Metzger et al. (2022) position correction (decay=0
+    disables it). Forward pass on the model, then ``_flow_scores`` on CPU.
+    """
+    atts, word_ids = _forward_attentions(word_list, model, tokenizer)
+    return _flow_scores(atts, word_ids, len(word_list), decay=decay)
+
+
 # ── per-sentence extraction over the corpus ──────────────────────────────────
 def extract_attention(
-    words_df: pd.DataFrame, model, tokenizer, method: str = "raw", decay: float = 1.0
+    words_df: pd.DataFrame,
+    model,
+    tokenizer,
+    method: str = "raw",
+    decay: float = 1.0,
+    n_jobs: int = -1,
 ) -> pd.DataFrame:
     """Run an attention method over every sentence; long-form output.
 
     Returns columns ``text_id``, ``word_index_in_text``, ``layer``,
     ``attention``, ``attention_method``. First/last words of each sentence are
     dropped to match the surprisal / reading-time cleaning. ``decay`` is the
-    Metzger position correction passed to ``attention_flow`` (decoder default 1.0;
+    Metzger position correction passed to the flow method (decoder default 1.0;
     set 0 for a bidirectional encoder, which has no early-token bias).
+
+    For ``flow`` the per-token Edmonds-Karp max-flow dominates and is pure-CPU,
+    single-thread Python — so the GPU forward passes are done first, then the
+    flow itself is mapped across ``n_jobs`` cores (``-1`` = all). Scores are
+    bit-identical to a serial run; only the schedule changes.
     """
+    sents = [
+        sent
+        for _, sent in words_df.sort_values(
+            ["text_id", "sent_index_in_text", "word_index_in_sent"]
+        ).groupby(["text_id", "sent_index_in_text"], sort=False)
+        if len(sent) >= 3
+    ]
+
     if method == "raw":
-        fn = raw_attention
+        scores_list = [
+            raw_attention(s["word"].fillna("").astype(str).tolist(), model, tokenizer)
+            for s in sents
+        ]
     else:
-        fn = lambda w, m, t: attention_flow(w, m, t, decay=decay)
+        # Phase 1 (GPU): forward every sentence, keep head-averaged attentions.
+        forwards = [
+            _forward_attentions(s["word"].fillna("").astype(str).tolist(), model, tokenizer)
+            for s in tqdm(sents, desc="flow forward", leave=False)
+        ]
+        # Phase 2 (CPU, parallel): max-flow per sentence. joblib preserves order.
+        scores_list = Parallel(n_jobs=n_jobs, verbose=5)(
+            delayed(_flow_scores)(atts, word_ids, len(s), decay)
+            for s, (atts, word_ids) in zip(sents, forwards)
+        )
+
     rows = []
-    for _, sent in words_df.sort_values(
-        ["text_id", "sent_index_in_text", "word_index_in_sent"]
-    ).groupby(["text_id", "sent_index_in_text"], sort=False):
-        words = sent["word"].fillna("").astype(str).tolist()
-        if len(words) < 3:
-            continue
-        scores = fn(words, model, tokenizer)  # [n_words, n_layers]
+    for sent, scores in zip(sents, scores_list):
         idx = sent["word_index_in_text"].tolist()
         tid = sent["text_id"].iloc[0]
         beg = sent["is_sent_beginning"].tolist()
         end = sent["is_sent_end"].tolist()
-        for k in range(len(words)):
+        for k in range(scores.shape[0]):
             if beg[k] == 1 or end[k] == 1:
                 continue
             for l in range(scores.shape[1]):

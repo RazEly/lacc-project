@@ -15,39 +15,69 @@ from src.analysis import correlation as co
 GROUPS = ("experts", "novices")
 
 
-def correlate_flow_by_group(
-    flow_df: pd.DataFrame, rm_raw: pd.DataFrame, domain: str = "all", feature: str = "pca"
+def correlate_by_group(
+    attn_df: pd.DataFrame,
+    rm_raw: pd.DataFrame,
+    method: str = "flow",
+    domain: str = "all",
+    feature: str = "pca",
 ) -> pd.DataFrame:
-    """Per-layer flow↔gaze Spearman for experts and novices.
+    """Per-layer attention↔gaze Spearman for experts and novices.
 
-    ``flow_df`` is one model's flow table (``encoder.extract_flow``). Returns
-    columns ``layer``, ``feature``, ``spearman``, ``p``, ``n``, ``group``.
+    ``attn_df`` is one model's attention table (``encoder.extract_raw`` /
+    ``extract_flow``); ``method`` selects which (``raw``/``flow``). Returns columns
+    ``layer``, ``feature``, ``spearman``, ``p``, ``n``, ``group``.
     """
     rows = []
     for grp in GROUPS:
         et = co.build_et_table(rm_raw, domain=domain, participants=grp)
-        corr = co.correlate_attention(flow_df, et, attention_method="flow")
+        corr = co.correlate_attention(attn_df, et, attention_method=method)
         corr = corr[corr["feature"] == feature].copy()
         corr["group"] = grp
         rows.append(corr)
     return pd.concat(rows, ignore_index=True)
 
 
-def flow_correlation_over_checkpoints(
-    flow_versions: pd.DataFrame, rm_raw: pd.DataFrame, feature: str = "pca"
+# back-compat alias: the flow baseline figure used this name.
+def correlate_flow_by_group(
+    flow_df: pd.DataFrame, rm_raw: pd.DataFrame, domain: str = "all", feature: str = "pca"
 ) -> pd.DataFrame:
-    """Peak-layer flow↔gaze Spearman per checkpoint × reader group.
+    """Per-layer flow↔gaze Spearman for experts and novices (see correlate_by_group)."""
+    return correlate_by_group(flow_df, rm_raw, method="flow", domain=domain, feature=feature)
 
-    ``flow_versions`` is ``encoder.flow_over_checkpoints`` output. Each checkpoint
-    is correlated only against its own fine-tuning domain's texts (a physics model
-    on physics texts), per expert/novice group, keeping the best-aligned layer.
-    Returns ``index``, ``epoch``, ``domain``, ``group``, ``layer``, ``spearman``.
+
+def correlate_by_feature(
+    attn_df: pd.DataFrame, rm_raw: pd.DataFrame, method: str = "raw", domain: str = "all"
+) -> pd.DataFrame:
+    """Per-layer attention↔gaze Spearman for every eye-tracking feature (all readers).
+
+    Direct analog of the paper's Figure 1 (layer-wise raw-attention correlation
+    across the eye-tracking features). Returns ``layer``, ``feature``,
+    ``attention_method``, ``spearman``, ``p``, ``n``.
+    """
+    et = co.build_et_table(rm_raw, domain=domain, participants="all")
+    return co.correlate_attention(attn_df, et, attention_method=method)
+
+
+def correlation_over_checkpoints(
+    versions: pd.DataFrame, rm_raw: pd.DataFrame, method: str = "flow", feature: str = "pca"
+) -> pd.DataFrame:
+    """Peak-layer attention↔gaze Spearman per checkpoint × reader group.
+
+    ``versions`` is ``encoder.attention_over_checkpoints`` output (``raw``/``flow``
+    selected by ``method``). Each checkpoint is correlated only against its own
+    fine-tuning domain's texts (a physics model on physics texts), per
+    expert/novice group, keeping the best-aligned layer. ``tokens_seen`` is the
+    fine-tuning x-axis. Returns ``index``, ``epoch``, ``tokens_seen``, ``domain``,
+    ``group``, ``layer``, ``spearman``, ``method``.
     """
     rows = []
-    for (index, epoch, domain), fv in flow_versions.groupby(["index", "epoch", "domain"]):
+    for (index, epoch, tokens_seen, domain), fv in versions.groupby(
+        ["index", "epoch", "tokens_seen", "domain"]
+    ):
         for grp in GROUPS:
             et = co.build_et_table(rm_raw, domain=domain, participants=grp)
-            corr = co.correlate_attention(fv, et, attention_method="flow")
+            corr = co.correlate_attention(fv, et, attention_method=method)
             corr = corr[corr["feature"] == feature]
             if corr["spearman"].notna().any():
                 best = corr.loc[corr["spearman"].idxmax()]
@@ -55,10 +85,19 @@ def flow_correlation_over_checkpoints(
                     {
                         "index": index,
                         "epoch": epoch,
+                        "tokens_seen": tokens_seen,
                         "domain": domain,
                         "group": grp,
                         "layer": int(best["layer"]),
                         "spearman": float(best["spearman"]),
+                        "method": method,
                     }
                 )
-    return pd.DataFrame(rows).sort_values(["domain", "group", "index"])
+    return pd.DataFrame(rows).sort_values(["domain", "group", "tokens_seen"])
+
+
+def flow_correlation_over_checkpoints(
+    flow_versions: pd.DataFrame, rm_raw: pd.DataFrame, feature: str = "pca"
+) -> pd.DataFrame:
+    """Flow↔gaze peak-layer Spearman per checkpoint (see correlation_over_checkpoints)."""
+    return correlation_over_checkpoints(flow_versions, rm_raw, method="flow", feature=feature)

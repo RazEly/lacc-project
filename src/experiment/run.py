@@ -1,9 +1,11 @@
 """Driver for the encoder attention experiment (separate from src/main.py).
 
-E1 reproduce  — German BERT attention flow vs gaze, per reader group (the paper's
-                strongest result, expertise-split).
-E2 fine-tune  — domain MLM DAPT of the encoder on data/domain_{phy,bio}.
-E3 compare    — flow↔gaze alignment across fine-tuning, experts vs novices.
+E1 fine-tune  — domain MLM DAPT of the encoder on data/domain_{phy,bio}, runs
+                FIRST; checkpoints saved under artifacts/ (config.CHECKPOINTS_DIR).
+E2 raw        — raw attention (paper §3.2.1) vs gaze across the checkpoints:
+                x = tokens seen, y = Spearman r, per reader group × domain.
+E3 flow       — attention flow (§3.2.2) vs gaze, same tokens-vs-correlation view.
+                Expect alignment to rise with tokens seen as the encoder adapts.
 
 Run from the project root:
 
@@ -22,7 +24,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from src.config import ENCODER_MODEL
+from src.config import CHECKPOINTS_DIR, ENCODER_MODEL
 from src.experiment import analysis as ea
 from src.experiment import encoder as enc
 from src.experiment import viz as ev
@@ -59,19 +61,11 @@ def main(max_sents=None, max_tokens: int | None = None, n_checkpoints: int = 4, 
     words = _subset_sents(data.load_word_features(), max_sents)
     rm_raw = data.load_reading_measures()
 
-    # ── E1 — reproduce: baseline encoder flow vs gaze, per reader group ───────
-    print("E1 — baseline encoder attention flow vs gaze")
-    model, tok = enc.load_encoder(ENCODER_MODEL)
-    flow = enc.extract_flow(words, model, tok)
-    corr = ea.correlate_flow_by_group(flow, rm_raw, domain="all")
-    peak = corr.loc[corr.groupby("group")["spearman"].idxmax()]
-    print(peak[["group", "layer", "spearman"]].to_string(index=False))
-    fig, ax = plt.subplots()
-    ev.expert_novice_layer_curve(corr, ax=ax)
-    _save_fig(ax, "exp_flow_layers_expert_novice")
-
-    # ── E2 — domain MLM fine-tuning of the encoder ────────────────────────────
-    print("E2 — domain MLM DAPT")
+    # ── E1 — domain MLM fine-tuning of the encoder (runs FIRST) ───────────────
+    # Checkpoints are saved under artifacts/ (config.CHECKPOINTS_DIR) by
+    # finetune_dapt; the manifest indexes them. Raw/flow alignment is then read
+    # off these checkpoints as a function of tokens seen, so DAPT must precede it.
+    print("E1 — domain MLM DAPT (saving checkpoints to artifacts/)")
     # Budget by tokens, not epochs: equal token exposure across domains. Default to
     # the largest budget that fits one pass of each corpus.
     budget = max_tokens or min(
@@ -89,16 +83,25 @@ def main(max_sents=None, max_tokens: int | None = None, n_checkpoints: int = 4, 
         ],
         ignore_index=True,
     )
+    manifest.to_csv(PROJECT_ROOT / "results_finetune_manifest.csv", index=False)
+    print(f"  checkpoints under {CHECKPOINTS_DIR}/ — {len(manifest)} saved")
 
-    # ── E3 — flow alignment across fine-tuning, experts vs novices ────────────
-    print("E3 — flow vs gaze across fine-tuning")
-    flow_versions = enc.flow_over_checkpoints(words, manifest)
-    curve = ea.flow_correlation_over_checkpoints(flow_versions, rm_raw)
-    print(curve.to_string(index=False))
-    curve.to_csv(PROJECT_ROOT / "results_attention.csv", index=False)
-    fig, ax = plt.subplots()
-    ev.expert_novice_finetune_curve(curve, ax=ax)
-    _save_fig(ax, "exp_flow_finetune_expert_novice")
+    # ── E2/E3 — raw then flow alignment across fine-tuning (x = tokens seen) ───
+    # Same analysis for both methods (paper order: raw §3.2.1, then flow §3.2.2).
+    # Each correlates its checkpoint against its own domain's texts, per reader
+    # group; we expect Spearman r to climb with tokens seen.
+    for tag, method, fig_name in [
+        ("E2", "raw", "exp_raw_finetune_tokens"),
+        ("E3", "flow", "exp_flow_finetune_tokens"),
+    ]:
+        print(f"{tag} — {method} vs gaze across fine-tuning (tokens seen)")
+        versions = enc.attention_over_checkpoints(words, manifest, method=method)
+        curve = ea.correlation_over_checkpoints(versions, rm_raw, method=method)
+        print(curve.to_string(index=False))
+        curve.to_csv(PROJECT_ROOT / f"results_attention_{method}.csv", index=False)
+        fig, ax = plt.subplots()
+        ev.expert_novice_finetune_curve(curve, ax=ax, method=method)
+        _save_fig(ax, fig_name)
 
     print(f"Done. Figures in {FIG_DIR.relative_to(PROJECT_ROOT)}/")
 
