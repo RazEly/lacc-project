@@ -9,6 +9,7 @@ Run from the project root:
     python -m src.domain_preprocessing
 """
 import glob
+import json
 import os
 
 import numpy as np
@@ -24,6 +25,10 @@ from src.config import COMMONS_DIR, DOMAIN_BIO_DIR, DOMAIN_PHY_DIR, POTEC_DIR
 TEXT_CHARS  = 1024
 BATCH_SIZE  = 128   # tune to VRAM
 TFIDF_THRESHOLD = 0.05
+
+# Cache of the final physics/biology document ids. When present, the labelling
+# (TF-IDF + NLI) is skipped and the datasets are rebuilt straight from these ids.
+LABEL_IDS_PATH = COMMONS_DIR / "domain_label_ids.json"
 
 NLI_LABELS = {
     "physics": "Dieser Text handelt von Physik.",
@@ -113,7 +118,44 @@ def calibrate_nli_threshold(potec_dir, classifier):
     return threshold
 
 
+# ── label-id cache ───────────────────────────────────────────────────────────
+def save_label_ids(physics_ds, biology_ds, path=LABEL_IDS_PATH):
+    """Persist the selected physics/biology document ids as JSON for reuse."""
+    ids = {"physics": list(physics_ds["id"]), "biology": list(biology_ds["id"])}
+    with open(path, "w") as f:
+        json.dump(ids, f)
+    print(f"  wrote label ids: {path} "
+          f"({len(ids['physics']):,} physics, {len(ids['biology']):,} biology)")
+
+
+def build_from_label_ids(path=LABEL_IDS_PATH):
+    """Rebuild the physics/biology datasets from a saved id file.
+
+    Returns ``(physics_ds, biology_ds)`` or ``None`` if no cache file exists.
+    Skips the whole TF-IDF + NLI labelling pipeline.
+    """
+    if not path.exists():
+        return None
+    with open(path) as f:
+        ids = json.load(f)
+    print(f"\nFound cached label ids ({path}); skipping TF-IDF + NLI.")
+    ds = load_commons()
+    physics = set(ids["physics"])
+    biology = set(ids["biology"])
+    physics_ds = ds.filter(lambda x: x["id"] in physics)
+    biology_ds = ds.filter(lambda x: x["id"] in biology)
+    print(f"  physics : {len(physics_ds):,}   biology : {len(biology_ds):,}")
+    return physics_ds, biology_ds
+
+
 def main():
+    # Reuse a previous run's labels if they were saved.
+    cached = build_from_label_ids()
+    if cached is not None:
+        physics_ds, biology_ds = cached
+        _save_domain_datasets(physics_ds, biology_ds)
+        return
+
     # ── pass 1: TF-IDF with POTEC seeds ──────────────────────────────────────
     ds = load_commons()
     texts = [t[:TEXT_CHARS] if t else "" for t in ds["text"]]
@@ -207,6 +249,13 @@ def main():
     for row in sorted(biology_ds, key=lambda x: x["nli_score"], reverse=True)[:3]:
         print(f"  nli={row['nli_score']:.2f} tfidf={row['sim_biology']:.3f} [{row['source']}] {row['text'][:100]!r}")
 
+    # Cache the selected ids so a rerun can skip the labelling above.
+    save_label_ids(physics_ds, biology_ds)
+    _save_domain_datasets(physics_ds, biology_ds)
+
+
+def _save_domain_datasets(physics_ds, biology_ds):
+    """Write the physics/biology datasets to their on-disk locations."""
     print("\nSaving datasets...")
     physics_ds.save_to_disk(str(DOMAIN_PHY_DIR))
     biology_ds.save_to_disk(str(DOMAIN_BIO_DIR))

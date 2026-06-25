@@ -10,6 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
+import statsmodels.formula.api as smf
 from scipy.stats import pearsonr, spearmanr
 from statsmodels.stats.multitest import multipletests
 
@@ -205,84 +206,118 @@ def correlation_over_epochs(
     return pd.DataFrame(rows).sort_values(["group", "epoch"])
 
 
-# ── regression fit per checkpoint (log-likelihood / R²) ──────────────────────
-# Two model specs for mean reading time per word. The first is surprisal alone;
-# the second adds word frequency and log word length as lexical covariates.
-REGRESSION_SPECS = {
-    "surprisal": ["surprisal"],
-    "surprisal+freq+length": ["surprisal", "log_word_freq", "log_word_length"],
-}
+# ── four-model surprisal comparison: reader-aligned vs single model ──────────
+# On the WHOLE corpus (both text domains, all readers) compare how well four
+# surprisal sources predict reading time, each in the same mixed model:
+#
+#   RT ~ log_word_freq + log_word_length + S + (1 | reader)
+#
+# with S one of:
+#   baseline : the un-adapted step-0 model's surprisal (same for every reader)
+#   physics  : the physics fine-tuned model's surprisal (every reader)
+#   biology  : the biology fine-tuned model's surprisal (every reader)
+#   aligned  : reader-aligned — physics surprisal for physicists, biology
+#              surprisal for biologists, i.e.
+#              physicist * S_physics + (1 - physicist) * S_biology.
+#
+# In ``baseline`` / ``physics`` / ``biology`` the reader's discipline is ignored;
+# only ``aligned`` matches the language model to the reader's field. Alignment is
+# by READER discipline, not text domain, so a physicist gets physics surprisal
+# even on a biology text. Every model adds a single surprisal slope, so their
+# log-likelihoods are directly comparable. ΔLL is measured against the
+# no-surprisal baseline ``RT ~ freq + length + (1|reader)``. The question: does
+# ``aligned`` improve the fit over the three single-model sources? RT is the raw
+# measure (swap to ``np.log`` here for log-RT). Only ``(1|reader)`` is random, so
+# each fit is sub-second.
+SURPRISAL_MODELS = ("baseline", "physics", "biology", "aligned")
 
 
-def _aggregate_for_regression(df, measure, mode):
-    """One row per word: aggregated reading time + surprisal + lexical features."""
-    agg = (
-        df.groupby(WORD_KEY)
-        .agg(
-            rt=(measure, mode),
-            surprisal=("surprisal", "first"),
-            word_freq=("lemma_frequency_normalized", "first"),
-            word_length=("word_length", "first"),
-        )
-        .reset_index()
+def _prep_models(df, measure):
+    """One row per reader×word with the four surprisal columns + covariates.
+
+    ``df`` must already carry per-word ``s_base`` / ``s_phys`` / ``s_bio``
+    surprisal (base, physics-adapted, biology-adapted) and the reading measures.
+    """
+    d = df[df[measure] > 0].copy()
+    d = d.dropna(
+        subset=[measure, "word_length", "lemma_frequency_normalized",
+                "s_base", "s_phys", "s_bio"]
     )
-    agg = agg.dropna(subset=["rt", "surprisal", "word_freq", "word_length"])
-    agg = agg[agg["word_length"] > 0]
-    agg["log_word_length"] = np.log(agg["word_length"])
-    # dlexDB lemma freq (per million words) is heavily right-skewed; log it.
-    # log1p keeps the zero-frequency words (missing dlexDB entries) finite.
-    agg["log_word_freq"] = np.log1p(agg["word_freq"])
-    return agg
+    d = d[d["word_length"] > 0]
+    # dlexDB lemma freq (per million) is heavily right-skewed; log1p keeps the
+    # zero-frequency words (missing dlexDB entries) finite.
+    d["log_word_freq"] = np.log1p(d["lemma_frequency_normalized"])
+    d["log_word_length"] = np.log(d["word_length"])
+    # reader discipline (1 = physics, 0 = biology); see data.add_expertise.
+    physicist = (d["reader_discipline_numeric"] == 1).to_numpy(dtype=float)
+    d["S_baseline"] = d["s_base"]
+    d["S_physics"] = d["s_phys"]
+    d["S_biology"] = d["s_bio"]
+    d["S_aligned"] = physicist * d["s_phys"] + (1.0 - physicist) * d["s_bio"]
+    return d
 
 
-def _fit_spec(agg, predictors):
-    """OLS ``rt ~ predictors``; return (log-likelihood, R²)."""
-    X = sm.add_constant(agg[predictors])
-    res = sm.OLS(agg["rt"], X).fit()
-    return res.llf, res.rsquared
+def _fit_model(d, measure, surprisal_col=None):
+    """Mixed model ``measure ~ freq + length [+ surprisal_col] + (1|reader)``."""
+    rhs = "log_word_freq + log_word_length"
+    if surprisal_col is not None:
+        rhs += f" + {surprisal_col}"
+    md = smf.mixedlm(f"{measure} ~ {rhs}", d, groups=d["reader_id"])
+    return md.fit(reml=False)  # ML so LLs are comparable across the surprisal term
 
 
-def regression_over_epochs(
+def model_comparison_over_epochs(
     surp_versions: pd.DataFrame,
     rt_df: pd.DataFrame,
-    mode="mean",
     measure="TFT",
-    groups=("experts", "novices"),
-    domain_only=False,
 ) -> pd.DataFrame:
-    """Per-checkpoint regression fit of mean reading time, per reader group.
+    """Per-checkpoint four-model surprisal comparison on the whole corpus.
 
-    For every fine-tuning checkpoint (matched to its own text domain, see
-    ``correlation_over_epochs``) and reader group, the per-word mean reading time
-    is regressed on each spec in ``REGRESSION_SPECS`` and the model
-    log-likelihood + R² recorded. Returns long-form columns ``epoch``,
-    ``domain``, ``group``, ``spec``, ``ll``, ``rsquared``, ``n``.
+    ``surp_versions`` must contain BOTH a ``physics`` and a ``biology`` domain
+    (fine-tune both). The smallest ``epoch`` is the un-adapted step-0 model and
+    supplies the ``baseline`` surprisal (domain-agnostic). For every checkpoint
+    (epoch) the physics, biology and reader-aligned surprisal columns are built
+    and each of the four models in ``SURPRISAL_MODELS`` is fit on all readers ×
+    words of the whole corpus, plus the no-surprisal baseline, recording the
+    log-likelihood, ΔLL over that baseline and the surprisal slope. Returns
+    long-form columns ``epoch``, ``model``, ``n``, ``ll``, ``delta_ll``,
+    ``b_surprisal``, ``p_surprisal``.
     """
+    epochs = sorted(surp_versions["epoch"].unique())
+    base_epoch = epochs[0]
+
+    def _surp(epoch, domain, name):
+        sel = surp_versions[
+            (surp_versions["epoch"] == epoch) & (surp_versions["domain"] == domain)
+        ]
+        return sel[WORD_KEY + ["surprisal"]].rename(columns={"surprisal": name})
+
+    # step-0 weights are domain-agnostic, so either domain's epoch-0 works.
+    s_base = _surp(base_epoch, "physics", "s_base")
     rows = []
-    for (epoch, model_domain), sv in surp_versions.groupby(["epoch", "domain"]):
-        merged = merge_surprisal_rt(sv[WORD_KEY + ["surprisal"]], rt_df)
-        for grp in groups:
-            df = _filter_domain(merged, model_domain)
-            df = _filter_participants(df, grp)
-            df = _filter_domain_only(df, domain_only)
-            agg = _aggregate_for_regression(df, measure, mode)
-            for spec, predictors in REGRESSION_SPECS.items():
-                if len(agg) < 5:
-                    ll, r2 = np.nan, np.nan
-                else:
-                    ll, r2 = _fit_spec(agg, predictors)
-                rows.append(
-                    {
-                        "epoch": epoch,
-                        "domain": model_domain,
-                        "group": grp,
-                        "spec": spec,
-                        "ll": ll,
-                        "rsquared": r2,
-                        "n": len(agg),
-                    }
-                )
-    return pd.DataFrame(rows).sort_values(["spec", "group", "epoch"])
+    for epoch in epochs:
+        surp = (
+            s_base.merge(_surp(epoch, "physics", "s_phys"), on=WORD_KEY)
+            .merge(_surp(epoch, "biology", "s_bio"), on=WORD_KEY)
+        )
+        merged = surp.merge(rt_df, on=WORD_KEY, how="inner")
+        d = _prep_models(merged, measure)
+        ll0 = _fit_model(d, measure, None).llf  # no-surprisal reference
+        for name in SURPRISAL_MODELS:
+            col = f"S_{name}"
+            res = _fit_model(d, measure, col)
+            rows.append(
+                {
+                    "epoch": epoch,
+                    "model": name,
+                    "n": len(d),
+                    "ll": res.llf,
+                    "delta_ll": res.llf - ll0,
+                    "b_surprisal": res.fe_params.get(col, np.nan),
+                    "p_surprisal": res.pvalues.get(col, np.nan),
+                }
+            )
+    return pd.DataFrame(rows).sort_values(["model", "epoch"])
 
 
 # ── multiple-comparison correction (plan TODO, line 100) ─────────────────────

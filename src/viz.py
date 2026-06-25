@@ -52,24 +52,22 @@ def finetune_correlation_curve(curve_df, metric="pearson", ax=None):
     return ax
 
 
-_REG_METRIC_LABELS = {"ll": "log-likelihood", "rsquared": "R²"}
+def model_comparison_curve(cmp_df, metric="delta_ll", ax=None):
+    """Four-model surprisal fit vs fine-tuning epoch, one line per surprisal model.
 
-
-def finetune_regression_curve(reg_df, spec, metric="rsquared", ax=None):
-    """Regression fit vs fine-tuning epoch, one line per reader group.
-
-    ``reg_df`` is the output of ``analysis.regression_over_epochs``. ``spec``
-    selects the model spec (a key of ``analysis.REGRESSION_SPECS``) and
-    ``metric`` is ``"ll"`` (log-likelihood) or ``"rsquared"``.
+    ``cmp_df`` is the output of ``analysis.model_comparison_over_epochs``: the
+    ``baseline`` / ``physics`` / ``biology`` / ``aligned`` surprisal sources. With
+    ``metric="delta_ll"`` a higher line = that source improves the fit more. If
+    ``aligned`` sits above the three single-model sources, matching the language
+    model to the reader's discipline helps.
     """
     ax = ax or plt.gca()
-    sub = reg_df[reg_df["spec"] == spec]
-    for group, g in sub.groupby("group"):
+    for model, g in cmp_df.groupby("model"):
         g = g.sort_values("epoch")
-        ax.plot(g["epoch"], g[metric], marker="o", label=group)
-    label = _REG_METRIC_LABELS.get(metric, metric)
-    ax.set(xlabel="fine-tuning epoch", ylabel=f"{label}  (rt ~ {spec})")
-    ax.legend(title="readers")
+        ax.plot(g["epoch"], g[metric], marker="o", label=model)
+    ax.axhline(0, color="grey", lw=0.8)
+    ax.set(xlabel="fine-tuning epoch", ylabel=metric.replace("_", " "))
+    ax.legend(title="surprisal model")
     return ax
 
 
