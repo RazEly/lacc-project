@@ -22,6 +22,7 @@ from datasets import load_from_disk
 from tqdm.auto import tqdm
 from transformers import (
     AutoModelForCausalLM,
+    AutoModelForMaskedLM,
     AutoTokenizer,
     DataCollatorForLanguageModeling,
     Trainer,
@@ -35,20 +36,22 @@ from src.features.surprisal import compute_surprisal, load_causal_lm
 DOMAIN_DIRS = {"physics": DOMAIN_PHY_DIR, "biology": DOMAIN_BIO_DIR}
 
 
-def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text"):
+def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text", mlm=False):
     """Tokenize a text dataset and pack into fixed-size LM blocks.
 
-    An ``eos`` token is appended to every document before packing so concatenated
+    A separator token is appended to every document before packing so concatenated
     blocks carry a boundary between documents (GPT-2's tokenizer adds none on its
     own), preventing the model from training across unrelated documents as if they
-    were continuous text.
+    were continuous text. For causal training ``labels`` are the shifted inputs;
+    for ``mlm`` they are omitted so the MLM collator can mask dynamically.
     """
+    sep_id = tokenizer.eos_token_id or tokenizer.sep_token_id
 
     def tok(batch):
         out = tokenizer(batch[text_col])
-        if tokenizer.eos_token_id is not None:
+        if sep_id is not None:
             for ids in out["input_ids"]:
-                ids.append(tokenizer.eos_token_id)
+                ids.append(sep_id)
         return out
 
     ds = ds.map(tok, batched=True, remove_columns=ds.column_names)
@@ -57,7 +60,10 @@ def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text"):
         concat = sum(batch["input_ids"], [])
         n = (len(concat) // block_size) * block_size
         ids = [concat[i : i + block_size] for i in range(0, n, block_size)]
-        return {"input_ids": ids, "labels": [x[:] for x in ids]}
+        out = {"input_ids": ids}
+        if not mlm:  # MLM collator builds masked labels itself
+            out["labels"] = [x[:] for x in ids]
+        return out
 
     return ds.map(group, batched=True, remove_columns=ds.column_names)
 
@@ -156,23 +162,28 @@ def finetune_dapt(
     seed: int = 0,
     out_dir=None,
     max_docs=None,
+    objective: str = "causal",
 ) -> pd.DataFrame:
     """DAPT-fine-tune ``base_model`` on one domain; return a checkpoint manifest.
 
-    Trains for ``epochs`` epochs and saves ``n_checkpoints`` models evenly spaced
-    by training step across the whole run (so several land inside one epoch). With
-    ``include_baseline`` the first checkpoint is the un-fine-tuned model (step 0).
-    ``max_docs`` truncates the corpus (smoke testing). The returned DataFrame has
-    columns ``domain``, ``checkpoint``, ``index``, ``epoch``, ``step``,
-    ``words_seen``, ``perplexity``.
+    ``objective`` is ``"causal"`` (decoder, next-token; the surprisal pipeline) or
+    ``"mlm"`` (encoder, masked-LM; the attention experiment). Trains for ``epochs``
+    epochs and saves ``n_checkpoints`` models evenly spaced by training step across
+    the whole run (so several land inside one epoch). With ``include_baseline`` the
+    first checkpoint is the un-fine-tuned model (step 0). ``max_docs`` truncates the
+    corpus (smoke testing). The returned DataFrame has columns ``domain``,
+    ``checkpoint``, ``index``, ``epoch``, ``step``, ``words_seen``, ``perplexity``
+    (pseudo-perplexity over masked tokens when ``objective="mlm"``).
     """
+    is_mlm = objective == "mlm"
     out_dir = Path(out_dir or CHECKPOINTS_DIR / f"{Path(base_model).name}_{domain}")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     tokenizer = AutoTokenizer.from_pretrained(base_model)
     if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    model = AutoModelForCausalLM.from_pretrained(base_model)
+        tokenizer.pad_token = tokenizer.eos_token or tokenizer.sep_token
+    model_cls = AutoModelForMaskedLM if is_mlm else AutoModelForCausalLM
+    model = model_cls.from_pretrained(base_model)
     # german-gpt2 ships an eos/pad id (50265) one past its embedding rows
     # (vocab_size 50265); using it as a document separator / pad would index out
     # of range on the GPU (device-side assert). Grow the embeddings to cover every
@@ -194,8 +205,8 @@ def finetune_dapt(
     words_per_epoch = sum(len(str(t).split()) for t in raw_split["train"]["text"])
 
     split = {
-        "train": _tokenize_and_chunk(raw_split["train"], tokenizer, block_size),
-        "test": _tokenize_and_chunk(raw_split["test"], tokenizer, block_size),
+        "train": _tokenize_and_chunk(raw_split["train"], tokenizer, block_size, mlm=is_mlm),
+        "test": _tokenize_and_chunk(raw_split["test"], tokenizer, block_size, mlm=is_mlm),
     }
 
     # 12 GB VRAM, 124M-param GPT-2: VRAM is slack, so optimise for throughput.
@@ -223,7 +234,9 @@ def finetune_dapt(
         logging_steps=50,
         report_to=[],
     )
-    collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
+    collator = DataCollatorForLanguageModeling(
+        tokenizer, mlm=is_mlm, mlm_probability=0.15 if is_mlm else None
+    )
     trainer = Trainer(
         model=model,
         args=args,

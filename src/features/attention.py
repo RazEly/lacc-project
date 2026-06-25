@@ -125,14 +125,19 @@ def attention_flow(word_list, model, tokenizer, decay=1.0) -> np.ndarray:
 
 # ── per-sentence extraction over the corpus ──────────────────────────────────
 def extract_attention(words_df: pd.DataFrame, model, tokenizer,
-                      method: str = "raw") -> pd.DataFrame:
+                      method: str = "raw", decay: float = 1.0) -> pd.DataFrame:
     """Run an attention method over every sentence; long-form output.
 
     Returns columns ``text_id``, ``word_index_in_text``, ``layer``,
     ``attention``, ``attention_method``. First/last words of each sentence are
-    dropped to match the surprisal / reading-time cleaning.
+    dropped to match the surprisal / reading-time cleaning. ``decay`` is the
+    Metzger position correction passed to ``attention_flow`` (decoder default 1.0;
+    set 0 for a bidirectional encoder, which has no early-token bias).
     """
-    fn = raw_attention if method == "raw" else attention_flow
+    if method == "raw":
+        fn = raw_attention
+    else:
+        fn = lambda w, m, t: attention_flow(w, m, t, decay=decay)
     rows = []
     for _, sent in words_df.sort_values(
             ["text_id", "sent_index_in_text", "word_index_in_sent"]).groupby(
