@@ -54,7 +54,7 @@ def _subset_sents(words, max_sents):
     return words.merge(keys, on=["text_id", "sent_index_in_text"])
 
 
-def main(max_sents=None, epochs: float = 0.5, n_checkpoints: int = 4, max_docs=None):
+def main(max_sents=None, max_tokens: int | None = None, n_checkpoints: int = 4, max_docs=None):
     FIG_DIR.mkdir(exist_ok=True)
     words = _subset_sents(data.load_word_features(), max_sents)
     rm_raw = data.load_reading_measures()
@@ -72,13 +72,19 @@ def main(max_sents=None, epochs: float = 0.5, n_checkpoints: int = 4, max_docs=N
 
     # ── E2 — domain MLM fine-tuning of the encoder ────────────────────────────
     print("E2 — domain MLM DAPT")
+    # Budget by tokens, not epochs: equal token exposure across domains. Default to
+    # the largest budget that fits one pass of each corpus.
+    budget = max_tokens or min(
+        ft.count_domain_tokens("physics", ENCODER_MODEL, objective="mlm", max_docs=max_docs),
+        ft.count_domain_tokens("biology", ENCODER_MODEL, objective="mlm", max_docs=max_docs),
+    )
     manifest = pd.concat(
         [
             ft.finetune_dapt("physics", ENCODER_MODEL, objective="mlm",
-                             epochs=epochs, n_checkpoints=n_checkpoints,
+                             max_tokens=budget, n_checkpoints=n_checkpoints,
                              batch_size=8, max_docs=max_docs),
             ft.finetune_dapt("biology", ENCODER_MODEL, objective="mlm",
-                             epochs=epochs, n_checkpoints=n_checkpoints,
+                             max_tokens=budget, n_checkpoints=n_checkpoints,
                              batch_size=8, max_docs=max_docs),
         ],
         ignore_index=True,
