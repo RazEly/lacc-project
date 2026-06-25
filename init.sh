@@ -40,15 +40,15 @@ fi
 
 if [[ "$EYETRACKING" -eq 1 ]]; then
     echo "==> Downloading PoTeC eye-tracking data ..."
-    $PY -m src.download_potec
+    $PY -m src.acquire.download_potec
 else
     echo "==> Skipping PoTeC eye-tracking download (--no-eyetracking)."
 fi
 
 echo "==> Downloading german-commons (scientific) ..."
-$PY -m src.download_commons
+$PY -m src.acquire.download_commons
 
 echo
 echo "Setup complete."
 echo "Next: run the domain labelling pipeline with"
-echo "    uv run python -m src.domain_preprocessing"
+echo "    uv run python -m src.acquire.domain_preprocessing"
