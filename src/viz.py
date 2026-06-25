@@ -52,6 +52,27 @@ def finetune_correlation_curve(curve_df, metric="pearson", ax=None):
     return ax
 
 
+_REG_METRIC_LABELS = {"ll": "log-likelihood", "rsquared": "R²"}
+
+
+def finetune_regression_curve(reg_df, spec, metric="rsquared", ax=None):
+    """Regression fit vs fine-tuning epoch, one line per reader group.
+
+    ``reg_df`` is the output of ``analysis.regression_over_epochs``. ``spec``
+    selects the model spec (a key of ``analysis.REGRESSION_SPECS``) and
+    ``metric`` is ``"ll"`` (log-likelihood) or ``"rsquared"``.
+    """
+    ax = ax or plt.gca()
+    sub = reg_df[reg_df["spec"] == spec]
+    for group, g in sub.groupby("group"):
+        g = g.sort_values("epoch")
+        ax.plot(g["epoch"], g[metric], marker="o", label=group)
+    label = _REG_METRIC_LABELS.get(metric, metric)
+    ax.set(xlabel="fine-tuning epoch", ylabel=f"{label}  (rt ~ {spec})")
+    ax.legend(title="readers")
+    return ax
+
+
 def perplexity_curve(manifest_df, ax=None):
     """Fine-tuning progress: validation perplexity vs words processed."""
     ax = ax or plt.gca()

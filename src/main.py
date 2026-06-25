@@ -127,7 +127,7 @@ def main() -> None:
     print("Step 4 — DAPT fine-tuning")
     from src import finetune as ft
 
-    manifest = ft.finetune_dapt("physics", epochs=10, save_every=2)
+    manifest = ft.finetune_dapt("physics", epochs=3, n_checkpoints=10)
     fig, ax = plt.subplots()
     viz.perplexity_curve(manifest, ax=ax)
     save_fig(ax, "perplexity_curve")
@@ -139,6 +139,16 @@ def main() -> None:
     fig, ax = plt.subplots()
     viz.finetune_correlation_curve(curve, metric="pearson", ax=ax)
     save_fig(ax, "finetune_correlation_curve")
+
+    # regression fit (log-likelihood + R²) per epoch, experts vs novices, for
+    # both model specs: rt ~ surprisal, and rt ~ surprisal + freq + log length.
+    reg = an.regression_over_epochs(surp_versions, rm, mode="mean", measure=MEASURE)
+    for spec in an.REGRESSION_SPECS:
+        tag = spec.replace("+", "_")
+        for metric in ("ll", "rsquared"):
+            fig, ax = plt.subplots()
+            viz.finetune_regression_curve(reg, spec=spec, metric=metric, ax=ax)
+            save_fig(ax, f"finetune_{metric}_{tag}")
 
     print(f"Done. Figures in {FIG_DIR.relative_to(PROJECT_ROOT)}/")
 

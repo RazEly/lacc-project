@@ -25,10 +25,15 @@ def _filter_domain(df, domain):
 
 
 def _filter_participants(df, participants):
+    """Split readers by ``is_expert`` (reader major == text domain).
+
+    See ``data.add_expertise``: experts are readers whose discipline matches the
+    text's domain, novices the rest. Requires the ``is_expert`` column.
+    """
     if participants == "all":
         return df
     flag = 1 if participants == "experts" else 0
-    return df[df["expert_reading_label_numeric"] == flag]
+    return df[df["is_expert"] == flag]
 
 
 def _filter_domain_only(df, domain_only):
@@ -156,28 +161,128 @@ def correlate_attention(
 
 
 # ── fine-tuning progress: correlation per checkpoint ─────────────────────────
-def correlation_over_epochs(surp_versions: pd.DataFrame, rt_df: pd.DataFrame,
-                            domain_only=False, mode="mean", domain="all",
-                            measure="TFT",
-                            groups=("experts", "novices")) -> pd.DataFrame:
+def correlation_over_epochs(
+    surp_versions: pd.DataFrame,
+    rt_df: pd.DataFrame,
+    domain_only=False,
+    mode="mean",
+    measure="TFT",
+    groups=("experts", "novices"),
+) -> pd.DataFrame:
     """Surprisal-RT correlation at each fine-tuning checkpoint, per reader group.
 
     ``surp_versions`` is the output of
     ``finetune.recompute_surprisal_over_checkpoints`` (per-word surprisal tagged
-    with ``epoch``). For every epoch and reader group, surprisal is merged with
-    ``rt_df`` and correlated. Returns long-form columns ``epoch``, ``group``,
-    ``pearson``, ``spearman``, ``n``.
+    with ``epoch`` and the fine-tuning ``domain``). A domain-adapted model is
+    only a meaningful predictor on texts of its own domain, so each checkpoint's
+    surprisal is correlated **only against texts whose domain matches the model's
+    fine-tuning domain** (physics model -> physics texts, biology -> biology).
+    Returns long-form columns ``epoch``, ``domain``, ``group``, ``pearson``,
+    ``spearman``, ``n``.
     """
     rows = []
-    for epoch, sv in surp_versions.groupby("epoch"):
+    for (epoch, model_domain), sv in surp_versions.groupby(["epoch", "domain"]):
         merged = merge_surprisal_rt(sv[WORD_KEY + ["surprisal"]], rt_df)
         for grp in groups:
-            r = correlate_surprisal(merged, domain=domain, domain_only=domain_only,
-                                    mode=mode, participants=grp, measure=measure)
-            rows.append({"epoch": epoch, "group": grp,
-                         "pearson": r["pearson"], "spearman": r["spearman"],
-                         "n": r["n"]})
+            r = correlate_surprisal(
+                merged,
+                domain=model_domain,
+                domain_only=domain_only,
+                mode=mode,
+                participants=grp,
+                measure=measure,
+            )
+            rows.append(
+                {
+                    "epoch": epoch,
+                    "domain": model_domain,
+                    "group": grp,
+                    "pearson": r["pearson"],
+                    "spearman": r["spearman"],
+                    "n": r["n"],
+                }
+            )
     return pd.DataFrame(rows).sort_values(["group", "epoch"])
+
+
+# ── regression fit per checkpoint (log-likelihood / R²) ──────────────────────
+# Two model specs for mean reading time per word. The first is surprisal alone;
+# the second adds word frequency and log word length as lexical covariates.
+REGRESSION_SPECS = {
+    "surprisal": ["surprisal"],
+    "surprisal+freq+length": ["surprisal", "log_word_freq", "log_word_length"],
+}
+
+
+def _aggregate_for_regression(df, measure, mode):
+    """One row per word: aggregated reading time + surprisal + lexical features."""
+    agg = (
+        df.groupby(WORD_KEY)
+        .agg(
+            rt=(measure, mode),
+            surprisal=("surprisal", "first"),
+            word_freq=("lemma_frequency_normalized", "first"),
+            word_length=("word_length", "first"),
+        )
+        .reset_index()
+    )
+    agg = agg.dropna(subset=["rt", "surprisal", "word_freq", "word_length"])
+    agg = agg[agg["word_length"] > 0]
+    agg["log_word_length"] = np.log(agg["word_length"])
+    # dlexDB lemma freq (per million words) is heavily right-skewed; log it.
+    # log1p keeps the zero-frequency words (missing dlexDB entries) finite.
+    agg["log_word_freq"] = np.log1p(agg["word_freq"])
+    return agg
+
+
+def _fit_spec(agg, predictors):
+    """OLS ``rt ~ predictors``; return (log-likelihood, R²)."""
+    X = sm.add_constant(agg[predictors])
+    res = sm.OLS(agg["rt"], X).fit()
+    return res.llf, res.rsquared
+
+
+def regression_over_epochs(
+    surp_versions: pd.DataFrame,
+    rt_df: pd.DataFrame,
+    mode="mean",
+    measure="TFT",
+    groups=("experts", "novices"),
+    domain_only=False,
+) -> pd.DataFrame:
+    """Per-checkpoint regression fit of mean reading time, per reader group.
+
+    For every fine-tuning checkpoint (matched to its own text domain, see
+    ``correlation_over_epochs``) and reader group, the per-word mean reading time
+    is regressed on each spec in ``REGRESSION_SPECS`` and the model
+    log-likelihood + R² recorded. Returns long-form columns ``epoch``,
+    ``domain``, ``group``, ``spec``, ``ll``, ``rsquared``, ``n``.
+    """
+    rows = []
+    for (epoch, model_domain), sv in surp_versions.groupby(["epoch", "domain"]):
+        merged = merge_surprisal_rt(sv[WORD_KEY + ["surprisal"]], rt_df)
+        for grp in groups:
+            df = _filter_domain(merged, model_domain)
+            df = _filter_participants(df, grp)
+            df = _filter_domain_only(df, domain_only)
+            agg = _aggregate_for_regression(df, measure, mode)
+            for spec, predictors in REGRESSION_SPECS.items():
+                if len(agg) < 5:
+                    ll, r2 = np.nan, np.nan
+                else:
+                    ll, r2 = _fit_spec(agg, predictors)
+                rows.append(
+                    {
+                        "epoch": epoch,
+                        "domain": model_domain,
+                        "group": grp,
+                        "spec": spec,
+                        "ll": ll,
+                        "rsquared": r2,
+                        "n": len(agg),
+                    }
+                )
+    return pd.DataFrame(rows).sort_values(["spec", "group", "epoch"])
 
 
 # ── multiple-comparison correction (plan TODO, line 100) ─────────────────────

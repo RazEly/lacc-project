@@ -73,7 +73,7 @@ def aggregate_rt(rm: pd.DataFrame, measure: str = "TFT") -> dict[str, pd.DataFra
     Returns a dict of DataFrames keyed by group name:
       - ``"all"``        : every reader (baseline);
       - ``"experts"``    : domain experts only
-                           (``expert_reading_label_numeric == 1``);
+                           (``is_expert == 1``, i.e. reader major == text domain);
       - ``"experts_<level>"`` : experts split by expertise level
                            (undergraduate / graduate).
     Each table has columns ``text_id``, ``word_index_in_text``,
@@ -81,7 +81,7 @@ def aggregate_rt(rm: pd.DataFrame, measure: str = "TFT") -> dict[str, pd.DataFra
     """
     groups: dict[str, pd.DataFrame] = {"all": _agg(rm, measure)}
 
-    experts = rm[rm["expert_reading_label_numeric"] == 1]
+    experts = rm[rm["is_expert"] == 1]
     groups["experts"] = _agg(experts, measure)
 
     for lvl, label in LEVEL_LABELS.items():

@@ -8,6 +8,7 @@ default HF model or a fine-tuned local checkpoint can be plugged in.
 An optional ``prompt`` prepends domain-matched context (a system prompt) before
 the sentence; only the sentence words receive surprisal scores.
 """
+
 from __future__ import annotations
 
 import math
@@ -33,7 +34,8 @@ def load_causal_lm(name_or_path: str = DEFAULT_MODEL, attn: bool = False):
     if attn:
         kwargs["attn_implementation"] = "eager"
     model = AutoModelForCausalLM.from_pretrained(
-        name_or_path, output_attentions=attn, **kwargs)
+        name_or_path, output_attentions=attn, **kwargs
+    )
     model.eval()
     return model, tokenizer
 
@@ -67,16 +69,16 @@ def sentence_surprisal(word_list, model, tokenizer, prompt=None, domain=None):
         input_ids = sent_ids
         offset = 0
 
-    logits = model(input_ids.unsqueeze(0)).logits[0]      # [seq, vocab]
+    logits = model(input_ids.unsqueeze(0)).logits[0]  # [seq, vocab]
     logprobs = torch.log_softmax(logits.float(), dim=-1)  # natural log
 
     word_bits: dict[int, float] = {}
     for j, wid in enumerate(word_ids):
         if wid is None:
             continue
-        pos = offset + j            # absolute position of this sentence token
+        pos = offset + j  # absolute position of this sentence token
         if pos == 0:
-            continue                # first token, no predictor -> first word NaN
+            continue  # first token, no predictor -> first word NaN
         # log2 p(token_pos | tokens < pos) = logprobs[pos-1, token_pos]
         lp = logprobs[pos - 1, sent_ids[j]].item() / math.log(2)
         word_bits[wid] = word_bits.get(wid, 0.0) - lp
@@ -84,8 +86,9 @@ def sentence_surprisal(word_list, model, tokenizer, prompt=None, domain=None):
     return [word_bits.get(i) for i in range(len(word_list))]
 
 
-def compute_surprisal(words_df: pd.DataFrame, model, tokenizer,
-                      prompt=None) -> pd.DataFrame:
+def compute_surprisal(
+    words_df: pd.DataFrame, model, tokenizer, prompt=None
+) -> pd.DataFrame:
     """Per-word surprisal for every PoTeC sentence.
 
     Sentences are reconstructed from ``words_df`` (one row per word, ordered by
@@ -98,12 +101,11 @@ def compute_surprisal(words_df: pd.DataFrame, model, tokenizer,
     """
     rows = []
     for (text_id, _sent), sent in words_df.sort_values(
-            ["text_id", "sent_index_in_text", "word_index_in_sent"]).groupby(
-            ["text_id", "sent_index_in_text"], sort=False):
+        ["text_id", "sent_index_in_text", "word_index_in_sent"]
+    ).groupby(["text_id", "sent_index_in_text"], sort=False):
         domain = sent["text_domain"].iloc[0]
         words = sent["word"].fillna("").astype(str).tolist()
-        bits = sentence_surprisal(words, model, tokenizer,
-                                  prompt=prompt, domain=domain)
+        bits = sentence_surprisal(words, model, tokenizer, prompt=prompt, domain=domain)
         idx = sent["word_index_in_text"].tolist()
         is_beg = sent["is_sent_beginning"].tolist()
         is_end = sent["is_sent_end"].tolist()

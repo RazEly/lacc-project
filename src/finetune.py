@@ -5,10 +5,12 @@ German decoder LM on the domain-labelled ``german-commons`` splits
 (``data/domain_phy`` / ``data/domain_bio``), which are disjoint from the PoTeC
 stimuli used for the reading-time analysis — so there is no leakage.
 
-Physics and biology are fine-tuned independently. Every ``save_every`` epochs the
-model is checkpointed and its validation perplexity + cumulative words processed
-are recorded, giving a fine-tuning progress curve.
+Physics and biology are fine-tuned independently. The run saves ``n_checkpoints``
+models evenly spaced by training step (including a step-0 baseline), recording
+validation perplexity + cumulative words processed at each, giving a fine-tuning
+progress curve with several points inside a single epoch.
 """
+
 from __future__ import annotations
 
 import math
@@ -35,6 +37,7 @@ DOMAIN_DIRS = {"physics": DOMAIN_PHY_DIR, "biology": DOMAIN_BIO_DIR}
 
 def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text"):
     """Tokenize a text dataset and pack into fixed-size LM blocks."""
+
     def tok(batch):
         return tokenizer(batch[text_col])
 
@@ -43,38 +46,69 @@ def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text"):
     def group(batch):
         concat = sum(batch["input_ids"], [])
         n = (len(concat) // block_size) * block_size
-        ids = [concat[i:i + block_size] for i in range(0, n, block_size)]
+        ids = [concat[i : i + block_size] for i in range(0, n, block_size)]
         return {"input_ids": ids, "labels": [x[:] for x in ids]}
 
     return ds.map(group, batched=True, remove_columns=ds.column_names)
 
 
-class _CheckpointEveryN(TrainerCallback):
-    """Save model + record perplexity / words_seen every ``save_every`` epochs."""
+class _CheckpointSchedule(TrainerCallback):
+    """Save ``n_checkpoints`` models evenly spaced by training step.
 
-    def __init__(self, trainer, out_dir, save_every, words_per_epoch, manifest):
+    The schedule spans the whole run: ``n_checkpoints`` global steps evenly
+    spaced from 0 to ``max_steps``. With ``include_baseline`` the first
+    checkpoint (step 0) is the un-fine-tuned model, so the manifest carries a
+    baseline anchor and the remaining ones march up to the final epoch. Saving by
+    step (not epoch) allows several checkpoints inside a single epoch.
+    """
+
+    def __init__(self, trainer, out_dir, n_checkpoints, words_per_epoch, manifest,
+                 include_baseline=True):
         self.trainer = trainer
         self.out_dir = Path(out_dir)
-        self.save_every = save_every
+        self.n_checkpoints = n_checkpoints
         self.words_per_epoch = words_per_epoch
         self.manifest = manifest
+        self.include_baseline = include_baseline
+        self._targets: dict[int, int] = {}  # global_step -> checkpoint index
 
-    def on_epoch_end(self, args, state, control, **kwargs):
-        epoch = round(state.epoch)
-        if epoch == 0 or epoch % self.save_every:
-            return
-        ckpt = self.out_dir / f"epoch_{epoch}"
+    def on_train_begin(self, args, state, control, **kwargs):
+        # Evenly space the checkpoints across the whole run. include_baseline puts
+        # the first at step 0; otherwise the first lands after the first chunk.
+        lo = 0 if self.include_baseline else 1
+        steps = {
+            round(i / (self.n_checkpoints - 1) * state.max_steps): i
+            for i in range(lo, self.n_checkpoints)
+        }
+        self._targets = steps
+        if self.include_baseline:
+            self._save(state, 0)  # baseline: weights still un-fine-tuned
+
+    def on_step_end(self, args, state, control, **kwargs):
+        idx = self._targets.get(state.global_step)
+        if idx is not None:
+            self._save(state, idx)
+
+    def _save(self, state, idx):
+        ckpt = self.out_dir / f"checkpoint_{idx:02d}"
         self.trainer.save_model(str(ckpt))
         metrics = self.trainer.evaluate()
         ppl = math.exp(metrics["eval_loss"])
-        self.manifest.append({
-            "checkpoint": str(ckpt),
-            "epoch": epoch,
-            "words_seen": epoch * self.words_per_epoch,
-            "perplexity": ppl,
-        })
-        print(f"  [{ckpt.name}] words_seen={epoch * self.words_per_epoch:,} "
-              f"perplexity={ppl:.2f}")
+        words_seen = round(state.epoch * self.words_per_epoch)
+        self.manifest.append(
+            {
+                "checkpoint": str(ckpt),
+                "index": idx,
+                "epoch": round(state.epoch, 3),
+                "step": state.global_step,
+                "words_seen": words_seen,
+                "perplexity": ppl,
+            }
+        )
+        print(
+            f"  [{ckpt.name}] epoch={state.epoch:.2f} step={state.global_step} "
+            f"words_seen={words_seen:,} perplexity={ppl:.2f}"
+        )
 
 
 class _EpochProgress(TrainerCallback):
@@ -90,14 +124,27 @@ class _EpochProgress(TrainerCallback):
         self.bar.close()
 
 
-def finetune_dapt(domain: str, base_model: str = DEFAULT_MODEL, epochs: int = 10,
-                  save_every: int = 2, block_size: int = 512,
-                  batch_size: int = 64, grad_accum: int = 1, val_frac: float = 0.05,
-                  out_dir=None, max_docs=None) -> pd.DataFrame:
+def finetune_dapt(
+    domain: str,
+    base_model: str = DEFAULT_MODEL,
+    epochs: int = 3,
+    n_checkpoints: int = 10,
+    include_baseline: bool = True,
+    block_size: int = 512,
+    batch_size: int = 64,
+    grad_accum: int = 1,
+    val_frac: float = 0.05,
+    out_dir=None,
+    max_docs=None,
+) -> pd.DataFrame:
     """DAPT-fine-tune ``base_model`` on one domain; return a checkpoint manifest.
 
+    Trains for ``epochs`` epochs and saves ``n_checkpoints`` models evenly spaced
+    by training step across the whole run (so several land inside one epoch). With
+    ``include_baseline`` the first checkpoint is the un-fine-tuned model (step 0).
     ``max_docs`` truncates the corpus (smoke testing). The returned DataFrame has
-    columns ``domain``, ``checkpoint``, ``epoch``, ``words_seen``, ``perplexity``.
+    columns ``domain``, ``checkpoint``, ``index``, ``epoch``, ``step``,
+    ``words_seen``, ``perplexity``.
     """
     out_dir = Path(out_dir or CHECKPOINTS_DIR / f"{Path(base_model).name}_{domain}")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -131,17 +178,26 @@ def finetune_dapt(domain: str, base_model: str = DEFAULT_MODEL, epochs: int = 10
         tf32=use_cuda,
         dataloader_num_workers=4,
         eval_strategy="epoch",
-        save_strategy="no",            # checkpointing handled by the callback
+        save_strategy="no",  # checkpointing handled by the callback
         logging_steps=50,
         report_to=[],
     )
     collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
-    trainer = Trainer(model=model, args=args, data_collator=collator,
-                      train_dataset=split["train"], eval_dataset=split["test"])
+    trainer = Trainer(
+        model=model,
+        args=args,
+        data_collator=collator,
+        train_dataset=split["train"],
+        eval_dataset=split["test"],
+    )
 
     manifest: list[dict] = []
-    trainer.add_callback(_CheckpointEveryN(
-        trainer, out_dir, save_every, words_per_epoch, manifest))
+    trainer.add_callback(
+        _CheckpointSchedule(
+            trainer, out_dir, n_checkpoints, words_per_epoch, manifest,
+            include_baseline=include_baseline,
+        )
+    )
     trainer.add_callback(_EpochProgress(epochs, domain))
     trainer.train()
 
@@ -150,9 +206,9 @@ def finetune_dapt(domain: str, base_model: str = DEFAULT_MODEL, epochs: int = 10
     return df
 
 
-def recompute_surprisal_over_checkpoints(words_df: pd.DataFrame,
-                                         manifest: pd.DataFrame,
-                                         prompt=None) -> pd.DataFrame:
+def recompute_surprisal_over_checkpoints(
+    words_df: pd.DataFrame, manifest: pd.DataFrame, prompt=None
+) -> pd.DataFrame:
     """Recompute step-2 surprisal with each fine-tuned checkpoint.
 
     Returns the surprisal table for every checkpoint concatenated, tagged with

@@ -68,7 +68,9 @@ READING_COLS = WORD_COLS + [
     "TFC",
     "RPD_inc",
     "Fix",
+    "lemma_frequency_normalized",
     "reader_discipline_numeric",
+    "text_domain_numeric",
     "level_of_studies_numeric",
     "discipline_level_of_studies_numeric",
     "expert_reading_label_numeric",
@@ -105,11 +107,28 @@ def load_word_features(cols=WORD_COLS) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)[cols]
 
 
+def add_expertise(rm: pd.DataFrame) -> pd.DataFrame:
+    """Add ``is_expert`` = reader's major matches the text domain.
+
+    PoTeC reader-experience labelling (Škrjanec & Demberg 2026): a reader is an
+    expert on a word iff ``reader_discipline == text_domain`` (physics student on
+    a physics text, biology student on a biology text), independent of study
+    level. The dataset's ``expert_reading_label_numeric`` additionally requires
+    graduate status, which conflates expertise with seniority — so we recompute.
+    """
+    rm = rm.copy()
+    rm["is_expert"] = (
+        rm["reader_discipline_numeric"] == rm["text_domain_numeric"]
+    ).astype(int)
+    return rm
+
+
 def load_reading_measures(cols=READING_COLS) -> pd.DataFrame:
     """Concatenate every merged reading-measure file (~900) into one DataFrame.
 
     Each row is one word for one reader; carries word features and reader
-    metadata. Keyed by (``reader_id``, ``text_id``, ``word_index_in_text``).
+    metadata (incl. the recomputed ``is_expert`` flag). Keyed by
+    (``reader_id``, ``text_id``, ``word_index_in_text``).
     """
     files = sorted(
         glob.glob(os.path.join(POTEC_READING_MEASURES_DIR, "reader*_merged.tsv"))
@@ -119,4 +138,4 @@ def load_reading_measures(cols=READING_COLS) -> pd.DataFrame:
             f"no reader*_merged.tsv under {POTEC_READING_MEASURES_DIR}"
         )
     frames = [read_potec(f, usecols=cols) for f in files]
-    return pd.concat(frames, ignore_index=True)[cols]
+    return add_expertise(pd.concat(frames, ignore_index=True)[cols])
