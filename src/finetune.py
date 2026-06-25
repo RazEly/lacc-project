@@ -36,10 +36,20 @@ DOMAIN_DIRS = {"physics": DOMAIN_PHY_DIR, "biology": DOMAIN_BIO_DIR}
 
 
 def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text"):
-    """Tokenize a text dataset and pack into fixed-size LM blocks."""
+    """Tokenize a text dataset and pack into fixed-size LM blocks.
+
+    An ``eos`` token is appended to every document before packing so concatenated
+    blocks carry a boundary between documents (GPT-2's tokenizer adds none on its
+    own), preventing the model from training across unrelated documents as if they
+    were continuous text.
+    """
 
     def tok(batch):
-        return tokenizer(batch[text_col])
+        out = tokenizer(batch[text_col])
+        if tokenizer.eos_token_id is not None:
+            for ids in out["input_ids"]:
+                ids.append(tokenizer.eos_token_id)
+        return out
 
     ds = ds.map(tok, batched=True, remove_columns=ds.column_names)
 
@@ -81,6 +91,13 @@ class _CheckpointSchedule(TrainerCallback):
             for i in range(lo, self.n_checkpoints)
         }
         self._targets = steps
+        wanted = self.n_checkpoints - lo
+        if len(steps) < wanted:
+            print(
+                f"  [warn] {wanted} checkpoints requested but only {len(steps)} "
+                f"distinct steps fit in max_steps={state.max_steps}; some collided "
+                "and were dropped (raise max_steps / lower n_checkpoints)."
+            )
         if self.include_baseline:
             self._save(state, 0)  # baseline: weights still un-fine-tuned
 
@@ -134,6 +151,9 @@ def finetune_dapt(
     batch_size: int = 64,
     grad_accum: int = 1,
     val_frac: float = 0.05,
+    learning_rate: float = 2e-5,
+    warmup_ratio: float = 0.05,
+    seed: int = 0,
     out_dir=None,
     max_docs=None,
 ) -> pd.DataFrame:
@@ -157,10 +177,20 @@ def finetune_dapt(
     raw = load_from_disk(str(DOMAIN_DIRS[domain]))
     if max_docs:
         raw = raw.select(range(min(max_docs, len(raw))))
-    words_per_epoch = sum(len(str(t).split()) for t in raw["text"])
 
-    lm = _tokenize_and_chunk(raw, tokenizer, block_size)
-    split = lm.train_test_split(test_size=val_frac, seed=0)
+    # Split at the document level *before* packing so no document contributes
+    # blocks to both train and validation (block-level splitting leaks adjacent
+    # text and makes eval perplexity optimistic).
+    raw_split = raw.train_test_split(test_size=val_frac, seed=seed)
+
+    # Progress-curve x-axis: words the model actually trains on -> count the
+    # train docs only (the held-out val fraction is never seen).
+    words_per_epoch = sum(len(str(t).split()) for t in raw_split["train"]["text"])
+
+    split = {
+        "train": _tokenize_and_chunk(raw_split["train"], tokenizer, block_size),
+        "test": _tokenize_and_chunk(raw_split["test"], tokenizer, block_size),
+    }
 
     # 12 GB VRAM, 124M-param GPT-2: VRAM is slack, so optimise for throughput.
     # bf16 where the GPU supports it (Ampere+), else fp16; tf32 matmuls are free
@@ -173,6 +203,11 @@ def finetune_dapt(
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size * 2,
         gradient_accumulation_steps=grad_accum,
+        # Continued pre-training: low LR + short warmup to avoid an early loss
+        # spike / catastrophic forgetting from the baseline weights.
+        learning_rate=learning_rate,
+        warmup_ratio=warmup_ratio,
+        seed=seed,
         bf16=use_bf16,
         fp16=use_cuda and not use_bf16,
         tf32=use_cuda,
@@ -212,13 +247,19 @@ def recompute_surprisal_over_checkpoints(
     """Recompute step-2 surprisal with each fine-tuned checkpoint.
 
     Returns the surprisal table for every checkpoint concatenated, tagged with
-    ``checkpoint`` / ``epoch`` / ``domain`` so versions can be compared.
+    ``checkpoint`` / ``index`` / ``epoch`` / ``domain`` so versions can be
+    compared. ``index`` is the per-domain checkpoint number (0 = baseline) and is
+    the stable key for pairing physics vs biology checkpoints (``epoch`` floats
+    can differ slightly between domains).
     """
     frames = []
-    for row in manifest.itertuples():
+    # iterrows (not itertuples): the manifest has a column literally named
+    # "index" which itertuples renames (clashes with tuple.index).
+    for _, row in manifest.iterrows():
         model, tok = load_causal_lm(row.checkpoint)
         sup = compute_surprisal(words_df, model, tok, prompt=prompt)
         sup["checkpoint"] = row.checkpoint
+        sup["index"] = row["index"]  # checkpoint index: stable across domains
         sup["epoch"] = row.epoch
         sup["domain"] = row.domain
         frames.append(sup)

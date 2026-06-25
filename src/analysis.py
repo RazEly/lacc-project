@@ -274,31 +274,35 @@ def model_comparison_over_epochs(
     """Per-checkpoint four-model surprisal comparison on the whole corpus.
 
     ``surp_versions`` must contain BOTH a ``physics`` and a ``biology`` domain
-    (fine-tune both). The smallest ``epoch`` is the un-adapted step-0 model and
-    supplies the ``baseline`` surprisal (domain-agnostic). For every checkpoint
-    (epoch) the physics, biology and reader-aligned surprisal columns are built
-    and each of the four models in ``SURPRISAL_MODELS`` is fit on all readers ×
-    words of the whole corpus, plus the no-surprisal baseline, recording the
-    log-likelihood, ΔLL over that baseline and the surprisal slope. Returns
-    long-form columns ``epoch``, ``model``, ``n``, ``ll``, ``delta_ll``,
-    ``b_surprisal``, ``p_surprisal``.
+    (fine-tune both). Physics and biology checkpoints are paired by their
+    ``index`` (0 = baseline), not by ``epoch``: the two runs have different step
+    counts, so their ``epoch`` floats can drift apart and would mis-pair. The
+    index-0 checkpoint is the un-adapted model and supplies the ``baseline``
+    surprisal (domain-agnostic). For every checkpoint the physics, biology and
+    reader-aligned surprisal columns are built and each of the four models in
+    ``SURPRISAL_MODELS`` is fit on all readers × words of the whole corpus, plus
+    the no-surprisal baseline, recording the log-likelihood, ΔLL over that
+    baseline and the surprisal slope. Returns long-form columns ``index``,
+    ``epoch``, ``model``, ``n``, ``ll``, ``delta_ll``, ``b_surprisal``,
+    ``p_surprisal``.
     """
-    epochs = sorted(surp_versions["epoch"].unique())
-    base_epoch = epochs[0]
+    indices = sorted(surp_versions["index"].unique())
+    base_index = indices[0]
+    epoch_of = surp_versions.groupby("index")["epoch"].first().to_dict()
 
-    def _surp(epoch, domain, name):
+    def _surp(index, domain, name):
         sel = surp_versions[
-            (surp_versions["epoch"] == epoch) & (surp_versions["domain"] == domain)
+            (surp_versions["index"] == index) & (surp_versions["domain"] == domain)
         ]
         return sel[WORD_KEY + ["surprisal"]].rename(columns={"surprisal": name})
 
-    # step-0 weights are domain-agnostic, so either domain's epoch-0 works.
-    s_base = _surp(base_epoch, "physics", "s_base")
+    # index-0 weights are domain-agnostic, so either domain's baseline works.
+    s_base = _surp(base_index, "physics", "s_base")
     rows = []
-    for epoch in epochs:
+    for index in indices:
         surp = (
-            s_base.merge(_surp(epoch, "physics", "s_phys"), on=WORD_KEY)
-            .merge(_surp(epoch, "biology", "s_bio"), on=WORD_KEY)
+            s_base.merge(_surp(index, "physics", "s_phys"), on=WORD_KEY)
+            .merge(_surp(index, "biology", "s_bio"), on=WORD_KEY)
         )
         merged = surp.merge(rt_df, on=WORD_KEY, how="inner")
         d = _prep_models(merged, measure)
@@ -308,7 +312,8 @@ def model_comparison_over_epochs(
             res = _fit_model(d, measure, col)
             rows.append(
                 {
-                    "epoch": epoch,
+                    "index": index,
+                    "epoch": epoch_of[index],
                     "model": name,
                     "n": len(d),
                     "ll": res.llf,
@@ -317,7 +322,7 @@ def model_comparison_over_epochs(
                     "p_surprisal": res.pvalues.get(col, np.nan),
                 }
             )
-    return pd.DataFrame(rows).sort_values(["model", "epoch"])
+    return pd.DataFrame(rows).sort_values(["model", "index"])
 
 
 # ── multiple-comparison correction (plan TODO, line 100) ─────────────────────
