@@ -5,10 +5,18 @@ German decoder LM on the domain-labelled ``german-commons`` splits
 (``data/domain_phy`` / ``data/domain_bio``), which are disjoint from the PoTeC
 stimuli used for the reading-time analysis — so there is no leakage.
 
-Physics and biology are fine-tuned independently. The run saves ``n_checkpoints``
-models evenly spaced by training step (including a step-0 baseline), recording
-validation perplexity + cumulative words processed at each, giving a fine-tuning
-progress curve with several points inside a single epoch.
+Physics and biology are fine-tuned independently, on a shared *token* budget
+rather than a shared epoch count: training runs for a fixed number of training
+tokens (``max_tokens``), not a fixed number of passes. Because the two domain
+corpora differ in size, equal epochs would mean unequal token exposure; equal
+``max_tokens`` (with identical batch/block/grad-accum, so identical tokens per
+step) makes both domains see the *same* number of tokens at the same checkpoint
+index. ``count_domain_tokens`` reports a domain's available training tokens so a
+caller can pick the largest equal budget that fits one pass of each.
+
+The run saves ``n_checkpoints`` models evenly spaced by training step (including
+a step-0 baseline), recording validation perplexity + cumulative tokens
+processed at each, giving a fine-tuning progress curve.
 """
 
 from __future__ import annotations
@@ -68,6 +76,60 @@ def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text", mlm=False):
     return ds.map(group, batched=True, remove_columns=ds.column_names)
 
 
+def _prepare_splits(domain, tokenizer, block_size, val_frac, seed, max_docs, is_mlm):
+    """Load a domain corpus and build packed train/test LM blocks.
+
+    Shared by ``finetune_dapt`` and ``count_domain_tokens`` so the token count a
+    caller budgets against is exactly the count the trainer will see (same load,
+    split, tokenizer and packing). Returns the split dict plus ``words_per_epoch``
+    (whitespace words in the train docs, for the legacy words-seen column).
+    """
+    raw = load_from_disk(str(DOMAIN_DIRS[domain]))
+    if max_docs:
+        raw = raw.select(range(min(max_docs, len(raw))))
+
+    # Split at the document level *before* packing so no document contributes
+    # blocks to both train and validation (block-level splitting leaks adjacent
+    # text and makes eval perplexity optimistic).
+    raw_split = raw.train_test_split(test_size=val_frac, seed=seed)
+
+    # Legacy words-seen x-axis: words the model actually trains on -> count the
+    # train docs only (the held-out val fraction is never seen).
+    words_per_epoch = sum(len(str(t).split()) for t in raw_split["train"]["text"])
+
+    split = {
+        "train": _tokenize_and_chunk(raw_split["train"], tokenizer, block_size, mlm=is_mlm),
+        "test": _tokenize_and_chunk(raw_split["test"], tokenizer, block_size, mlm=is_mlm),
+    }
+    return split, words_per_epoch
+
+
+def count_domain_tokens(
+    domain: str,
+    base_model: str = DEFAULT_MODEL,
+    block_size: int = 512,
+    val_frac: float = 0.05,
+    seed: int = 0,
+    max_docs=None,
+    objective: str = "causal",
+) -> int:
+    """Available training tokens for ``domain`` (= packed train blocks × block_size).
+
+    Use ``min(count_domain_tokens("physics"), count_domain_tokens("biology"))`` as
+    a shared ``max_tokens`` so both domains train on an equal token budget that
+    fits within one pass of each corpus. Args must match the ``finetune_dapt`` call
+    they budget for (``base_model``/``block_size``/``val_frac``/``seed``/``max_docs``),
+    since those determine the packed block count.
+    """
+    tokenizer = AutoTokenizer.from_pretrained(base_model)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token or tokenizer.sep_token
+    split, _ = _prepare_splits(
+        domain, tokenizer, block_size, val_frac, seed, max_docs, objective == "mlm"
+    )
+    return len(split["train"]) * block_size
+
+
 class _CheckpointSchedule(TrainerCallback):
     """Save ``n_checkpoints`` models evenly spaced by training step.
 
@@ -78,12 +140,13 @@ class _CheckpointSchedule(TrainerCallback):
     step (not epoch) allows several checkpoints inside a single epoch.
     """
 
-    def __init__(self, trainer, out_dir, n_checkpoints, words_per_epoch, manifest,
-                 include_baseline=True):
+    def __init__(self, trainer, out_dir, n_checkpoints, words_per_epoch,
+                 tokens_per_step, manifest, include_baseline=True):
         self.trainer = trainer
         self.out_dir = Path(out_dir)
         self.n_checkpoints = n_checkpoints
         self.words_per_epoch = words_per_epoch
+        self.tokens_per_step = tokens_per_step
         self.manifest = manifest
         self.include_baseline = include_baseline
         self._targets: dict[int, int] = {}  # global_step -> checkpoint index
@@ -117,6 +180,10 @@ class _CheckpointSchedule(TrainerCallback):
         self.trainer.save_model(str(ckpt))
         metrics = self.trainer.evaluate()
         ppl = math.exp(metrics["eval_loss"])
+        # tokens_seen is the cross-domain-comparable x-axis: with identical tokens
+        # per step it depends only on global_step, so the same checkpoint index
+        # carries the same tokens_seen in both domains. words_seen is kept (legacy).
+        tokens_seen = state.global_step * self.tokens_per_step
         words_seen = round(state.epoch * self.words_per_epoch)
         self.manifest.append(
             {
@@ -124,23 +191,28 @@ class _CheckpointSchedule(TrainerCallback):
                 "index": idx,
                 "epoch": round(state.epoch, 3),
                 "step": state.global_step,
+                "tokens_seen": tokens_seen,
                 "words_seen": words_seen,
                 "perplexity": ppl,
             }
         )
         print(
-            f"  [{ckpt.name}] epoch={state.epoch:.2f} step={state.global_step} "
-            f"words_seen={words_seen:,} perplexity={ppl:.2f}"
+            f"  [{ckpt.name}] step={state.global_step} tokens_seen={tokens_seen:,} "
+            f"epoch={state.epoch:.2f} perplexity={ppl:.2f}"
         )
 
 
-class _EpochProgress(TrainerCallback):
-    """tqdm bar over training epochs."""
+class _StepProgress(TrainerCallback):
+    """tqdm bar over training steps (the run is budgeted by tokens, not epochs)."""
 
-    def __init__(self, epochs, domain):
-        self.bar = tqdm(total=epochs, desc=f"DAPT {domain}", unit="epoch")
+    def __init__(self, domain):
+        self.domain = domain
+        self.bar = None
 
-    def on_epoch_end(self, args, state, control, **kwargs):
+    def on_train_begin(self, args, state, control, **kwargs):
+        self.bar = tqdm(total=state.max_steps, desc=f"DAPT {self.domain}", unit="step")
+
+    def on_step_end(self, args, state, control, **kwargs):
         self.bar.update(1)
 
     def on_train_end(self, args, state, control, **kwargs):
@@ -150,7 +222,7 @@ class _EpochProgress(TrainerCallback):
 def finetune_dapt(
     domain: str,
     base_model: str = DEFAULT_MODEL,
-    epochs: float = 3,
+    max_tokens: int | None = None,
     n_checkpoints: int = 10,
     include_baseline: bool = True,
     block_size: int = 512,
@@ -167,13 +239,22 @@ def finetune_dapt(
     """DAPT-fine-tune ``base_model`` on one domain; return a checkpoint manifest.
 
     ``objective`` is ``"causal"`` (decoder, next-token; the surprisal pipeline) or
-    ``"mlm"`` (encoder, masked-LM; the attention experiment). Trains for ``epochs``
-    epochs and saves ``n_checkpoints`` models evenly spaced by training step across
-    the whole run (so several land inside one epoch). With ``include_baseline`` the
-    first checkpoint is the un-fine-tuned model (step 0). ``max_docs`` truncates the
-    corpus (smoke testing). The returned DataFrame has columns ``domain``,
-    ``checkpoint``, ``index``, ``epoch``, ``step``, ``words_seen``, ``perplexity``
-    (pseudo-perplexity over masked tokens when ``objective="mlm"``).
+    ``"mlm"`` (encoder, masked-LM; the attention experiment).
+
+    The run is budgeted by training *tokens*, not epochs: it trains for
+    ``max_tokens`` tokens (rounded up to whole optimiser steps), where one step
+    processes ``block_size * batch_size * grad_accum`` tokens. Passing the *same*
+    ``max_tokens`` to two domains makes both see the same number of tokens at the
+    same checkpoint index — use ``count_domain_tokens`` to size an equal budget.
+    ``max_tokens=None`` defaults to a single pass over the domain's own training
+    tokens (per-domain, hence *not* equalised across domains).
+
+    Saves ``n_checkpoints`` models evenly spaced by training step across the whole
+    run. With ``include_baseline`` the first checkpoint is the un-fine-tuned model
+    (step 0). ``max_docs`` truncates the corpus (smoke testing). The returned
+    DataFrame has columns ``domain``, ``checkpoint``, ``index``, ``epoch``,
+    ``step``, ``tokens_seen``, ``words_seen``, ``perplexity`` (pseudo-perplexity
+    over masked tokens when ``objective="mlm"``).
     """
     is_mlm = objective == "mlm"
     out_dir = Path(out_dir or CHECKPOINTS_DIR / f"{Path(base_model).name}_{domain}")
@@ -191,23 +272,17 @@ def finetune_dapt(
     if len(tokenizer) > model.config.vocab_size:
         model.resize_token_embeddings(len(tokenizer))
 
-    raw = load_from_disk(str(DOMAIN_DIRS[domain]))
-    if max_docs:
-        raw = raw.select(range(min(max_docs, len(raw))))
+    split, words_per_epoch = _prepare_splits(
+        domain, tokenizer, block_size, val_frac, seed, max_docs, is_mlm
+    )
 
-    # Split at the document level *before* packing so no document contributes
-    # blocks to both train and validation (block-level splitting leaks adjacent
-    # text and makes eval perplexity optimistic).
-    raw_split = raw.train_test_split(test_size=val_frac, seed=seed)
-
-    # Progress-curve x-axis: words the model actually trains on -> count the
-    # train docs only (the held-out val fraction is never seen).
-    words_per_epoch = sum(len(str(t).split()) for t in raw_split["train"]["text"])
-
-    split = {
-        "train": _tokenize_and_chunk(raw_split["train"], tokenizer, block_size, mlm=is_mlm),
-        "test": _tokenize_and_chunk(raw_split["test"], tokenizer, block_size, mlm=is_mlm),
-    }
+    # Token budget -> optimiser steps. One step trains on tokens_per_step real
+    # tokens (blocks are packed to exactly block_size, no padding). Default budget
+    # is one full pass over this domain's train blocks.
+    tokens_per_step = block_size * batch_size * grad_accum
+    available_tokens = len(split["train"]) * block_size
+    budget = max_tokens if max_tokens is not None else available_tokens
+    max_steps = max(1, math.ceil(budget / tokens_per_step))
 
     # 12 GB VRAM, 124M-param GPT-2: VRAM is slack, so optimise for throughput.
     # bf16 where the GPU supports it (Ampere+), else fp16; tf32 matmuls are free
@@ -216,7 +291,7 @@ def finetune_dapt(
     use_bf16 = use_cuda and torch.cuda.is_bf16_supported()
     args = TrainingArguments(
         output_dir=str(out_dir / "_hf"),
-        num_train_epochs=epochs,
+        max_steps=max_steps,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size * 2,
         gradient_accumulation_steps=grad_accum,
@@ -248,11 +323,11 @@ def finetune_dapt(
     manifest: list[dict] = []
     trainer.add_callback(
         _CheckpointSchedule(
-            trainer, out_dir, n_checkpoints, words_per_epoch, manifest,
-            include_baseline=include_baseline,
+            trainer, out_dir, n_checkpoints, words_per_epoch, tokens_per_step,
+            manifest, include_baseline=include_baseline,
         )
     )
-    trainer.add_callback(_EpochProgress(epochs, domain))
+    trainer.add_callback(_StepProgress(domain))
     trainer.train()
 
     df = pd.DataFrame(manifest)

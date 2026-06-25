@@ -68,11 +68,11 @@ def model_comparison_curve(cmp_df, metric="delta_ll", ax=None):
 
 
 def perplexity_curve(manifest_df, ax=None):
-    """Fine-tuning progress: validation perplexity vs words processed."""
+    """Fine-tuning progress: validation perplexity vs training tokens processed."""
     ax = ax or plt.gca()
     for domain, g in manifest_df.groupby("domain"):
-        g = g.sort_values("words_seen")
-        ax.plot(g["words_seen"], g["perplexity"], marker="o", label=domain)
-    ax.set(xlabel="words processed", ylabel="validation perplexity")
+        g = g.sort_values("tokens_seen")
+        ax.plot(g["tokens_seen"], g["perplexity"], marker="o", label=domain)
+    ax.set(xlabel="tokens processed", ylabel="validation perplexity")
     ax.legend(title="domain")
     return ax

@@ -127,11 +127,17 @@ def main() -> None:
     from src.modeling import finetune as ft
 
     # Fine-tune both domains — the four-model comparison needs physics- and
-    # biology-adapted surprisal (plus the shared step-0 baseline).
+    # biology-adapted surprisal (plus the shared step-0 baseline). Budget by tokens,
+    # not epochs: the largest equal token budget that fits one pass of each corpus,
+    # so both domains see the same tokens at the same checkpoint index.
+    token_budget = min(
+        ft.count_domain_tokens("physics"),
+        ft.count_domain_tokens("biology"),
+    )
     manifest = pd.concat(
         [
-            ft.finetune_dapt("physics", epochs=0.5, n_checkpoints=7, batch_size=8),
-            ft.finetune_dapt("biology", epochs=0.5, n_checkpoints=7, batch_size=8),
+            ft.finetune_dapt("physics", max_tokens=token_budget, n_checkpoints=7, batch_size=8),
+            ft.finetune_dapt("biology", max_tokens=token_budget, n_checkpoints=7, batch_size=8),
         ],
         ignore_index=True,
     )
