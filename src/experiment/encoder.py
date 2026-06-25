@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pandas as pd
 import torch
+from tqdm.auto import tqdm
 from transformers import AutoModelForMaskedLM, AutoTokenizer
 
 from src.config import ENCODER_MODEL
@@ -50,7 +51,9 @@ def flow_over_checkpoints(
     ``checkpoint`` / ``index`` / ``epoch`` / ``domain`` (``index`` 0 = baseline).
     """
     frames = []
-    for _, row in manifest.iterrows():
+    for _, row in tqdm(
+        manifest.iterrows(), total=len(manifest), desc="flow over checkpoints"
+    ):
         model, tok = load_encoder(row.checkpoint)
         flow = extract_flow(words_df, model, tok)
         flow["checkpoint"] = row.checkpoint
