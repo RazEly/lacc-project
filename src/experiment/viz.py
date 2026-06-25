@@ -56,3 +56,25 @@ def expert_novice_finetune_curve(curve_df, ax=None, method="flow"):
     )
     ax.legend(title="readers·domain")
     return ax
+
+
+def expert_novice_regression_curve(reg_df, ax=None, method="raw"):
+    """Predictive gain (held-out adjusted R²) attention adds over text features.
+
+    ``reg_df`` is ``analysis.regression_over_checkpoints`` output. y is ``delta_r2``
+    = R²(text + ``method`` attention) − R²(text-only baseline) on the 20% held-out
+    split; x is fine-tuning tokens. One line per group × domain. Points above the
+    grey zero line mean attention predicts gaze beyond word frequency/length;
+    ideally the gain grows as the encoder adapts to the domain.
+    """
+    ax = ax or plt.gca()
+    for (group, domain), g in reg_df.groupby(["group", "domain"]):
+        g = g.sort_values("tokens_seen")
+        ax.plot(g["tokens_seen"], g["delta_r2"], marker="o", label=f"{group}·{domain}")
+    ax.axhline(0, color="grey", lw=0.8)
+    ax.set(
+        xlabel="tokens seen (fine-tuning)",
+        ylabel=f"Δ adjusted R² (text + {method} − text-only)",
+    )
+    ax.legend(title="readers·domain")
+    return ax
