@@ -173,6 +173,12 @@ def finetune_dapt(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(base_model)
+    # german-gpt2 ships an eos/pad id (50265) one past its embedding rows
+    # (vocab_size 50265); using it as a document separator / pad would index out
+    # of range on the GPU (device-side assert). Grow the embeddings to cover every
+    # tokenizer id; the new rows train during DAPT.
+    if len(tokenizer) > model.config.vocab_size:
+        model.resize_token_embeddings(len(tokenizer))
 
     raw = load_from_disk(str(DOMAIN_DIRS[domain]))
     if max_docs:
