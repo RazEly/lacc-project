@@ -15,6 +15,7 @@ Two representations, both reduced to one score per word per layer:
 Also exposes the eye-tracking feature table and its per-domain PCA reduction
 used for the attention-vs-gaze comparison.
 """
+
 from __future__ import annotations
 
 import networkx as nx
@@ -48,7 +49,8 @@ def _normalize(scores):
 def _forward_attentions(word_list, model, tokenizer):
     """Return (attentions [L, seq, seq] head-averaged, word_ids)."""
     enc = tokenizer(word_list, is_split_into_words=True, return_tensors="pt")
-    out = model(enc.input_ids, output_attentions=True)
+    device = next(model.parameters()).device
+    out = model(enc.input_ids.to(device), output_attentions=True)
     # each layer: [1, heads, seq, seq] -> head-average -> [seq, seq]
     atts = torch.stack([a[0].mean(0) for a in out.attentions]).cpu().numpy()
     return atts, enc.word_ids(0)
@@ -86,8 +88,8 @@ def _flow_graph(atts_upto, residual=0.5):
         A = atts_upto[l].copy()
         A = residual * np.eye(seq) + (1 - residual) * A
         A = A / A.sum(axis=1, keepdims=True).clip(min=1e-12)
-        for i in range(seq):          # query (receiver at layer l+1)
-            for j in range(seq):      # key   (source at layer l)
+        for i in range(seq):  # query (receiver at layer l+1)
+            for j in range(seq):  # key   (source at layer l)
                 c = A[i, j]
                 if c > 0:
                     G.add_edge((l, j), (l + 1, i), capacity=float(c))
@@ -105,7 +107,7 @@ def attention_flow(word_list, model, tokenizer, decay=1.0) -> np.ndarray:
     n_layers, seq, _ = atts.shape
     n_words = len(word_list)
     positions = _word_positions(word_ids, n_words)
-    target = seq - 1                      # sentence-final token = sink
+    target = seq - 1  # sentence-final token = sink
 
     out = np.zeros((n_words, n_layers))
     for L in range(n_layers):
@@ -116,16 +118,19 @@ def attention_flow(word_list, model, tokenizer, decay=1.0) -> np.ndarray:
             src = (0, i)
             if src == sink or not G.has_node(src):
                 continue
-            val, _ = nx.maximum_flow(G, src, sink, flow_func=nx.algorithms.flow.edmonds_karp)
-            tok_flow[i] = val * ((i + 1) ** decay)   # position-decay correction
+            val, _ = nx.maximum_flow(
+                G, src, sink, flow_func=nx.algorithms.flow.edmonds_karp
+            )
+            tok_flow[i] = val * ((i + 1) ** decay)  # position-decay correction
         word_score = np.array([tok_flow[p].max() if p else 0.0 for p in positions])
         out[:, L] = _normalize(word_score)
     return out
 
 
 # ── per-sentence extraction over the corpus ──────────────────────────────────
-def extract_attention(words_df: pd.DataFrame, model, tokenizer,
-                      method: str = "raw", decay: float = 1.0) -> pd.DataFrame:
+def extract_attention(
+    words_df: pd.DataFrame, model, tokenizer, method: str = "raw", decay: float = 1.0
+) -> pd.DataFrame:
     """Run an attention method over every sentence; long-form output.
 
     Returns columns ``text_id``, ``word_index_in_text``, ``layer``,
@@ -140,12 +145,12 @@ def extract_attention(words_df: pd.DataFrame, model, tokenizer,
         fn = lambda w, m, t: attention_flow(w, m, t, decay=decay)
     rows = []
     for _, sent in words_df.sort_values(
-            ["text_id", "sent_index_in_text", "word_index_in_sent"]).groupby(
-            ["text_id", "sent_index_in_text"], sort=False):
+        ["text_id", "sent_index_in_text", "word_index_in_sent"]
+    ).groupby(["text_id", "sent_index_in_text"], sort=False):
         words = sent["word"].fillna("").astype(str).tolist()
         if len(words) < 3:
             continue
-        scores = fn(words, model, tokenizer)          # [n_words, n_layers]
+        scores = fn(words, model, tokenizer)  # [n_words, n_layers]
         idx = sent["word_index_in_text"].tolist()
         tid = sent["text_id"].iloc[0]
         beg = sent["is_sent_beginning"].tolist()
@@ -156,7 +161,8 @@ def extract_attention(words_df: pd.DataFrame, model, tokenizer,
             for l in range(scores.shape[1]):
                 rows.append((tid, idx[k], l, scores[k, l], method))
     return pd.DataFrame(
-        rows, columns=WORD_KEY + ["layer", "attention", "attention_method"])
+        rows, columns=WORD_KEY + ["layer", "attention", "attention_method"]
+    )
 
 
 # ── eye-tracking features + PCA ──────────────────────────────────────────────
@@ -169,10 +175,11 @@ def eyetracking_features(rm: pd.DataFrame) -> pd.DataFrame:
     """
     measures = list(dict.fromkeys(ET_MEASURE_MAP.values()))
     parts = []
-    meta = (rm[WORD_KEY + ["text_domain", "sent_index_in_text"]]
-            .drop_duplicates(WORD_KEY))
+    meta = rm[WORD_KEY + ["text_domain", "sent_index_in_text"]].drop_duplicates(
+        WORD_KEY
+    )
     for m in measures:
-        col = (rm[rm[m] > 0].groupby(WORD_KEY)[m].mean().rename(m).reset_index())
+        col = rm[rm[m] > 0].groupby(WORD_KEY)[m].mean().rename(m).reset_index()
         parts.append(col)
     out = meta
     for col in parts:

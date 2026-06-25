@@ -10,6 +10,7 @@ how domain MLM fine-tuning shifts that alignment.
 from __future__ import annotations
 
 import pandas as pd
+import torch
 from transformers import AutoModelForMaskedLM, AutoTokenizer
 
 from src.config import ENCODER_MODEL
@@ -26,6 +27,8 @@ def load_encoder(name_or_path: str = ENCODER_MODEL, attn: bool = True):
     model = AutoModelForMaskedLM.from_pretrained(
         name_or_path, output_attentions=attn, **kwargs
     )
+    if torch.cuda.is_available():
+        model.to("cuda")
     model.eval()
     return model, tokenizer
 
