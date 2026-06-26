@@ -151,7 +151,7 @@ def run_model(slug: str, name: str, words, rm) -> dict:
         ft.count_domain_tokens("physics", base_model=name),
         ft.count_domain_tokens("biology", base_model=name),
     )
-    token_budget = DAPT_PASSES * one_pass
+    token_budget = min(DAPT_PASSES * one_pass, 10_000_000)
     manifest = pd.concat(
         [
             ft.finetune_dapt("physics", base_model=name, max_tokens=token_budget,
