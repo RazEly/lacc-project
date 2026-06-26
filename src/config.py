@@ -32,8 +32,8 @@ POTEC_PARTICIPANTS = POTEC_DIR / "participants" / "participant_data.tsv"
 # within the decoder family, so any HF name or local checkpoint can be swapped in.
 DEFAULT_MODEL = "dbmdz/german-gpt2"
 # German encoder for the attention experiment (src/experiment). Mouratidi &
-# Poesio (2025) find attention flow on an ENCODER aligns best with gaze; their
-# bert-base-uncased is English, so we use a German BERT for the German corpus.
+# Poesio (2025) study encoder attention vs gaze; their bert-base-uncased is
+# English, so we use a German BERT for the German corpus.
 ENCODER_MODEL = "deepset/gbert-base"
 
 OUTPUTS_DIR = PROJECT_ROOT / "outputs"          # surprisal/attention/analysis tables

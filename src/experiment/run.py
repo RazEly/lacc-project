@@ -4,15 +4,14 @@ E1 fine-tune  — domain MLM DAPT of the encoder on data/domain_{phy,bio}, runs
                 FIRST; checkpoints saved under artifacts/ (config.CHECKPOINTS_DIR).
 E2 raw        — raw attention (paper §3.2.1) vs gaze across the checkpoints:
                 x = tokens seen, y = Spearman r, per reader group × domain.
-E3 flow       — attention flow (§3.2.2) vs gaze, same tokens-vs-correlation view.
                 Expect alignment to rise with tokens seen as the encoder adapts.
 
 Run from the project root:
 
     python -m src.experiment.run
 
-Flow is per-token max-flow per layer per sentence — slow. Use ``max_sents`` /
-small ``epochs`` / ``max_docs`` for a quick check; drop them for a real run.
+Use ``max_sents`` / small ``epochs`` / ``max_docs`` for a quick check; drop them
+for a real run.
 """
 from __future__ import annotations
 
@@ -76,7 +75,7 @@ def main(max_sents=None, max_tokens: int | None = None, n_checkpoints: int = 4, 
 
     # ── E1 — domain MLM fine-tuning of the encoder (runs FIRST) ───────────────
     # Checkpoints are saved under artifacts/ (config.CHECKPOINTS_DIR) by
-    # finetune_dapt; the manifest indexes them. Raw/flow alignment is then read
+    # finetune_dapt; the manifest indexes them. Raw alignment is then read
     # off these checkpoints as a function of tokens seen, so DAPT must precede it.
     # Skip the (expensive) DAPT when a prior run already saved the checkpoints:
     # reuse them iff the manifest exists and every checkpoint dir is on disk.
@@ -105,32 +104,28 @@ def main(max_sents=None, max_tokens: int | None = None, n_checkpoints: int = 4, 
         manifest.to_csv(MANIFEST_CSV, index=False)
         print(f"  checkpoints under {CHECKPOINTS_DIR}/ — {len(manifest)} saved")
 
-    # ── E2/E3 — raw then flow alignment across fine-tuning (x = tokens seen) ───
-    # Same analysis for both methods (paper order: raw §3.2.1, then flow §3.2.2).
-    # Each correlates its checkpoint against its own domain's texts, per reader
+    # ── E2 — raw attention alignment across fine-tuning (x = tokens seen) ──────
+    # Each checkpoint is correlated against its own domain's texts, per reader
     # group; we expect Spearman r to climb with tokens seen.
-    for tag, method, fig_name in [
-        ("E2", "raw", "exp_raw_finetune_tokens"),
-        ("E3", "flow", "exp_flow_finetune_tokens"),
-    ]:
-        print(f"{tag} — {method} vs gaze across fine-tuning (tokens seen)")
-        versions = enc.attention_over_checkpoints(words, manifest, method=method)
-        # Method 1 — correlation (paper §3.3): peak-layer Spearman vs gaze PCA.
-        curve = ea.correlation_over_checkpoints(versions, rm_raw, method=method)
-        print(curve.to_string(index=False))
-        curve.to_csv(PROJECT_ROOT / f"results_attention_{method}.csv", index=False)
-        fig, ax = plt.subplots()
-        ev.expert_novice_finetune_curve(curve, ax=ax, method=method)
-        _save_fig(ax, fig_name)
+    method = "raw"
+    print(f"E2 — {method} vs gaze across fine-tuning (tokens seen)")
+    versions = enc.attention_over_checkpoints(words, manifest, method=method)
+    # Method 1 — correlation (paper §3.3): peak-layer Spearman vs gaze PCA.
+    curve = ea.correlation_over_checkpoints(versions, rm_raw, method=method)
+    print(curve.to_string(index=False))
+    curve.to_csv(PROJECT_ROOT / f"results_attention_{method}.csv", index=False)
+    fig, ax = plt.subplots()
+    ev.expert_novice_finetune_curve(curve, ax=ax, method=method)
+    _save_fig(ax, "exp_raw_finetune_tokens")
 
-        # Method 2 — predictive modeling (paper §3.3): held-out adjusted R²,
-        # does attention predict gaze beyond word frequency/length?
-        reg = ea.regression_over_checkpoints(versions, rm_raw, method=method)
-        print(reg.to_string(index=False))
-        reg.to_csv(PROJECT_ROOT / f"results_regression_{method}.csv", index=False)
-        fig, ax = plt.subplots()
-        ev.expert_novice_regression_curve(reg, ax=ax, method=method)
-        _save_fig(ax, f"exp_{method}_regression_tokens")
+    # Method 2 — predictive modeling (paper §3.3): held-out adjusted R²,
+    # does attention predict gaze beyond word frequency/length?
+    reg = ea.regression_over_checkpoints(versions, rm_raw, method=method)
+    print(reg.to_string(index=False))
+    reg.to_csv(PROJECT_ROOT / f"results_regression_{method}.csv", index=False)
+    fig, ax = plt.subplots()
+    ev.expert_novice_regression_curve(reg, ax=ax, method=method)
+    _save_fig(ax, f"exp_{method}_regression_tokens")
 
     print(f"Done. Figures in {FIG_DIR.relative_to(PROJECT_ROOT)}/")
 

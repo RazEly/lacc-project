@@ -22,7 +22,6 @@ dependencies = [
     # analysis pipeline
     "scipy>=1.10.0",
     "statsmodels>=0.14.0",
-    "networkx>=3.0",          # Edmonds-Karp max-flow for attention flow
     "accelerate>=0.26.0",     # Trainer backend for DAPT fine-tuning
     "matplotlib>=3.7.0",
     "seaborn>=0.13.0",

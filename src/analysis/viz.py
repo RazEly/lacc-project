@@ -18,7 +18,7 @@ def surprisal_scatter(agg_df, x="surprisal", y="rt", bins=15, ax=None):
 
 
 def attention_layer_curve(corr_table, feature="pca", ax=None):
-    """Per-layer Spearman curve for one eye-tracking feature, raw vs flow."""
+    """Per-layer Spearman curve for one eye-tracking feature (raw attention)."""
     ax = ax or plt.gca()
     sub = corr_table[corr_table["feature"] == feature]
     for method, g in sub.groupby("attention_method"):

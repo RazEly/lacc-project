@@ -1,6 +1,6 @@
 """Driver for the PoTeC decoder-LM pipeline (steps 1-6).
 
-Reading-time cleaning, causal-LM surprisal, attention (raw + flow), the
+Reading-time cleaning, causal-LM surprisal, raw attention, the
 surprisal/attention vs gaze analysis, DAPT fine-tuning, and the reader-aligned
 model comparison with its significance tests. Prints a summary per step and
 writes every plot to ``figures/``.

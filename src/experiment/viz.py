@@ -4,7 +4,7 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 
 
-def expert_novice_layer_curve(corr_df, ax=None, method="flow"):
+def expert_novice_layer_curve(corr_df, ax=None, method="raw"):
     """Per-layer attention↔gaze Spearman, one line per reader group (baseline).
 
     ``corr_df`` is ``analysis.correlate_by_group`` output. Reproduces the paper's
@@ -38,7 +38,7 @@ def feature_layer_curve(corr_df, ax=None, method="raw"):
     return ax
 
 
-def expert_novice_finetune_curve(curve_df, ax=None, method="flow"):
+def expert_novice_finetune_curve(curve_df, ax=None, method="raw"):
     """Peak-layer attention↔gaze Spearman vs fine-tuning tokens, per group × domain.
 
     ``curve_df`` is ``analysis.correlation_over_checkpoints`` output. x-axis is
