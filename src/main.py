@@ -28,7 +28,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from src import config
-from src.features import attention as at
 from src.analysis import correlation as co
 from src.features import data
 from src.analysis import model_comparison as mc
@@ -63,7 +62,7 @@ def save_fig(ax, name: str) -> None:
     print(f"  wrote {out.relative_to(PROJECT_ROOT)}")
 
 
-def run_model(slug: str, name: str, words, rm, rm_raw) -> dict:
+def run_model(slug: str, name: str, words, rm) -> dict:
     """Run steps 2-6 for one model; write ``<slug>_*`` figures + csv; return a summary.
 
     The summary row feeds the cross-model comparison: the all-readers surprisal-RT
@@ -107,13 +106,6 @@ def run_model(slug: str, name: str, words, rm, rm_raw) -> dict:
             on=["text_id", "word_index_in_text"],
         )
 
-    # ── Step 3 — attention (raw on full corpus) ──────────────────────────────
-    print("Step 3 — attention (raw)")
-    amodel, atok = su.load_causal_lm(name, attn=True)
-    attn_raw = at.extract_attention(words, amodel, atok, method="raw")
-    et = co.build_et_table(rm_raw, domain="all", participants="all")
-    print(f"  attn_raw={attn_raw.shape}  et={et.shape}")
-
     # ── Step 5 — analysis ────────────────────────────────────────────────────
     print("Step 5 — analysis")
     merged = co.merge_surprisal_rt(surp, rm)
@@ -143,12 +135,6 @@ def run_model(slug: str, name: str, words, rm, rm_raw) -> dict:
     fig, ax = plt.subplots()
     viz.surprisal_scatter(agg_words, ax=ax)
     save_fig(ax, f"{slug}_surprisal_scatter")
-
-    # attention layer curve (raw)
-    attn_corr = co.correlate_attention(attn_raw, et, attention_method="raw")
-    fig, ax = plt.subplots()
-    viz.attention_layer_curve(attn_corr, feature="pca", ax=ax)
-    save_fig(ax, f"{slug}_attention_layer_curve")
 
     # ── Step 4 — DAPT fine-tuning (GPU recommended) ──────────────────────────
     print("Step 4 — DAPT fine-tuning")
@@ -196,11 +182,11 @@ def run_model(slug: str, name: str, words, rm, rm_raw) -> dict:
     # biologists) fit better than any single model? Repeated under each
     # fixed-effects spec (covariates / expertise-only / full), since the right
     # control structure is itself an open question.
-    from src.analysis import stats as st  # Step 6 tests, run per spec
+    # from src.analysis import stats as st  # Step 6 tests, run per spec
 
-    cmps, vuongs = [], []
+    cmps = []  # , vuongs = [], []
     for spec in mc.MODEL_SPECS:
-        print(f"Step 5/6 — model comparison + tests (spec={spec})")
+        print(f"Step 5 — model comparison (spec={spec})")
         cmp = mc.model_comparison_over_epochs(
             surp_versions, rm, prompt_surp, measure=MEASURE, spec=spec
         )
@@ -212,23 +198,23 @@ def run_model(slug: str, name: str, words, rm, rm_raw) -> dict:
         viz.model_comparison_curve(cmp, metric="delta_ll", ax=ax)
         save_fig(ax, f"{slug}_finetune_model_comparison_{spec}")
 
-        # Reader-clustered Vuong test at the checkpoint where aligned peaks.
-        aligned = cmp[cmp["model"] == "aligned"]
-        best_index = aligned.loc[aligned["delta_ll"].idxmax(), "index"]
-        vuong = st.aligned_vs_single_models(
-            surp_versions, rm, prompt_surp, measure=MEASURE,
-            index=best_index, spec=spec,
-        )
-        vuong["spec"] = spec
-        vuongs.append(vuong)
-        print(vuong.to_string(index=False))
+        # # Reader-clustered Vuong test at the checkpoint where aligned peaks.
+        # aligned = cmp[cmp["model"] == "aligned"]
+        # best_index = aligned.loc[aligned["delta_ll"].idxmax(), "index"]
+        # vuong = st.aligned_vs_single_models(
+        #     surp_versions, rm, prompt_surp, measure=MEASURE,
+        #     index=best_index, spec=spec,
+        # )
+        # vuong["spec"] = spec
+        # vuongs.append(vuong)
+        # print(vuong.to_string(index=False))
 
     cmp_all = pd.concat(cmps, ignore_index=True)
     cmp_all.insert(0, "model_lm", slug)
     cmp_all.to_csv(PROJECT_ROOT / f"results_{slug}.csv", index=False)
-    pd.concat(vuongs, ignore_index=True).to_csv(
-        PROJECT_ROOT / f"results_vuong_{slug}.csv", index=False
-    )
+    # pd.concat(vuongs, ignore_index=True).to_csv(
+    #     PROJECT_ROOT / f"results_vuong_{slug}.csv", index=False
+    # )
 
     # Cross-model summary: all-readers, both-domains surprisal-RT correlation,
     # the regression slope, and the strongest reader-aligned ΔLL (covariates spec).
@@ -243,7 +229,6 @@ def run_model(slug: str, name: str, words, rm, rm_raw) -> dict:
             "r2": float(fit.rsquared),
             "aligned_delta_ll": float(aligned_cov["delta_ll"].max()),
         },
-        "attn_corr": attn_corr,
     }
 
 
@@ -266,11 +251,10 @@ def main() -> None:
     )
 
     # ── Steps 2-6 — run the whole workflow per model ─────────────────────────
-    summaries, attn_by_model = [], {}
+    summaries = []
     for slug, name in config.MODELS.items():
-        out = run_model(slug, name, words, rm, rm_raw)
+        out = run_model(slug, name, words, rm)
         summaries.append(out["summary"])
-        attn_by_model[slug] = out["attn_corr"]
 
     summary_df = pd.DataFrame(summaries)
     summary_df.to_csv(PROJECT_ROOT / "results_models_summary.csv", index=False)
@@ -292,10 +276,6 @@ def main() -> None:
         summary_df, "aligned_delta_ll", ylabel="reader-aligned ΔLL (best ckpt)", ax=ax
     )
     save_fig(ax, "across_models_aligned_delta_ll")
-
-    fig, ax = plt.subplots()
-    viz.across_models_attention_curve(attn_by_model, feature="pca", ax=ax)
-    save_fig(ax, "across_models_attention_curve")
 
     print(f"\nDone. Figures in {FIG_DIR.relative_to(PROJECT_ROOT)}/")
 
