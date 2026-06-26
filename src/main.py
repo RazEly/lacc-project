@@ -5,7 +5,14 @@ surprisal/attention vs gaze analysis, DAPT fine-tuning, and the reader-aligned
 model comparison with its significance tests. Prints a summary per step and
 writes every plot to ``figures/``.
 
-Runs all steps end to end (step 4 DAPT included; GPU recommended).
+The whole workflow (steps 2-6) is run independently for every model in
+``config.MODELS`` — german-gpt2 plus the German-only LLäMmlein 1B and 7B decoders
+— each writing its own ``<slug>_*`` figures and ``results_<slug>.csv``. A final
+cross-model block compares the three on one axes (surprisal-RT correlation,
+regression slope, attention-vs-gaze layer curve, reader-aligned ΔLL).
+
+Runs all steps end to end (step 4 DAPT included; GPU recommended). Weights are
+pulled from the Hub on first use — nothing is pre-downloaded here.
 Run from the project root:
 
     python -m src.main
@@ -30,6 +37,10 @@ from src.features import surprisal as su
 from src.analysis import viz
 
 MEASURE = "TFT"  # total fixation time == TRT
+# DAPT fine-tuning method (step 4). LoRA by default — cheap enough to adapt every
+# model, including the 7B Llama. Flip to False here for full fine-tuning (applies
+# to german-gpt2 and all LLäMmlein models alike).
+FINETUNE_LORA = True
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FIG_DIR = PROJECT_ROOT / "figures"
 
@@ -44,27 +55,18 @@ def save_fig(ax, name: str) -> None:
     print(f"  wrote {out.relative_to(PROJECT_ROOT)}")
 
 
-def main() -> None:
-    FIG_DIR.mkdir(exist_ok=True)
+def run_model(slug: str, name: str, words, rm, rm_raw) -> dict:
+    """Run steps 2-6 for one model; write ``<slug>_*`` figures + csv; return a summary.
 
-    # ── Step 1 — reading time ────────────────────────────────────────────────
-    print("Step 1 — reading time")
-    words = data.load_word_features()
-    rm_raw = data.load_reading_measures()
-    rm = rt.clean_reading_times(rm_raw, MEASURE)
-    print(
-        f"  words={len(words)}  raw_rows={len(rm_raw)}  "
-        f"cleaned={len(rm)} ({len(rm) / len(rm_raw):.1%})"
-    )
-    agg = rt.aggregate_rt(rm, MEASURE)
-    print(
-        "  ",
-        {k: (len(v), round(v[f"mean_{MEASURE}"].mean())) for k, v in agg.items()},
-    )
+    The summary row feeds the cross-model comparison: the all-readers surprisal-RT
+    correlation, the regression slope, and the best reader-aligned ΔLL, plus the
+    attention-correlation table for the combined layer curve.
+    """
+    print(f"\n=== model: {slug} ({name}) ===")
 
     # ── Step 2 — model surprisal (baseline) ──────────────────────────────────
     print("Step 2 — surprisal")
-    model, tok = su.load_causal_lm()
+    model, tok = su.load_causal_lm(name)
     surp = su.compute_surprisal(words, model, tok)  # prompt=None
     print(surp.head().to_string())
 
@@ -99,7 +101,7 @@ def main() -> None:
 
     # ── Step 3 — attention (raw on full corpus) ──────────────────────────────
     print("Step 3 — attention (raw)")
-    amodel, atok = su.load_causal_lm(attn=True)
+    amodel, atok = su.load_causal_lm(name, attn=True)
     attn_raw = at.extract_attention(words, amodel, atok, method="raw")
     et = co.build_et_table(rm_raw, domain="all", participants="all")
     print(f"  attn_raw={attn_raw.shape}  et={et.shape}")
@@ -124,7 +126,7 @@ def main() -> None:
         f"  slope={fit.params['surprisal']:.2f} ms/bit  R2={fit.rsquared:.3f}"
     )
 
-    # ── Figures ──────────────────────────────────────────────────────────────
+    # ── Figures (per model) ──────────────────────────────────────────────────
     print("Figures")
     # surprisal vs reading time (binned scatter + OLS fit)
     agg_words = co._aggregate_words(
@@ -132,36 +134,40 @@ def main() -> None:
     )
     fig, ax = plt.subplots()
     viz.surprisal_scatter(agg_words, ax=ax)
-    save_fig(ax, "surprisal_scatter")
+    save_fig(ax, f"{slug}_surprisal_scatter")
 
     # attention layer curve (raw)
     attn_corr = co.correlate_attention(attn_raw, et, attention_method="raw")
     fig, ax = plt.subplots()
     viz.attention_layer_curve(attn_corr, feature="pca", ax=ax)
-    save_fig(ax, "attention_layer_curve")
+    save_fig(ax, f"{slug}_attention_layer_curve")
 
     # ── Step 4 — DAPT fine-tuning (GPU recommended) ──────────────────────────
     print("Step 4 — DAPT fine-tuning")
     from src.modeling import finetune as ft
 
-    # Fine-tune both domains — the four-model comparison needs physics- and
+    # Fine-tune both domains — the model comparison needs physics- and
     # biology-adapted surprisal (plus the shared step-0 baseline). Budget by tokens,
     # not epochs: the largest equal token budget that fits one pass of each corpus,
-    # so both domains see the same tokens at the same checkpoint index.
+    # so both domains see the same tokens at the same checkpoint index. Token counts
+    # are tokenizer-specific, so they are recomputed for this model.
+    batch_size = config.DAPT_BATCH_SIZE.get(slug, 8)
     token_budget = min(
-        ft.count_domain_tokens("physics"),
-        ft.count_domain_tokens("biology"),
+        ft.count_domain_tokens("physics", base_model=name),
+        ft.count_domain_tokens("biology", base_model=name),
     )
     manifest = pd.concat(
         [
-            ft.finetune_dapt("physics", max_tokens=token_budget, n_checkpoints=7, batch_size=8),
-            ft.finetune_dapt("biology", max_tokens=token_budget, n_checkpoints=7, batch_size=8),
+            ft.finetune_dapt("physics", base_model=name, max_tokens=token_budget,
+                             n_checkpoints=7, batch_size=batch_size, lora=FINETUNE_LORA),
+            ft.finetune_dapt("biology", base_model=name, max_tokens=token_budget,
+                             n_checkpoints=7, batch_size=batch_size, lora=FINETUNE_LORA),
         ],
         ignore_index=True,
     )
     fig, ax = plt.subplots()
     viz.perplexity_curve(manifest, ax=ax)
-    save_fig(ax, "perplexity_curve")
+    save_fig(ax, f"{slug}_perplexity_curve")
 
     surp_versions = ft.recompute_surprisal_over_checkpoints(words, manifest)
     curve = co.correlation_over_epochs(
@@ -169,7 +175,7 @@ def main() -> None:
     )
     fig, ax = plt.subplots()
     viz.finetune_correlation_curve(curve, metric="pearson", ax=ax)
-    save_fig(ax, "finetune_correlation_curve")
+    save_fig(ax, f"{slug}_finetune_correlation_curve")
 
     # Five-model surprisal comparison on the whole corpus (all readers × words):
     # does reader-aligned surprisal (physics LM for physicists, biology LM for
@@ -190,7 +196,7 @@ def main() -> None:
 
         fig, ax = plt.subplots()
         viz.model_comparison_curve(cmp, metric="delta_ll", ax=ax)
-        save_fig(ax, f"finetune_model_comparison_{spec}")
+        save_fig(ax, f"{slug}_finetune_model_comparison_{spec}")
 
         # Reader-clustered Vuong test at the checkpoint where aligned peaks.
         aligned = cmp[cmp["model"] == "aligned"]
@@ -204,12 +210,80 @@ def main() -> None:
         print(vuong.to_string(index=False))
 
     cmp_all = pd.concat(cmps, ignore_index=True)
-    cmp_all.to_csv(PROJECT_ROOT / "results.csv", index=False)
+    cmp_all.insert(0, "model_lm", slug)
+    cmp_all.to_csv(PROJECT_ROOT / f"results_{slug}.csv", index=False)
     pd.concat(vuongs, ignore_index=True).to_csv(
-        PROJECT_ROOT / "results_vuong.csv", index=False
+        PROJECT_ROOT / f"results_vuong_{slug}.csv", index=False
     )
 
-    print(f"Done. Figures in {FIG_DIR.relative_to(PROJECT_ROOT)}/")
+    # Cross-model summary: all-readers, both-domains surprisal-RT correlation,
+    # the regression slope, and the strongest reader-aligned ΔLL (covariates spec).
+    base = corr_df[(corr_df["group"] == "all") & (~corr_df["domain_only"])].iloc[0]
+    aligned_cov = cmp_all[(cmp_all["spec"] == "covariates") & (cmp_all["model"] == "aligned")]
+    return {
+        "summary": {
+            "model": slug,
+            "pearson": base["pearson"],
+            "spearman": base["spearman"],
+            "slope_ms_per_bit": float(fit.params["surprisal"]),
+            "r2": float(fit.rsquared),
+            "aligned_delta_ll": float(aligned_cov["delta_ll"].max()),
+        },
+        "attn_corr": attn_corr,
+    }
+
+
+def main() -> None:
+    FIG_DIR.mkdir(exist_ok=True)
+
+    # ── Step 1 — reading time (shared across models) ─────────────────────────
+    print("Step 1 — reading time")
+    words = data.load_word_features()
+    rm_raw = data.load_reading_measures()
+    rm = rt.clean_reading_times(rm_raw, MEASURE)
+    print(
+        f"  words={len(words)}  raw_rows={len(rm_raw)}  "
+        f"cleaned={len(rm)} ({len(rm) / len(rm_raw):.1%})"
+    )
+    agg = rt.aggregate_rt(rm, MEASURE)
+    print(
+        "  ",
+        {k: (len(v), round(v[f"mean_{MEASURE}"].mean())) for k, v in agg.items()},
+    )
+
+    # ── Steps 2-6 — run the whole workflow per model ─────────────────────────
+    summaries, attn_by_model = [], {}
+    for slug, name in config.MODELS.items():
+        out = run_model(slug, name, words, rm, rm_raw)
+        summaries.append(out["summary"])
+        attn_by_model[slug] = out["attn_corr"]
+
+    summary_df = pd.DataFrame(summaries)
+    summary_df.to_csv(PROJECT_ROOT / "results_models_summary.csv", index=False)
+    print("\n=== cross-model summary ===")
+    print(summary_df.to_string(index=False))
+
+    # ── Cross-model figures (all three on one axes) ──────────────────────────
+    print("Cross-model figures")
+    fig, ax = plt.subplots()
+    viz.across_models_correlation_bars(summary_df, ax=ax)
+    save_fig(ax, "across_models_correlation")
+
+    fig, ax = plt.subplots()
+    viz.across_models_bar(summary_df, "slope_ms_per_bit", ylabel="slope (ms/bit)", ax=ax)
+    save_fig(ax, "across_models_slope")
+
+    fig, ax = plt.subplots()
+    viz.across_models_bar(
+        summary_df, "aligned_delta_ll", ylabel="reader-aligned ΔLL (best ckpt)", ax=ax
+    )
+    save_fig(ax, "across_models_aligned_delta_ll")
+
+    fig, ax = plt.subplots()
+    viz.across_models_attention_curve(attn_by_model, feature="pca", ax=ax)
+    save_fig(ax, "across_models_attention_curve")
+
+    print(f"\nDone. Figures in {FIG_DIR.relative_to(PROJECT_ROOT)}/")
 
 
 if __name__ == "__main__":

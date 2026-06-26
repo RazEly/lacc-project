@@ -235,11 +235,22 @@ def finetune_dapt(
     out_dir=None,
     max_docs=None,
     objective: str = "causal",
+    lora: bool = False,
+    lora_r: int = 16,
+    lora_alpha: int = 32,
+    lora_dropout: float = 0.05,
+    lora_target_modules=None,
 ) -> pd.DataFrame:
     """DAPT-fine-tune ``base_model`` on one domain; return a checkpoint manifest.
 
     ``objective`` is ``"causal"`` (decoder, next-token; the surprisal pipeline) or
     ``"mlm"`` (encoder, masked-LM; the attention experiment).
+
+    ``lora=True`` trains LoRA adapters (PEFT) instead of all weights — the default
+    method driven from ``main.py``. Checkpoints then store the adapter only;
+    ``surprisal.load_causal_lm`` reattaches it to the base model. ``target_modules``
+    defaults to PEFT's per-architecture choice (``c_attn`` for GPT-2,
+    ``q_proj``/``v_proj`` for Llama), so the same call works for every model.
 
     The run is budgeted by training *tokens*, not epochs: it trains for
     ``max_tokens`` tokens (rounded up to whole optimiser steps), where one step
@@ -257,7 +268,11 @@ def finetune_dapt(
     over masked tokens when ``objective="mlm"``).
     """
     is_mlm = objective == "mlm"
-    out_dir = Path(out_dir or CHECKPOINTS_DIR / f"{Path(base_model).name}_{domain}")
+    # Suffix the run dir by method so LoRA and full-FT checkpoints never clobber.
+    suffix = "_lora" if lora else ""
+    out_dir = Path(
+        out_dir or CHECKPOINTS_DIR / f"{Path(base_model).name}_{domain}{suffix}"
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
 
     tokenizer = AutoTokenizer.from_pretrained(base_model)
@@ -271,6 +286,20 @@ def finetune_dapt(
     # tokenizer id; the new rows train during DAPT.
     if len(tokenizer) > model.config.vocab_size:
         model.resize_token_embeddings(len(tokenizer))
+
+    if lora:
+        from peft import LoraConfig, TaskType, get_peft_model
+
+        peft_cfg = LoraConfig(
+            task_type=None if is_mlm else TaskType.CAUSAL_LM,
+            r=lora_r,
+            lora_alpha=lora_alpha,
+            lora_dropout=lora_dropout,
+            target_modules=lora_target_modules,  # None -> PEFT picks per architecture
+            bias="none",
+        )
+        model = get_peft_model(model, peft_cfg)
+        model.print_trainable_parameters()
 
     split, words_per_epoch = _prepare_splits(
         domain, tokenizer, block_size, val_frac, seed, max_docs, is_mlm

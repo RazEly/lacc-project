@@ -31,6 +31,27 @@ POTEC_PARTICIPANTS = POTEC_DIR / "participants" / "participant_data.tsv"
 # Default decoder-only causal LM (German). The loaders stay model-agnostic
 # within the decoder family, so any HF name or local checkpoint can be swapped in.
 DEFAULT_MODEL = "dbmdz/german-gpt2"
+
+# Decoder LMs the whole pipeline is run over, slug -> HF repo. Every model runs
+# the same workflow independently (surprisal, attention, DAPT, model comparison),
+# then the three are compared. All German: german-gpt2 (124M) plus the LLäMmlein
+# family (LSX-UniWue), German-ONLY decoders trained from scratch on one dataset at
+# 1B and 7B — a clean parameter-scaling comparison at the same training data.
+# Weights are NOT downloaded here; the GPU run pulls them on first use.
+MODELS = {
+    "german-gpt2": "dbmdz/german-gpt2",
+    "llammlein-1b": "LSX-UniWue/LLaMmlein_1B",
+    "llammlein-7b": "LSX-UniWue/LLaMmlein_7B",
+}
+
+# Per-model DAPT (step 4) train batch size: bigger models need a smaller batch to
+# fit VRAM. Tune on the GPU machine; grad-accum in finetune_dapt lifts the
+# effective batch back up without more memory.
+DAPT_BATCH_SIZE = {
+    "german-gpt2": 8,
+    "llammlein-1b": 4,
+    "llammlein-7b": 1,
+}
 # German encoder for the attention experiment (src/experiment). Mouratidi &
 # Poesio (2025) study encoder attention vs gaze; their bert-base-uncased is
 # English, so we use a German BERT for the German corpus.
