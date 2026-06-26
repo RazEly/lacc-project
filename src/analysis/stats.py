@@ -32,7 +32,7 @@ from statsmodels.stats.multitest import multipletests
 from src.analysis import model_comparison as mc
 
 # aligned is the model under test; compare it against every other model.
-_BASELINES = ("baseline", "physics", "biology", "prompted")
+_BASELINES = ("baseline", "physics", "biology", "prompted", "prompted_level")
 
 
 def bh_correct(pvalues, alpha=0.05):

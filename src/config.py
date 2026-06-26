@@ -68,3 +68,20 @@ GRAD_STUDENT_PROMPTS = {
     "physics": "Du bist Doktorand der Physik. ",
     "biology": "Du bist Doktorand der Biologie. ",
 }
+
+# ── field × level system prompts (prompted-surprisal, second variant) ────────
+# A richer prompted baseline than GRAD_STUDENT_PROMPTS: the system prompt matches
+# BOTH the reader's discipline AND level of studies (undergraduate vs graduate),
+# i.e. the prompting analogue of "an undergrad-/graduate-level physicist/biologist".
+# Keyed (level_of_studies_numeric, reader_discipline_numeric): level 0 undergrad,
+# 1 graduate (reading_time.LEVEL_LABELS); discipline 1 physics, 0 biology. Mixed
+# per reader by both columns in model_comparison._prep_models. German to match the
+# german-gpt2 base model. Level phrasing is degree-neutral: PoTeC ``graduate``
+# spans Master/Diplom/PhD (participant_data.semester), so the graduate prompt says
+# "fortgeschritten" rather than naming a specific degree.
+FIELD_LEVEL_PROMPTS = {
+    (0, 1): "Du bist Physikstudent im Grundstudium. ",
+    (1, 1): "Du bist fortgeschrittener Physikstudent. ",
+    (0, 0): "Du bist Biologiestudent im Grundstudium. ",
+    (1, 0): "Du bist fortgeschrittener Biologiestudent. ",
+}

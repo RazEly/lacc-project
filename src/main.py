@@ -79,6 +79,24 @@ def main() -> None:
     ).rename(columns={"surprisal": "s_prompt_bio"})
     prompt_surp = s_pp.merge(s_pb, on=["text_id", "word_index_in_text"])
 
+    # field × level prompted baseline: same un-adapted model, but the prompt
+    # matches BOTH discipline AND study level (undergrad/grad). One column per
+    # (level, discipline) cell; the comparison mixes by reader discipline AND
+    # level (S_prompted_level). Column suffix: ug = undergraduate, grad = graduate.
+    _fl_cols = {
+        (0, 1): "s_prompt_phys_ug",
+        (1, 1): "s_prompt_phys_grad",
+        (0, 0): "s_prompt_bio_ug",
+        (1, 0): "s_prompt_bio_grad",
+    }
+    for key, col in _fl_cols.items():
+        prompt_surp = prompt_surp.merge(
+            su.compute_surprisal(
+                words, model, tok, prompt=config.FIELD_LEVEL_PROMPTS[key]
+            ).rename(columns={"surprisal": col}),
+            on=["text_id", "word_index_in_text"],
+        )
+
     # ── Step 3 — attention (raw on full corpus) ──────────────────────────────
     print("Step 3 — attention (raw)")
     amodel, atok = su.load_causal_lm(attn=True)

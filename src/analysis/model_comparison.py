@@ -12,6 +12,10 @@ with S one of:
   aligned  : reader-aligned — physics surprisal for physicists, biology
              surprisal for biologists, i.e.
              physicist * S_physics + (1 - physicist) * S_biology.
+  prompted : baseline weights + a discipline-matched system prompt, mixed by
+             reader discipline (the prompting analogue of ``aligned``).
+  prompted_level : baseline weights + a prompt matched to BOTH discipline AND
+             study level (undergrad/graduate), mixed by reader discipline × level.
 
 In ``baseline`` / ``physics`` / ``biology`` the reader's discipline is ignored;
 only ``aligned`` matches the language model to the reader's field. Alignment is
@@ -34,20 +38,32 @@ import statsmodels.formula.api as smf
 
 from src.analysis.correlation import WORD_KEY
 
-SURPRISAL_MODELS = ("baseline", "physics", "biology", "aligned", "prompted")
+SURPRISAL_MODELS = (
+    "baseline", "physics", "biology", "aligned", "prompted", "prompted_level"
+)
+
+# (level_of_studies_numeric, reader_discipline_numeric) → field×level prompt column.
+_FIELD_LEVEL_COLS = {
+    (0, 1): "s_prompt_phys_ug",
+    (1, 1): "s_prompt_phys_grad",
+    (0, 0): "s_prompt_bio_ug",
+    (1, 0): "s_prompt_bio_grad",
+}
 
 
 def _prep_models(df, measure):
-    """One row per reader×word with the five surprisal columns + covariates.
+    """One row per reader×word with every surprisal column + covariates.
 
     ``df`` must already carry per-word ``s_base`` / ``s_phys`` / ``s_bio``
-    surprisal (base, physics-adapted, biology-adapted), the prompted-baseline
-    columns ``s_prompt_phys`` / ``s_prompt_bio``, and the reading measures.
+    surprisal (base, physics-adapted, biology-adapted), the discipline-prompted
+    columns ``s_prompt_phys`` / ``s_prompt_bio``, the field×level prompted columns
+    (``_FIELD_LEVEL_COLS``), and the reading measures.
     """
     d = df[df[measure] > 0].copy()
     d = d.dropna(
         subset=[measure, "word_length", "lemma_frequency_normalized",
-                "s_base", "s_phys", "s_bio", "s_prompt_phys", "s_prompt_bio"]
+                "s_base", "s_phys", "s_bio", "s_prompt_phys", "s_prompt_bio",
+                *_FIELD_LEVEL_COLS.values()]
     )
     d = d[d["word_length"] > 0]
     # dlexDB lemma freq (per million) is heavily right-skewed; log1p keeps the
@@ -66,6 +82,17 @@ def _prep_models(df, measure):
     d["S_prompted"] = (
         physicist * d["s_prompt_phys"] + (1.0 - physicist) * d["s_prompt_bio"]
     )
+    # ``prompted_level`` matches the prompt to BOTH discipline AND study level:
+    # pick each reader's (level, discipline) prompt column, mixed by reader level
+    # (1 graduate, 0 undergrad) within the discipline split.
+    graduate = (d["level_of_studies_numeric"] == 1).to_numpy(dtype=float)
+    pl_phys = (
+        graduate * d["s_prompt_phys_grad"] + (1.0 - graduate) * d["s_prompt_phys_ug"]
+    )
+    pl_bio = (
+        graduate * d["s_prompt_bio_grad"] + (1.0 - graduate) * d["s_prompt_bio_ug"]
+    )
+    d["S_prompted_level"] = physicist * pl_phys + (1.0 - physicist) * pl_bio
     # extra predictors for the richer model specs (see MODEL_SPECS).
     # ``is_expert`` (reader major == text domain) is added by data.add_expertise.
     d["word_position"] = (
