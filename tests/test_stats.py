@@ -73,6 +73,7 @@ def test_aligned_vs_single_models_table(mc_inputs):
     assert set(out["comparison"]) == {
         "aligned vs baseline", "aligned vs physics",
         "aligned vs biology", "aligned vs prompted",
+        "aligned vs prompted_level",
     }
     assert {"z", "p", "p_adj", "significant", "winner"} <= set(out.columns)
     assert out["p"].between(0, 1).all()

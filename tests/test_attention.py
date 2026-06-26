@@ -1,5 +1,4 @@
-"""Attention representations (step 3): pure helpers + flow algorithm + PCA."""
-import networkx as nx
+"""Attention representations (step 3): pure helpers + raw attention + PCA."""
 import numpy as np
 import pandas as pd
 
@@ -23,49 +22,12 @@ def test_normalize_all_zero_is_unchanged():
     np.testing.assert_array_equal(at._normalize(z), z)
 
 
-# ── flow network ─────────────────────────────────────────────────────────────
-def test_add_flow_layer_capacities_form_distribution():
-    G = nx.DiGraph()
-    seq = 3
-    A = np.array([[0.2, 0.8, 0.0], [0.5, 0.5, 0.0], [0.3, 0.3, 0.4]])
-    at._add_flow_layer(G, A, l=0, seq=seq, residual=0.5)
-    # incoming capacities to each receiver node (l+1, i) sum to ~1 (row-normalized).
-    for i in range(seq):
-        incoming = sum(d["capacity"] for _, _, d in G.in_edges((1, i), data=True))
-        assert abs(incoming - 1.0) < 1e-9
-
-
-def test_flow_scores_shape_and_normalization():
-    n_layers, seq = 3, 5
-    rng = np.random.default_rng(1)
-    atts = rng.random((n_layers, seq, seq))
-    atts = atts / atts.sum(-1, keepdims=True)
-    word_ids = [0, 0, 1, 2, 3]  # 4 words, first has 2 subtokens
-    out = at._flow_scores(atts, word_ids, n_words=4, decay=1.0)
-    assert out.shape == (4, n_layers)
-    # each layer column sum-normalized to 1.
-    for l in range(n_layers):
-        assert abs(out[:, l].sum() - 1.0) < 1e-9
-    assert np.isfinite(out).all()
-
-
-def test_flow_scores_decay_zero_runs():
-    atts = np.full((2, 4, 4), 0.25)
-    out = at._flow_scores(atts, [0, 1, 2, 3], n_words=4, decay=0.0)
-    assert out.shape == (4, 2)
-
-
 # ── model-facing wrappers via fake attention LM ──────────────────────────────
 def test_raw_attention_shape_and_normalized(fake_attn_lm, fake_tokenizer):
     out = at.raw_attention(["w0", "w1", "w2", "w3"], fake_attn_lm, fake_tokenizer)
     assert out.shape == (4, fake_attn_lm.n_layers)
     for l in range(fake_attn_lm.n_layers):
         assert abs(out[:, l].sum() - 1.0) < 1e-6  # float32 attentions
-
-
-def test_attention_flow_wrapper_shape(fake_attn_lm, fake_tokenizer):
-    out = at.attention_flow(["w0", "w1", "w2", "w3"], fake_attn_lm, fake_tokenizer)
-    assert out.shape == (4, fake_attn_lm.n_layers)
 
 
 def test_extract_attention_long_form_drops_edges(fake_attn_lm, fake_tokenizer, words_df):

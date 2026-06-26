@@ -205,6 +205,11 @@ def mc_inputs():
     bio = {w: base[w] + rng.normal(0, 0.5) for w in words}
     pphys = {w: base[w] + rng.normal(0, 0.5) for w in words}
     pbio = {w: base[w] + rng.normal(0, 0.5) for w in words}
+    # field×level prompted surprisal: physics/biology prompt × ug/grad reader level.
+    pphys_ug = {w: base[w] + rng.normal(0, 0.5) for w in words}
+    pphys_grad = {w: base[w] + rng.normal(0, 0.5) for w in words}
+    pbio_ug = {w: base[w] + rng.normal(0, 0.5) for w in words}
+    pbio_grad = {w: base[w] + rng.normal(0, 0.5) for w in words}
     wlen = {w: int(rng.integers(3, 11)) for w in words}
     freq = {w: float(rng.uniform(0, 50)) for w in words}
 
@@ -237,17 +242,24 @@ def mc_inputs():
                 "word_index_in_text": wi,
                 "s_prompt_phys": pphys[(tid, dom, wi)],
                 "s_prompt_bio": pbio[(tid, dom, wi)],
+                "s_prompt_phys_ug": pphys_ug[(tid, dom, wi)],
+                "s_prompt_phys_grad": pphys_grad[(tid, dom, wi)],
+                "s_prompt_bio_ug": pbio_ug[(tid, dom, wi)],
+                "s_prompt_bio_grad": pbio_grad[(tid, dom, wi)],
             }
             for (tid, dom, wi) in words
         ]
     )
 
     # reading measures: 6 physics + 6 biology readers over every word.
-    readers = [(f"rp{i}", 1) for i in range(6)] + [(f"rb{i}", 0) for i in range(6)]
+    # (reader_id, discipline, level): level 0 = undergrad, 1 = graduate (alternating).
+    readers = [(f"rp{i}", 1, i % 2) for i in range(6)] + [
+        (f"rb{i}", 0, i % 2) for i in range(6)
+    ]
     rt_rows = []
     for (tid, dom, wi) in words:
         dom_num = 1 if dom == "physics" else 0
-        for reader_id, disc in readers:
+        for reader_id, disc, level in readers:
             tft = (
                 120
                 + 25 * base[(tid, dom, wi)]
@@ -266,6 +278,7 @@ def mc_inputs():
                     "is_general_technical_term": int(wi % 7 == 0),
                     "reader_id": reader_id,
                     "reader_discipline_numeric": disc,
+                    "level_of_studies_numeric": level,
                     "TFT": float(max(tft, 1.0)),
                 }
             )
