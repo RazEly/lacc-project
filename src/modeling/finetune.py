@@ -313,9 +313,10 @@ def finetune_dapt(
     budget = max_tokens if max_tokens is not None else available_tokens
     max_steps = max(1, math.ceil(budget / tokens_per_step))
 
-    # 12 GB VRAM, 124M-param GPT-2: VRAM is slack, so optimise for throughput.
-    # bf16 where the GPU supports it (Ampere+), else fp16; tf32 matmuls are free
-    # on Ampere+. grad_accum lifts the effective batch without more memory.
+    # Batch sizes (config.DAPT_BATCH_SIZE) target ~16 GB VRAM; for 124M-param
+    # GPT-2 VRAM is slack, so optimise for throughput. bf16 where the GPU supports
+    # it (Ampere+), else fp16; tf32 matmuls are free on Ampere+. grad_accum lifts
+    # the effective batch without more memory.
     use_cuda = torch.cuda.is_available()
     use_bf16 = use_cuda and torch.cuda.is_bf16_supported()
     args = TrainingArguments(

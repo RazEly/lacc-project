@@ -44,12 +44,17 @@ MODELS = {
     "llammlein-7b": "LSX-UniWue/LLaMmlein_7B",
 }
 
-# Per-model DAPT (step 4) train batch size: bigger models need a smaller batch to
-# fit VRAM. Tune on the GPU machine; grad-accum in finetune_dapt lifts the
-# effective batch back up without more memory.
+# Per-model DAPT (step 4) train batch size, sized for ~16 GB VRAM with the default
+# LoRA path (FINETUNE_LORA=True) + bf16 + block_size=512. Bigger models need a
+# smaller batch to fit: frozen base weights eat the budget (1B≈2 GB, 7B≈14 GB in
+# bf16), the rest is activations. 7B sits near the ceiling at batch 1; 1B's 6 is
+# close to the 16 GB limit (drop it / raise grad-accum if you OOM). Full-FT
+# (FINETUNE_LORA=False) of 1B/7B does NOT fit 16 GB — optimiser states overflow —
+# so these are LoRA defaults. grad-accum in finetune_dapt lifts the effective
+# batch without more memory.
 DAPT_BATCH_SIZE = {
-    "german-gpt2": 8,
-    "llammlein-1b": 4,
+    "german-gpt2": 16,
+    "llammlein-1b": 6,
     "llammlein-7b": 1,
 }
 # German encoder for the attention experiment (src/experiment). Mouratidi &
