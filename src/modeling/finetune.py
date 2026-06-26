@@ -21,6 +21,7 @@ processed at each, giving a fine-tuning progress curve.
 
 from __future__ import annotations
 
+import json
 import math
 from pathlib import Path
 
@@ -241,6 +242,37 @@ class _StepProgress(TrainerCallback):
         self.bar.close()
 
 
+def _run_signature(**kwargs) -> dict:
+    """Serialise the args that determine a DAPT run's checkpoints.
+
+    Any change to one of these (budget, schedule, optimiser, LoRA config, …) makes
+    the saved checkpoints stale, so a cached run is only reused when its stored
+    signature matches the current call exactly. Lists are JSON-normalised to tuples
+    so ``lora_target_modules`` compares by value.
+    """
+    return {k: (list(v) if isinstance(v, (list, tuple)) else v)
+            for k, v in sorted(kwargs.items())}
+
+
+def _load_cached_manifest(out_dir: Path, signature: dict) -> pd.DataFrame | None:
+    """Return the saved manifest iff it matches ``signature`` and is complete.
+
+    A run is reusable only when (1) the signature sidecar matches the current call
+    and (2) every checkpoint dir the manifest references still exists on disk.
+    Otherwise the cache is ignored and training reruns from scratch.
+    """
+    manifest_path = out_dir / "manifest.csv"
+    sig_path = out_dir / "run_signature.json"
+    if not (manifest_path.exists() and sig_path.exists()):
+        return None
+    if json.loads(sig_path.read_text()) != json.loads(json.dumps(signature)):
+        return None
+    df = pd.read_csv(manifest_path)
+    if not all(Path(c).exists() for c in df["checkpoint"]):
+        return None
+    return df
+
+
 def finetune_dapt(
     domain: str,
     base_model: str = DEFAULT_MODEL,
@@ -285,7 +317,12 @@ def finetune_dapt(
 
     Saves ``n_checkpoints`` models evenly spaced by training step across the whole
     run. With ``include_baseline`` the first checkpoint is the un-fine-tuned model
-    (step 0). ``max_docs`` truncates the corpus (smoke testing). The returned
+    (step 0). ``max_docs`` truncates the corpus (smoke testing).
+
+    Resumable: each run writes its manifest + a signature of every arg that affects
+    the result to ``out_dir``. A later call with the same signature whose checkpoints
+    still exist returns the saved manifest and skips training; changing any such arg
+    retrains (stale checkpoints are not reused). The returned
     DataFrame has columns ``domain``, ``checkpoint``, ``index``, ``epoch``,
     ``step``, ``tokens_seen``, ``words_seen``, ``perplexity`` (pseudo-perplexity
     over masked tokens when ``objective="mlm"``).
@@ -297,6 +334,24 @@ def finetune_dapt(
         out_dir or CHECKPOINTS_DIR / f"{Path(base_model).name}_{domain}{suffix}"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Resume: if this exact run already produced checkpoints, reload its manifest
+    # and skip training. The signature pins every arg that changes the result, so a
+    # different budget/schedule/LoRA config retrains rather than reusing stale weights.
+    signature = _run_signature(
+        base_model=base_model, domain=domain, max_tokens=max_tokens,
+        n_checkpoints=n_checkpoints, include_baseline=include_baseline,
+        block_size=block_size, batch_size=batch_size, grad_accum=grad_accum,
+        val_frac=val_frac, learning_rate=learning_rate, warmup_ratio=warmup_ratio,
+        seed=seed, max_docs=max_docs, objective=objective, lora=lora, lora_r=lora_r,
+        lora_alpha=lora_alpha, lora_dropout=lora_dropout,
+        lora_target_modules=lora_target_modules,
+    )
+    cached = _load_cached_manifest(out_dir, signature)
+    if cached is not None:
+        print(f"  [{domain}] reusing {len(cached)} saved checkpoints in {out_dir} "
+              "(skipping training)")
+        return cached
 
     tokenizer = AutoTokenizer.from_pretrained(base_model)
     if tokenizer.pad_token is None:
@@ -391,6 +446,10 @@ def finetune_dapt(
 
     df = pd.DataFrame(manifest)
     df.insert(0, "domain", domain)
+    # Persist manifest + signature so a later run reuses these checkpoints instead
+    # of retraining (see _load_cached_manifest).
+    df.to_csv(out_dir / "manifest.csv", index=False)
+    (out_dir / "run_signature.json").write_text(json.dumps(signature))
     return df
 
 

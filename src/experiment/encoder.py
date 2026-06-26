@@ -17,9 +17,16 @@ from src.features import attention as at
 
 
 def load_encoder(name_or_path: str = ENCODER_MODEL, attn: bool = True):
-    """Load a masked-LM encoder + tokenizer, with attentions on."""
+    """Load a masked-LM encoder + tokenizer, with attentions on.
+
+    Runs on the GPU when available (the per-sentence forward passes dominate
+    runtime); fp16 weights there halve VRAM and speed the forward. Inference only
+    (attention is read post-softmax), so fp16 is numerically safe.
+    """
     tokenizer = AutoTokenizer.from_pretrained(name_or_path)
     kwargs = {"attn_implementation": "eager"} if attn else {}
+    if torch.cuda.is_available():
+        kwargs["torch_dtype"] = torch.float16
     model = AutoModelForMaskedLM.from_pretrained(
         name_or_path, output_attentions=attn, **kwargs
     )
