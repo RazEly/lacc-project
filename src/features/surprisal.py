@@ -45,6 +45,12 @@ def load_causal_lm(name_or_path: str = DEFAULT_MODEL, attn: bool = False):
     kwargs = {}
     if attn:
         kwargs["attn_implementation"] = "eager"
+    # fp16 weights on the GPU: halves VRAM (12 GB box) and speeds the forward.
+    # Inference only — log_softmax upcasts via .float() (and attention is read
+    # post-softmax), so this is numerically safe. Training stays fp32 (Trainer
+    # adds its own mixed precision).
+    if torch.cuda.is_available():
+        kwargs["torch_dtype"] = torch.float16
 
     if (Path(name_or_path) / "adapter_config.json").is_file():
         # LoRA checkpoint: load the base model named in the adapter config, match
@@ -66,6 +72,12 @@ def load_causal_lm(name_or_path: str = DEFAULT_MODEL, attn: bool = False):
             name_or_path, output_attentions=attn, **kwargs
         )
     model.eval()
+    # Use the GPU when present: the per-sentence forward passes dominate runtime,
+    # and load_*_pretrained leaves the model on CPU otherwise. extract_attention /
+    # sentence_surprisal move their inputs to model.device, so this is the single
+    # placement point for the whole surprisal+attention path.
+    if torch.cuda.is_available():
+        model.to("cuda")
     return model, tokenizer
 
 
@@ -98,6 +110,7 @@ def sentence_surprisal(word_list, model, tokenizer, prompt=None, domain=None):
         input_ids = sent_ids
         offset = 0
 
+    input_ids = input_ids.to(model.device)
     logits = model(input_ids.unsqueeze(0)).logits[0]  # [seq, vocab]
     logprobs = torch.log_softmax(logits.float(), dim=-1)  # natural log
 
@@ -109,7 +122,7 @@ def sentence_surprisal(word_list, model, tokenizer, prompt=None, domain=None):
         if pos == 0:
             continue  # first token, no predictor -> first word NaN
         # log2 p(token_pos | tokens < pos) = logprobs[pos-1, token_pos]
-        lp = logprobs[pos - 1, sent_ids[j]].item() / math.log(2)
+        lp = logprobs[pos - 1, int(sent_ids[j])].item() / math.log(2)
         word_bits[wid] = word_bits.get(wid, 0.0) - lp
 
     return [word_bits.get(i) for i in range(len(word_list))]
