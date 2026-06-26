@@ -12,6 +12,7 @@ the sentence; only the sentence words receive surprisal scores.
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import pandas as pd
 import torch
@@ -22,20 +23,48 @@ from src.config import DEFAULT_MODEL
 WORD_KEY = ["text_id", "word_index_in_text"]
 
 
+def _load_tokenizer(name_or_path: str):
+    # add_prefix_space is a BPE concern (german-gpt2): it makes the first word
+    # tokenize like a mid-sentence word. Llama/SentencePiece tokenizers add the
+    # leading space themselves and may reject the kwarg, so fall back without it.
+    try:
+        return AutoTokenizer.from_pretrained(name_or_path, add_prefix_space=True)
+    except (TypeError, ValueError):
+        return AutoTokenizer.from_pretrained(name_or_path)
+
+
 def load_causal_lm(name_or_path: str = DEFAULT_MODEL, attn: bool = False):
     """Load a causal LM + tokenizer for surprisal (and optionally attention).
 
     ``attn=True`` selects the eager attention implementation and turns on
     ``output_attentions`` so attention matrices are returned (step 3).
-    Accepts an HF model id or a local fine-tuned checkpoint path.
+    Accepts an HF model id, a full fine-tuned checkpoint, or a LoRA (PEFT) adapter
+    checkpoint — the latter is detected by ``adapter_config.json`` and folded onto
+    its base model so callers get a plain merged model either way.
     """
-    tokenizer = AutoTokenizer.from_pretrained(name_or_path, add_prefix_space=True)
     kwargs = {}
     if attn:
         kwargs["attn_implementation"] = "eager"
-    model = AutoModelForCausalLM.from_pretrained(
-        name_or_path, output_attentions=attn, **kwargs
-    )
+
+    if (Path(name_or_path) / "adapter_config.json").is_file():
+        # LoRA checkpoint: load the base model named in the adapter config, match
+        # its training-time embedding size, then attach + merge the adapter so the
+        # forward pass needs no PEFT machinery.
+        from peft import PeftConfig, PeftModel
+
+        base = PeftConfig.from_pretrained(name_or_path).base_model_name_or_path
+        tokenizer = _load_tokenizer(base)
+        model = AutoModelForCausalLM.from_pretrained(
+            base, output_attentions=attn, **kwargs
+        )
+        if len(tokenizer) > model.config.vocab_size:
+            model.resize_token_embeddings(len(tokenizer))
+        model = PeftModel.from_pretrained(model, name_or_path).merge_and_unload()
+    else:
+        tokenizer = _load_tokenizer(name_or_path)
+        model = AutoModelForCausalLM.from_pretrained(
+            name_or_path, output_attentions=attn, **kwargs
+        )
     model.eval()
     return model, tokenizer
 

@@ -76,3 +76,57 @@ def perplexity_curve(manifest_df, ax=None):
     ax.set(xlabel="tokens processed", ylabel="validation perplexity")
     ax.legend(title="domain")
     return ax
+
+
+# ── cross-model comparison (all three models on one axes) ────────────────────
+def across_models_correlation_bars(summary_df, metrics=("pearson", "spearman"), ax=None):
+    """Grouped bar of the surprisal-vs-RT correlation per model.
+
+    ``summary_df`` has one row per model (column ``model``) plus a column per
+    metric in ``metrics`` — the all-readers, both-domains correlation from
+    ``correlation.correlate_surprisal``. One bar group per model lets the three
+    models be read off side by side.
+    """
+    ax = ax or plt.gca()
+    models = summary_df["model"].tolist()
+    x = range(len(models))
+    width = 0.8 / len(metrics)
+    for i, m in enumerate(metrics):
+        ax.bar([xi + i * width for xi in x], summary_df[m], width, label=m)
+    ax.set_xticks([xi + width * (len(metrics) - 1) / 2 for xi in x])
+    ax.set_xticklabels(models, rotation=15, ha="right")
+    ax.axhline(0, color="grey", lw=0.8)
+    ax.set(ylabel="correlation (surprisal vs RT)")
+    ax.legend(title="metric")
+    return ax
+
+
+def across_models_bar(summary_df, value, ylabel=None, ax=None):
+    """Single-metric bar across models (e.g. regression slope, aligned ΔLL)."""
+    ax = ax or plt.gca()
+    pos = list(range(len(summary_df)))
+    ax.bar(pos, summary_df[value])
+    ax.set_xticks(pos)
+    ax.set_xticklabels(summary_df["model"], rotation=15, ha="right")
+    ax.axhline(0, color="grey", lw=0.8)
+    ax.set(ylabel=ylabel or value.replace("_", " "))
+    return ax
+
+
+def across_models_attention_curve(attn_by_model, feature="pca", method="raw", ax=None):
+    """Per-layer attention-vs-gaze Spearman curve, one line per model.
+
+    ``attn_by_model`` maps model slug -> the ``correlate_attention`` table for
+    that model. Models differ in depth, so the x-axis is the raw layer index;
+    the comparison is of where (and how strongly) each model's attention tracks
+    gaze, not a layer-for-layer alignment.
+    """
+    ax = ax or plt.gca()
+    for model, corr in attn_by_model.items():
+        sub = corr[(corr["feature"] == feature) & (corr["attention_method"] == method)]
+        sub = sub.sort_values("layer")
+        ax.plot(sub["layer"], sub["spearman"], marker="o", label=model)
+    ax.axhline(0, color="grey", lw=0.8)
+    ax.set(xlabel="layer", ylabel=f"Spearman r ({feature})")
+    ax.legend(title="model")
+    return ax
