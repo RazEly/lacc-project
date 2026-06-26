@@ -48,7 +48,8 @@ fi
 echo "==> Downloading german-commons (scientific) ..."
 $PY -m src.acquire.download_commons
 
+echo "==> Labelling corpus by domain (physics / biology) ..."
+$PY -m src.acquire.domain_preprocessing
+
 echo
 echo "Setup complete."
-echo "Next: run the domain labelling pipeline with"
-echo "    uv run python -m src.acquire.domain_preprocessing"

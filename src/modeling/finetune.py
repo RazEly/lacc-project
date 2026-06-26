@@ -44,6 +44,28 @@ from src.features.surprisal import compute_surprisal, load_causal_lm
 DOMAIN_DIRS = {"physics": DOMAIN_PHY_DIR, "biology": DOMAIN_BIO_DIR}
 
 
+def _lora_targets(model, override):
+    """Per-architecture LoRA target + embedding modules for DAPT.
+
+    Domain-adaptive pre-training shifts vocabulary and feed-forward knowledge, so
+    LoRA targets the MLP as well as attention (PEFT's default is attention-only,
+    too thin for domain adaptation). The embedding modules are returned separately
+    so the caller can ``modules_to_save`` them when the embeddings were grown.
+    ``override`` short-circuits the target choice (embeddings still per-arch).
+    """
+    mt = model.config.model_type
+    if mt == "gpt2":
+        targets = ["c_attn", "c_fc", "c_proj"]  # attn qkv/out + mlp in/out
+        embed = ["wte"]                          # lm_head is tied to wte
+    elif mt == "llama":
+        targets = ["q_proj", "k_proj", "v_proj", "o_proj",
+                   "gate_proj", "up_proj", "down_proj"]
+        embed = ["embed_tokens", "lm_head"]
+    else:  # unknown arch: fall back to PEFT's per-arch defaults
+        targets, embed = None, None
+    return (override or targets), embed
+
+
 def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text", mlm=False):
     """Tokenize a text dataset and pack into fixed-size LM blocks.
 
@@ -236,8 +258,8 @@ def finetune_dapt(
     max_docs=None,
     objective: str = "causal",
     lora: bool = False,
-    lora_r: int = 16,
-    lora_alpha: int = 32,
+    lora_r: int = 32,
+    lora_alpha: int = 64,
     lora_dropout: float = 0.05,
     lora_target_modules=None,
 ) -> pd.DataFrame:
@@ -249,8 +271,9 @@ def finetune_dapt(
     ``lora=True`` trains LoRA adapters (PEFT) instead of all weights — the default
     method driven from ``main.py``. Checkpoints then store the adapter only;
     ``surprisal.load_causal_lm`` reattaches it to the base model. ``target_modules``
-    defaults to PEFT's per-architecture choice (``c_attn`` for GPT-2,
-    ``q_proj``/``v_proj`` for Llama), so the same call works for every model.
+    defaults (``None``) to a per-architecture attention+MLP set via ``_lora_targets``
+    (GPT-2 ``c_attn``/``c_fc``/``c_proj``; Llama q/k/v/o + gate/up/down), so DAPT
+    adapts feed-forward knowledge, not just attention, for every model.
 
     The run is budgeted by training *tokens*, not epochs: it trains for
     ``max_tokens`` tokens (rounded up to whole optimiser steps), where one step
@@ -284,18 +307,24 @@ def finetune_dapt(
     # (vocab_size 50265); using it as a document separator / pad would index out
     # of range on the GPU (device-side assert). Grow the embeddings to cover every
     # tokenizer id; the new rows train during DAPT.
-    if len(tokenizer) > model.config.vocab_size:
+    resized = len(tokenizer) > model.config.vocab_size
+    if resized:
         model.resize_token_embeddings(len(tokenizer))
 
     if lora:
         from peft import LoraConfig, TaskType, get_peft_model
 
+        targets, embed_modules = _lora_targets(model, lora_target_modules)
         peft_cfg = LoraConfig(
             task_type=None if is_mlm else TaskType.CAUSAL_LM,
             r=lora_r,
             lora_alpha=lora_alpha,
             lora_dropout=lora_dropout,
-            target_modules=lora_target_modules,  # None -> PEFT picks per architecture
+            target_modules=targets,  # attn + MLP (None -> PEFT per-arch default)
+            # When embeddings were grown, the new rows are randomly initialised and
+            # LoRA freezes the base — without saving them they would be re-randomised
+            # (differently) at load time. Save the embedding module so they survive.
+            modules_to_save=embed_modules if resized else None,
             bias="none",
         )
         model = get_peft_model(model, peft_cfg)

@@ -41,6 +41,14 @@ MEASURE = "TFT"  # total fixation time == TRT
 # model, including the 7B Llama. Flip to False here for full fine-tuning (applies
 # to german-gpt2 and all LLäMmlein models alike).
 FINETUNE_LORA = True
+# DAPT learning rate by method. LoRA needs ~10x the full-FT LR — its adapters are
+# zero-initialised and only a few rank-r params train, so the full-FT LR barely
+# moves them. Full continued-pretraining stays low to avoid catastrophic forgetting.
+DAPT_LR = 2e-4 if FINETUNE_LORA else 2e-5
+# Passes over the smaller domain corpus (token budget = DAPT_PASSES × one pass).
+# >1 so the budget spans the ΔLL peak (~epoch 2) instead of dying on the rising
+# toe; LoRA adapts slower than full FT and needs the extra room.
+DAPT_PASSES = 3
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FIG_DIR = PROJECT_ROOT / "figures"
 
@@ -152,16 +160,19 @@ def run_model(slug: str, name: str, words, rm, rm_raw) -> dict:
     # so both domains see the same tokens at the same checkpoint index. Token counts
     # are tokenizer-specific, so they are recomputed for this model.
     batch_size = config.DAPT_BATCH_SIZE.get(slug, 8)
-    token_budget = min(
+    one_pass = min(
         ft.count_domain_tokens("physics", base_model=name),
         ft.count_domain_tokens("biology", base_model=name),
     )
+    token_budget = DAPT_PASSES * one_pass
     manifest = pd.concat(
         [
             ft.finetune_dapt("physics", base_model=name, max_tokens=token_budget,
-                             n_checkpoints=7, batch_size=batch_size, lora=FINETUNE_LORA),
+                             n_checkpoints=7, batch_size=batch_size,
+                             learning_rate=DAPT_LR, lora=FINETUNE_LORA),
             ft.finetune_dapt("biology", base_model=name, max_tokens=token_budget,
-                             n_checkpoints=7, batch_size=batch_size, lora=FINETUNE_LORA),
+                             n_checkpoints=7, batch_size=batch_size,
+                             learning_rate=DAPT_LR, lora=FINETUNE_LORA),
         ],
         ignore_index=True,
     )
