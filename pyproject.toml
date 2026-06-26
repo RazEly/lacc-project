@@ -31,3 +31,16 @@ dependencies = [
 [tool.uv]
 # Run-only project (scripts via `python -m src.*`); don't build/install it.
 package = false
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+# Run from the project root so `import src.*` resolves; tests are GPU/network-free.
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    # mixedlm on the tiny synthetic frames triggers benign convergence noise.
+    "ignore::statsmodels.tools.sm_exceptions.ConvergenceWarning",
+    "ignore:Random effects covariance is singular:UserWarning",
+]
