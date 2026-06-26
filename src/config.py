@@ -54,8 +54,13 @@ MODELS = {
 # batch without more memory.
 DAPT_BATCH_SIZE = {
     "german-gpt2": 16,
-    "llammlein-1b": 6,
+    "llammlein-1b": 2,   # 12 GB VRAM: batch 6 OOMs; grad_accum 3 keeps effective batch=6
     "llammlein-7b": 1,
+}
+# Gradient accumulation per model. Effective batch = batch_size × grad_accum. Use to
+# recover effective batch size after reducing batch_size for VRAM, without extra memory.
+DAPT_GRAD_ACCUM = {
+    "llammlein-1b": 3,   # 2 × 3 = 6 effective (matches original intent)
 }
 # German encoder for the attention experiment (src/experiment). Mouratidi &
 # Poesio (2025) study encoder attention vs gaze; their bert-base-uncased is

@@ -160,6 +160,7 @@ def run_model(slug: str, name: str, words, rm, rm_raw) -> dict:
     # so both domains see the same tokens at the same checkpoint index. Token counts
     # are tokenizer-specific, so they are recomputed for this model.
     batch_size = config.DAPT_BATCH_SIZE.get(slug, 8)
+    grad_accum = config.DAPT_GRAD_ACCUM.get(slug, 1)
     one_pass = min(
         ft.count_domain_tokens("physics", base_model=name),
         ft.count_domain_tokens("biology", base_model=name),
@@ -169,9 +170,11 @@ def run_model(slug: str, name: str, words, rm, rm_raw) -> dict:
         [
             ft.finetune_dapt("physics", base_model=name, max_tokens=token_budget,
                              n_checkpoints=7, batch_size=batch_size,
+                             grad_accum=grad_accum,
                              learning_rate=DAPT_LR, lora=FINETUNE_LORA),
             ft.finetune_dapt("biology", base_model=name, max_tokens=token_budget,
                              n_checkpoints=7, batch_size=batch_size,
+                             grad_accum=grad_accum,
                              learning_rate=DAPT_LR, lora=FINETUNE_LORA),
         ],
         ignore_index=True,
