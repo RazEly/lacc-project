@@ -44,10 +44,11 @@ FINETUNE_LORA = True
 # zero-initialised and only a few rank-r params train, so the full-FT LR barely
 # moves them. Full continued-pretraining stays low to avoid catastrophic forgetting.
 DAPT_LR = 2e-4 if FINETUNE_LORA else 2e-5
-# Passes over the smaller domain corpus (token budget = DAPT_PASSES × one pass).
-# >1 so the budget spans the ΔLL peak (~epoch 2) instead of dying on the rising
-# toe; LoRA adapts slower than full FT and needs the extra room.
-DAPT_PASSES = 3
+# DAPT checkpoint schedule, matching Škrjanec et al. (papers/07): train ≤16,384
+# steps and save checkpoints at 4ⁿ steps for n∈{1..7}. include_baseline still
+# prepends the un-fine-tuned model as checkpoint index 0.
+DAPT_MAX_STEPS = 16_384
+DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4096, 16384]
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FIG_DIR = PROJECT_ROOT / "figures"
 
@@ -141,26 +142,22 @@ def run_model(slug: str, name: str, words, rm) -> dict:
     from src.modeling import finetune as ft
 
     # Fine-tune both domains — the model comparison needs physics- and
-    # biology-adapted surprisal (plus the shared step-0 baseline). Budget by tokens,
-    # not epochs: the largest equal token budget that fits one pass of each corpus,
-    # so both domains see the same tokens at the same checkpoint index. Token counts
-    # are tokenizer-specific, so they are recomputed for this model.
+    # biology-adapted surprisal (plus the shared step-0 baseline). Budget by a fixed
+    # step count, not tokens: Škrjanec et al. (papers/07) train ≤16,384 steps and
+    # checkpoint at 4ⁿ steps (n∈{1..7}). Matching that schedule here makes the
+    # checkpoint indices line up with the paper. Both domains share the schedule, so
+    # they see the same step at the same checkpoint index.
     batch_size = config.DAPT_BATCH_SIZE.get(slug, 8)
     grad_accum = config.DAPT_GRAD_ACCUM.get(slug, 1)
-    one_pass = min(
-        ft.count_domain_tokens("physics", base_model=name),
-        ft.count_domain_tokens("biology", base_model=name),
-    )
-    token_budget = min(DAPT_PASSES * one_pass, 10_000_000)
     manifest = pd.concat(
         [
-            ft.finetune_dapt("physics", base_model=name, max_tokens=token_budget,
-                             n_checkpoints=7, batch_size=batch_size,
-                             grad_accum=grad_accum,
+            ft.finetune_dapt("physics", base_model=name, max_steps=DAPT_MAX_STEPS,
+                             checkpoint_steps=DAPT_CHECKPOINT_STEPS,
+                             batch_size=batch_size, grad_accum=grad_accum,
                              learning_rate=DAPT_LR, lora=FINETUNE_LORA),
-            ft.finetune_dapt("biology", base_model=name, max_tokens=token_budget,
-                             n_checkpoints=7, batch_size=batch_size,
-                             grad_accum=grad_accum,
+            ft.finetune_dapt("biology", base_model=name, max_steps=DAPT_MAX_STEPS,
+                             checkpoint_steps=DAPT_CHECKPOINT_STEPS,
+                             batch_size=batch_size, grad_accum=grad_accum,
                              learning_rate=DAPT_LR, lora=FINETUNE_LORA),
         ],
         ignore_index=True,

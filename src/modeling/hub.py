@@ -132,6 +132,11 @@ def upload_run(out_dir: Path) -> None:
     and this returns quietly. Otherwise creates the repo if needed and uploads the
     checkpoints + manifest + signature, skipping the transient Trainer ``_hf/``
     output. A network/permission error prints a hint and returns without raising.
+
+    The upload OVERWRITES the repo to exactly this run: ``delete_patterns`` prunes
+    any remote file not in the new commit (e.g. checkpoints from a prior schedule
+    with more indices), and the additions upsert the rest — both in one atomic
+    commit, so a retrained run fully replaces the previously pushed weights.
     """
     info = _api()
     if info is None:
@@ -151,6 +156,11 @@ def upload_run(out_dir: Path) -> None:
             # _hf/ is the live Trainer dir (optimizer state, transient); the run's
             # reusable artifacts are the checkpoint_NN dirs + manifest + signature.
             ignore_patterns=["_hf/*", "_hf", "**/__pycache__/*"],
+            # Sync, don't just upsert: delete remote files absent from this run so a
+            # retrain (e.g. a new checkpoint schedule) fully overwrites the repo
+            # instead of leaving stale checkpoints behind. Files also being uploaded
+            # are kept (upsert wins over delete within the same commit).
+            delete_patterns=["*"],
         )
         print(f"  [hub] uploaded {out_dir.name} -> {repo_id}")
     except Exception as e:  # noqa: BLE001
