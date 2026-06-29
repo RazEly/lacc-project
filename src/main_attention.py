@@ -51,15 +51,17 @@ from src.features import surprisal as su
 
 MEASURE = "TFT"  # total fixation time == TRT (reading-time response)
 NAME = config.MODELS["german-gpt2"]  # dbmdz/german-gpt2 (full FT target)
-# Full fine-tuning (continued pre-training), NOT LoRA. Training recipe matches
-# Škrjanec et al. (papers/07): batch 8, lr 1e-4, 100 warm-up steps, max 16,384
-# steps, checkpoints saved at 4ⁿ steps (n=1..7) — by STEP, not by epoch.
+# Full fine-tuning (continued pre-training), NOT LoRA. Training recipe follows
+# Škrjanec et al. (papers/07): batch 8, lr 1e-4, 100 warm-up steps, checkpoints at
+# 4ⁿ steps — by STEP, not by epoch. NOTE: MAX_STEPS truncated to 4096 (a quarter of
+# the paper's 16,384 → ~4× less GPU time); the final FT model is the 4096-step
+# (~1-epoch) checkpoint. Deliberate deviation from the paper's 16,384-step recipe.
 FINETUNE_LORA = False
 DAPT_LR = 1e-4
 BATCH_SIZE = 8
-MAX_STEPS = 16384
+MAX_STEPS = 4096
 WARMUP_STEPS = 100
-PAPER_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4096, 16384]
+PAPER_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4096]
 # Attention sources compared (reader-aligned vs single models / baseline), exactly
 # the main.py set minus the prompted variants (no prompts on the attention side).
 ALIGNED_MODELS = ("baseline", "physics", "biology", "aligned")
@@ -80,9 +82,10 @@ def save_fig(ax, name: str) -> None:
 def finetune_full(name: str) -> dict[str, str]:
     """Full fine-tune (continued pre-training) physics and biology; return checkpoints.
 
-    Trains both domains for the paper's fixed 16,384 steps, checkpointing at the 4ⁿ
-    schedule (by step, not epoch). Returns the baseline (step-0) checkpoint plus
-    each domain's final (16,384-step) fully-fine-tuned checkpoint. Requires a GPU.
+    Trains both domains for MAX_STEPS (4096 — a quarter of the paper's 16,384, to
+    cut GPU time ~4×), checkpointing at the 4ⁿ schedule (by step, not epoch).
+    Returns the baseline (step-0) checkpoint plus each domain's final (4096-step)
+    fully-fine-tuned checkpoint. Requires a GPU.
     """
     from src.modeling import finetune as ft
 
