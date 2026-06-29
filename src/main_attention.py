@@ -16,15 +16,17 @@ Pipeline:
      model, the biology-FT model — extracted per word per layer.
   3. The peak attention-vs-gaze layer L is chosen from the per-layer Spearman
      correlation (PCA gaze component, all readers).
-  4. **Aligned-attention comparison** (the ``main.py`` workflow): at layer L, fit
-     ``RT ~ covariates + A_source + (1|reader)`` for A_source ∈
-     {baseline, physics, biology, aligned}, where *aligned* = the FT model matching
-     the reader's discipline (physics attention for physicists, biology for
-     biologists). ΔLL over the no-attention baseline says whether reader-aligned
-     attention fits reading time best. Repeated per fixed-effects spec, exactly like
-     ``main.py``. Reuses ``model_comparison.model_comparison_over_epochs`` by shaping
-     the layer-L attention into the ``surp_versions`` schema (attention in the
-     ``surprisal`` column).
+  4. **Robust domain-attention vs expert reading-time analysis.** Raw aligned
+     attention was a null (it's surface-dominated and shared across FT models), so
+     this uses the stronger, residualized design (after Škrjanec et al.):
+       (a) **specialized attention** = each FT model's layer-L attention residualized
+           on the baseline (the domain-specific component, surface removed); compared
+           as sources by ΔLL (general / physics / biology / aligned) per spec;
+       (b) **reader-clustered Vuong** significance of aligned vs each single source;
+       (c) PRIMARY: a paper-09 **three-way LRT** — does aligned-specialized attention
+           add over general attention specifically for *experts on technical terms*?
+       (d) model-free **ΔA-vs-Δ(expert speed-up) correlation** on technical terms,
+           where the surface signal cancels on both sides.
 
 GPU needed for step 1 (full FT of two models). Run from the project root:
 
@@ -109,42 +111,14 @@ def pick_peak_layer(corr_by_model: dict[str, pd.DataFrame], feature: str = "pca"
     return int(mean.idxmax())
 
 
-def build_attention_versions(
-    baseline: pd.DataFrame, physics: pd.DataFrame, biology: pd.DataFrame
-) -> pd.DataFrame:
-    """Shape per-word layer-L attention into the ``surp_versions`` schema.
-
-    Each input is ``text_id``, ``word_index_in_text``, ``attention`` at the chosen
-    layer. The baseline (un-FT) model is index 0 for BOTH domains (it supplies the
-    aligned comparison's domain-agnostic ``s_base``); the FT models are index 1,
-    tagged by their domain. Attention goes in the ``surprisal`` column so
-    ``model_comparison`` treats it as the single fit predictor.
-    """
-    def tag(df, index, domain):
-        d = df.rename(columns={"attention": "surprisal"}).copy()
-        d["index"] = index
-        d["domain"] = domain
-        d["epoch"] = float(index)
-        return d[WORD_KEY + ["surprisal", "index", "domain", "epoch"]]
-
-    return pd.concat(
-        [
-            tag(baseline, 0, "physics"),
-            tag(baseline, 0, "biology"),
-            tag(physics, 1, "physics"),
-            tag(biology, 1, "biology"),
-        ],
-        ignore_index=True,
-    )
-
-
 def run_aligned_comparison(av: pd.DataFrame, rm_cmp: pd.DataFrame) -> pd.DataFrame:
-    """Aligned-attention model comparison across all fixed-effects specs.
+    """Specialized-attention source comparison (ΔLL) across all fixed-effects specs.
 
     For each spec, fit ``RT ~ <spec> + A_source + (1|reader)`` for the four
-    attention sources at the FT index, reporting ΔLL over the no-attention baseline.
-    Reuses ``model_comparison_over_epochs`` (attention sits in its ``surprisal``
-    column); the coefficient columns are renamed to ``b/p_attention``.
+    attention sources (general baseline + residualized physics/biology/aligned) at
+    the FT index, reporting ΔLL over the no-attention baseline. Reuses
+    ``model_comparison_over_epochs`` (attention sits in its ``surprisal`` column);
+    coefficient columns renamed to ``b/p_attention``.
     """
     cmps = []
     for spec in mc.MODEL_SPECS:
@@ -197,16 +171,50 @@ def main() -> None:
         a = attn_by_model[slug]
         return a[a["layer"] == L][WORD_KEY + ["attention"]]
 
-    # ── Step 4 — aligned-attention model comparison (the main.py workflow) ─────
-    print("Step 4 — aligned-attention model comparison")
-    av = build_attention_versions(
+    # ── Step 4 — robust domain-attention vs expert reading-time analysis ───────
+    # Residualize each FT model's layer-L attention on the baseline → "specialized"
+    # attention (the domain-specific component; surface signal removed), mirroring
+    # Škrjanec et al.'s residualized specialized surprisal.
+    print("Step 4 — robust domain-attention analysis")
+    spec_pw = ap.build_specialized(
         at_layer("baseline"), at_layer("physics-ft"), at_layer("biology-ft")
     )
+    av = ap.specialized_versions(spec_pw)  # general (idx0) + specialized phys/bio (idx1)
+
+    # (a) Source comparison by ΔLL (specialized aligned vs single vs general baseline)
     cmp_all = run_aligned_comparison(av, rm_cmp)
     cmp_all.insert(0, "layer", L)
     cmp_all.to_csv(PROJECT_ROOT / "results_attention_aligned_comparison.csv", index=False)
+    print("\n(a) source ΔLL (specialized attention):")
     print(cmp_all[["spec", "model", "delta_ll", "b_attention", "p_attention"]]
           .to_string(index=False))
+
+    # (b) Reader-clustered Vuong significance (aligned vs each single source)
+    vuong = pd.concat(
+        [ap.aligned_attention_vuong(av, rm_cmp, spec=s) for s in ("full", "paper_full")],
+        ignore_index=True,
+    )
+    vuong.to_csv(PROJECT_ROOT / "results_attention_vuong.csv", index=False)
+    print("\n(b) reader-clustered Vuong (aligned vs single):")
+    print(vuong[["spec", "comparison", "z", "p", "p_adj", "winner"]].to_string(index=False))
+
+    # (c) PRIMARY: paper-09 three-way LRT — does aligned-specialized attention add
+    #     over general attention, specifically for experts on technical terms?
+    itest = ap.specialized_interaction_test(spec_pw, rm_cmp, measure=MEASURE)
+    pd.DataFrame([itest]).to_csv(
+        PROJECT_ROOT / "results_attention_interaction.csv", index=False)
+    print("\n(c) specialized × expert × technical LRT:")
+    print(f"    LRT χ²={itest['lr_stat']:.2f} (df={itest['df']}) p={itest['p_lrt']:.4g}"
+          f"  |  3-way coef={itest['coef_3way']:.3g} p={itest['p_3way']:.4g}")
+
+    # (d) Model-free robustness: ΔA (domain FT − baseline) vs Δ(expert speed-up)
+    diff = ap.attention_expertise_diff_correlation(
+        at_layer("baseline"), at_layer("physics-ft"), at_layer("biology-ft"), rm_raw,
+        measure=MEASURE)
+    diff.insert(0, "layer", L)
+    diff.to_csv(PROJECT_ROOT / "results_attention_diff_correlation.csv", index=False)
+    print("\n(d) ΔA vs Δ(expert speed-up) correlation:")
+    print(diff.to_string(index=False))
 
     # ── Figures ────────────────────────────────────────────────────────────────
     print("\nFigures")
@@ -218,8 +226,8 @@ def main() -> None:
     for spec, g in cmp_all.groupby("spec"):
         fig, ax = plt.subplots()
         viz.across_models_bar(g, "delta_ll",
-                              ylabel="ΔLL (RT ~ +aligned attention)", ax=ax)
-        ax.set_title(f"aligned attention — {spec} (layer {L})")
+                              ylabel="ΔLL (RT ~ +specialized attention)", ax=ax)
+        ax.set_title(f"specialized attention — {spec} (layer {L})")
         save_fig(ax, f"attn_aligned_comparison_{spec}")
 
     print(f"\nDone. Figures in {FIG_DIR.relative_to(PROJECT_ROOT)}/")
