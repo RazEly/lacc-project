@@ -26,6 +26,7 @@ dependencies = [
     "peft>=0.10.0",           # LoRA adapters (default DAPT method)
     "matplotlib>=3.7.0",
     "seaborn>=0.13.0",
+    "multimatch-gaze>=0.1.3",  # scanpath-similarity notebook (MultiMatch metric)
 ]
 
 [tool.uv]

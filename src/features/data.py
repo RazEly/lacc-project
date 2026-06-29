@@ -55,6 +55,7 @@ WORD_COLS = [
     "is_sent_end",
     "is_expert_technical_term",
     "is_general_technical_term",
+    "STTS_PoS_tag",  # Stuttgart-Tübingen PoS tag -> function/content category
 ]
 
 # Eye-tracking + reader-metadata columns added on top of WORD_COLS for the

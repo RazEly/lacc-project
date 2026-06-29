@@ -23,6 +23,14 @@ COMMONS_HF_CONFIG = "scientific"
 DOMAIN_PHY_DIR = DATA_DIR / "domain_phy"
 DOMAIN_BIO_DIR = DATA_DIR / "domain_bio"
 
+# ── general-domain validation corpus (cross-domain perplexity) ───────────────
+# German Wikipedia: general, non-scientific German prose — the out-of-domain
+# reference for cross-domain perplexity (how DAPT for physics/biology shifts the
+# model's fit on plain general text). Streamed, so only the first slice is
+# pulled, never the full dump. 20231101.de = the 2023-11-01 German dump.
+GENERAL_HF_REPO = "wikimedia/wikipedia"
+GENERAL_HF_CONFIG = "20231101.de"
+
 # ── PoTeC sub-paths used by the analysis pipeline ────────────────────────────
 POTEC_WORD_FEATURES_DIR = POTEC_DIR / "stimuli" / "word_features"
 POTEC_READING_MEASURES_DIR = POTEC_EYETRACKING_DIR / "reading_measures_merged"
@@ -35,28 +43,24 @@ DEFAULT_MODEL = "dbmdz/german-gpt2"
 
 # Decoder LMs the whole pipeline is run over, slug -> HF repo. Every model runs
 # the same workflow independently (surprisal, attention, DAPT, model comparison),
-# then the three are compared. All German: german-gpt2 (124M) plus the LLäMmlein
-# family (LSX-UniWue), German-ONLY decoders trained from scratch on one dataset at
-# 1B and 7B — a clean parameter-scaling comparison at the same training data.
+# then they are compared. All German: german-gpt2 (124M) plus the LLäMmlein 1B
+# (LSX-UniWue), a German-ONLY decoder trained from scratch on one dataset.
 # Weights are NOT downloaded here; the GPU run pulls them on first use.
 MODELS = {
     "german-gpt2": "dbmdz/german-gpt2",
     "llammlein-1b": "LSX-UniWue/LLaMmlein_1B",
-    "llammlein-7b": "LSX-UniWue/LLaMmlein_7B",
 }
 
 # Per-model DAPT (step 4) train batch size, sized for ~16 GB VRAM with the default
 # LoRA path (FINETUNE_LORA=True) + bf16 + block_size=512. Bigger models need a
-# smaller batch to fit: frozen base weights eat the budget (1B≈2 GB, 7B≈14 GB in
-# bf16), the rest is activations. 7B sits near the ceiling at batch 1; 1B's 6 is
-# close to the 16 GB limit (drop it / raise grad-accum if you OOM). Full-FT
-# (FINETUNE_LORA=False) of 1B/7B does NOT fit 16 GB — optimiser states overflow —
-# so these are LoRA defaults. grad-accum in finetune_dapt lifts the effective
-# batch without more memory.
+# smaller batch to fit: frozen base weights eat the budget (1B≈2 GB in bf16), the
+# rest is activations. 1B's 6 is close to the 16 GB limit (drop it / raise
+# grad-accum if you OOM). Full-FT (FINETUNE_LORA=False) of 1B does NOT fit 16 GB —
+# optimiser states overflow — so these are LoRA defaults. grad-accum in
+# finetune_dapt lifts the effective batch without more memory.
 DAPT_BATCH_SIZE = {
     "german-gpt2": 8,
     "llammlein-1b": 2,  # 12 GB VRAM: batch 6 OOMs; grad_accum 3 keeps effective batch=6
-    "llammlein-7b": 1,
 }
 # Gradient accumulation per model. Effective batch = batch_size × grad_accum. Use to
 # recover effective batch size after reducing batch_size for VRAM, without extra memory.

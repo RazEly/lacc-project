@@ -742,6 +742,7 @@ dependencies = [
     { name = "huggingface-hub" },
     { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "matplotlib", version = "3.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "multimatch-gaze" },
     { name = "numpy" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.0.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -771,6 +772,7 @@ requires-dist = [
     { name = "datasets", specifier = ">=2.18.0" },
     { name = "huggingface-hub", specifier = ">=0.20.0" },
     { name = "matplotlib", specifier = ">=3.7.0" },
+    { name = "multimatch-gaze", specifier = ">=0.1.3" },
     { name = "numpy", specifier = ">=1.24.0,<2.0" },
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "peft", specifier = ">=0.10.0" },
@@ -993,6 +995,22 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/80/31/0b2517913687895f5904325c2069d6a3b78f66cc641a86a2baf75a05dcbb/multidict-6.7.1-cp312-cp312-win_amd64.whl", hash = "sha256:fcee94dfbd638784645b066074b338bc9cc155d4b4bffa4adce1615c5a426c19", size = 46053, upload-time = "2026-01-26T02:44:15.371Z" },
     { url = "https://files.pythonhosted.org/packages/0c/5b/aba28e4ee4006ae4c7df8d327d31025d760ffa992ea23812a601d226e682/multidict-6.7.1-cp312-cp312-win_arm64.whl", hash = "sha256:ba0a9fb644d0c1a2194cf7ffb043bd852cea63a57f66fbd33959f7dae18517bf", size = 43307, upload-time = "2026-01-26T02:44:16.852Z" },
     { url = "https://files.pythonhosted.org/packages/81/08/7036c080d7117f28a4af526d794aab6a84463126db031b007717c1a6676e/multidict-6.7.1-py3-none-any.whl", hash = "sha256:55d97cc6dae627efa6a6e548885712d4864b81110ac76fa4e534c03819fa4a56", size = 12319, upload-time = "2026-01-26T02:46:44.004Z" },
+]
+
+[[package]]
+name = "multimatch-gaze"
+version = "0.1.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "pandas", version = "3.0.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c5/55/fdf40cefa30eef07fc75c4ac813f6470b7243301b1dba08db858d6f88da0/multimatch_gaze-0.1.3.tar.gz", hash = "sha256:8f52ae79ad30d181939645ae14dbfdb1aeaf6742dda99b089b3653a5513dfd00", size = 25401, upload-time = "2020-12-26T11:27:41.776Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/65/38/d215f614eef5ef234472dc8bbbe5a83effcb2f19590bff6f05954ab5a223/multimatch_gaze-0.1.3-py3-none-any.whl", hash = "sha256:c1937fecb2969d1de8a5181011b17c6b9512749e71bea8a052fee344ce8e3f4d", size = 42434, upload-time = "2020-12-26T11:27:38.306Z" },
 ]
 
 [[package]]

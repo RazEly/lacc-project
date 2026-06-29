@@ -39,7 +39,14 @@ from transformers import (
     TrainingArguments,
 )
 
-from src.config import CHECKPOINTS_DIR, DEFAULT_MODEL, DOMAIN_BIO_DIR, DOMAIN_PHY_DIR
+from src.config import (
+    CHECKPOINTS_DIR,
+    DEFAULT_MODEL,
+    DOMAIN_BIO_DIR,
+    DOMAIN_PHY_DIR,
+    GENERAL_HF_CONFIG,
+    GENERAL_HF_REPO,
+)
 from src.features.surprisal import compute_surprisal, load_causal_lm
 
 DOMAIN_DIRS = {"physics": DOMAIN_PHY_DIR, "biology": DOMAIN_BIO_DIR}
@@ -154,17 +161,19 @@ def count_domain_tokens(
 
 
 class _CheckpointSchedule(TrainerCallback):
-    """Save ``n_checkpoints`` models evenly spaced by training step.
+    """Save model checkpoints by training step (NOT by epoch).
 
-    The schedule spans the whole run: ``n_checkpoints`` global steps evenly
-    spaced from 0 to ``max_steps``. With ``include_baseline`` the first
-    checkpoint (step 0) is the un-fine-tuned model, so the manifest carries a
-    baseline anchor and the remaining ones march up to the final epoch. Saving by
-    step (not epoch) allows several checkpoints inside a single epoch.
+    Default: ``n_checkpoints`` global steps evenly spaced from 0 to ``max_steps``.
+    If ``checkpoint_steps`` is given, save at exactly those steps instead — e.g.
+    Škrjanec et al. (PoTeC reader-experience) save at 4ⁿ steps
+    ``[4, 16, 64, 256, 1024, 4096, 16384]``. With ``include_baseline`` the step-0
+    un-fine-tuned model is checkpoint index 0; the listed steps then get indices
+    1, 2, … in order.
     """
 
     def __init__(self, trainer, out_dir, n_checkpoints, words_per_epoch,
-                 tokens_per_step, manifest, include_baseline=True):
+                 tokens_per_step, manifest, include_baseline=True,
+                 checkpoint_steps=None):
         self.trainer = trainer
         self.out_dir = Path(out_dir)
         self.n_checkpoints = n_checkpoints
@@ -172,24 +181,33 @@ class _CheckpointSchedule(TrainerCallback):
         self.tokens_per_step = tokens_per_step
         self.manifest = manifest
         self.include_baseline = include_baseline
+        self.checkpoint_steps = checkpoint_steps
         self._targets: dict[int, int] = {}  # global_step -> checkpoint index
 
     def on_train_begin(self, args, state, control, **kwargs):
-        # Evenly space the checkpoints across the whole run. include_baseline puts
-        # the first at step 0; otherwise the first lands after the first chunk.
-        lo = 0 if self.include_baseline else 1
-        steps = {
-            round(i / (self.n_checkpoints - 1) * state.max_steps): i
-            for i in range(lo, self.n_checkpoints)
-        }
-        self._targets = steps
-        wanted = self.n_checkpoints - lo
-        if len(steps) < wanted:
-            print(
-                f"  [warn] {wanted} checkpoints requested but only {len(steps)} "
-                f"distinct steps fit in max_steps={state.max_steps}; some collided "
-                "and were dropped (raise max_steps / lower n_checkpoints)."
-            )
+        if self.checkpoint_steps is not None:
+            # Explicit step targets (e.g. the paper's 4ⁿ schedule); baseline is
+            # index 0, the listed steps are indices 1.. in order. Steps past
+            # max_steps are clamped onto the final step.
+            steps = {min(int(s), state.max_steps): i
+                     for i, s in enumerate(self.checkpoint_steps, start=1)}
+            self._targets = steps
+        else:
+            # Evenly space the checkpoints across the whole run. include_baseline
+            # puts the first at step 0; otherwise the first lands after one chunk.
+            lo = 0 if self.include_baseline else 1
+            steps = {
+                round(i / (self.n_checkpoints - 1) * state.max_steps): i
+                for i in range(lo, self.n_checkpoints)
+            }
+            self._targets = steps
+            wanted = self.n_checkpoints - lo
+            if len(steps) < wanted:
+                print(
+                    f"  [warn] {wanted} checkpoints requested but only {len(steps)} "
+                    f"distinct steps fit in max_steps={state.max_steps}; some "
+                    "collided (raise max_steps / lower n_checkpoints)."
+                )
         if self.include_baseline:
             self._save(state, 0)  # baseline: weights still un-fine-tuned
 
@@ -277,6 +295,8 @@ def finetune_dapt(
     domain: str,
     base_model: str = DEFAULT_MODEL,
     max_tokens: int | None = None,
+    max_steps: int | None = None,
+    checkpoint_steps=None,
     n_checkpoints: int = 10,
     include_baseline: bool = True,
     block_size: int = 512,
@@ -315,9 +335,12 @@ def finetune_dapt(
     ``max_tokens=None`` defaults to a single pass over the domain's own training
     tokens (per-domain, hence *not* equalised across domains).
 
-    Saves ``n_checkpoints`` models evenly spaced by training step across the whole
-    run. With ``include_baseline`` the first checkpoint is the un-fine-tuned model
-    (step 0). ``max_docs`` truncates the corpus (smoke testing).
+    ``max_steps`` overrides the token budget to train for a fixed step count.
+    Checkpoints are saved by step, NOT by epoch: ``n_checkpoints`` evenly spaced by
+    default, or — when ``checkpoint_steps`` is given — at exactly those steps (e.g.
+    Škrjanec et al.'s 4ⁿ schedule ``[4, 16, 64, 256, 1024, 4096, 16384]``). With
+    ``include_baseline`` the first checkpoint is the un-fine-tuned model (step 0).
+    ``max_docs`` truncates the corpus (smoke testing).
 
     Resumable: each run writes its manifest + a signature of every arg that affects
     the result to ``out_dir``. A later call with the same signature whose checkpoints
@@ -338,8 +361,15 @@ def finetune_dapt(
     # Resume: if this exact run already produced checkpoints, reload its manifest
     # and skip training. The signature pins every arg that changes the result, so a
     # different budget/schedule/LoRA config retrains rather than reusing stale weights.
+    # max_steps / checkpoint_steps enter the signature ONLY when set, so existing
+    # cached runs (which predate these args) keep matching and are still reused.
+    _sched = {}
+    if max_steps is not None:
+        _sched["max_steps"] = max_steps
+    if checkpoint_steps is not None:
+        _sched["checkpoint_steps"] = list(checkpoint_steps)
     signature = _run_signature(
-        base_model=base_model, domain=domain, max_tokens=max_tokens,
+        base_model=base_model, domain=domain, max_tokens=max_tokens, **_sched,
         n_checkpoints=n_checkpoints, include_baseline=include_baseline,
         block_size=block_size, batch_size=batch_size, grad_accum=grad_accum,
         val_frac=val_frac, learning_rate=learning_rate, warmup_ratio=warmup_ratio,
@@ -352,6 +382,17 @@ def finetune_dapt(
         print(f"  [{domain}] reusing {len(cached)} saved checkpoints in {out_dir} "
               "(skipping training)")
         return cached
+
+    # Local cache missed: try the Hub before paying for a GPU run. A matching
+    # remote run is downloaded into out_dir and reused under the same signature
+    # gate; a miss (disabled / no repo / config drift) falls through to training.
+    from src.modeling import hub
+
+    remote = hub.try_download_run(out_dir, signature)
+    if remote is not None:
+        print(f"  [{domain}] reusing {len(remote)} checkpoints pulled from the Hub "
+              "(skipping training)")
+        return remote
 
     tokenizer = AutoTokenizer.from_pretrained(base_model)
     if tokenizer.pad_token is None:
@@ -389,13 +430,15 @@ def finetune_dapt(
         domain, tokenizer, block_size, val_frac, seed, max_docs, is_mlm
     )
 
-    # Token budget -> optimiser steps. One step trains on tokens_per_step real
-    # tokens (blocks are packed to exactly block_size, no padding). Default budget
-    # is one full pass over this domain's train blocks.
+    # Optimiser steps. One step trains on tokens_per_step real tokens (blocks are
+    # packed to exactly block_size, no padding). ``max_steps`` overrides the token
+    # budget directly (e.g. the paper's fixed 16,384-step schedule); otherwise it
+    # is derived from ``max_tokens`` (default: one pass over the train blocks).
     tokens_per_step = block_size * batch_size * grad_accum
     available_tokens = len(split["train"]) * block_size
-    budget = max_tokens if max_tokens is not None else available_tokens
-    max_steps = max(1, math.ceil(budget / tokens_per_step))
+    if max_steps is None:
+        budget = max_tokens if max_tokens is not None else available_tokens
+        max_steps = max(1, math.ceil(budget / tokens_per_step))
 
     # Batch sizes (config.DAPT_BATCH_SIZE) target ~16 GB VRAM; for 124M-param
     # GPT-2 VRAM is slack, so optimise for throughput. bf16 where the GPU supports
@@ -439,6 +482,7 @@ def finetune_dapt(
         _CheckpointSchedule(
             trainer, out_dir, n_checkpoints, words_per_epoch, tokens_per_step,
             manifest, include_baseline=include_baseline,
+            checkpoint_steps=checkpoint_steps,
         )
     )
     trainer.add_callback(_StepProgress(domain))
@@ -450,7 +494,132 @@ def finetune_dapt(
     # of retraining (see _load_cached_manifest).
     df.to_csv(out_dir / "manifest.csv", index=False)
     (out_dir / "run_signature.json").write_text(json.dumps(signature))
+    # Mirror the finished run to the Hub so future runs (this disk or another)
+    # download instead of retraining. Best effort — never fails the run.
+    hub.upload_run(out_dir)
     return df
+
+
+# ── cross-domain perplexity (lite pipeline) ──────────────────────────────────
+# How DAPT for one field shifts the model's fit on the OTHER field and on plain
+# general text: score the baseline and both DAPT models on the SAME held-out
+# general / physics / biology validation blocks.
+
+EVAL_GENERAL_DOCS = 400  # streamed German-Wikipedia docs for the general val set
+EVAL_MAX_BLOCKS = 200    # cap packed eval blocks per domain (keep the run light)
+
+
+def _general_eval_corpus(max_docs: int = EVAL_GENERAL_DOCS):
+    """A small German-Wikipedia slice as the general-domain eval corpus.
+
+    Streamed so nothing downloads beyond the first ``max_docs`` articles, then
+    materialised into an in-memory ``text`` dataset that packs exactly like the
+    domain corpora. This is the out-of-domain reference for cross-domain ppl.
+    """
+    import itertools
+
+    from datasets import Dataset, load_dataset
+
+    stream = load_dataset(
+        GENERAL_HF_REPO, GENERAL_HF_CONFIG, split="train", streaming=True
+    )
+    docs = [d["text"] for d in itertools.islice(stream, max_docs)]
+    return Dataset.from_dict({"text": docs})
+
+
+def build_eval_sets(
+    base_model: str = DEFAULT_MODEL,
+    block_size: int = 512,
+    val_frac: float = 0.05,
+    seed: int = 0,
+    general_docs: int = EVAL_GENERAL_DOCS,
+    max_blocks: int = EVAL_MAX_BLOCKS,
+) -> tuple:
+    """Packed validation blocks for general/physics/biology under one tokenizer.
+
+    Physics and biology reuse each domain's *held-out* training split (same
+    ``val_frac``/``seed`` as ``finetune_dapt``), so the eval text never overlaps
+    that domain's DAPT data; general is a German-Wikipedia slice. All three are
+    tokenized once with the base model's tokenizer — every checkpoint shares that
+    tokenizer, so the identical blocks score all models (the apples-to-apples
+    requirement for cross-domain perplexity). Returns ``(tokenizer, {domain: blocks})``.
+    """
+    tokenizer = AutoTokenizer.from_pretrained(base_model)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token or tokenizer.sep_token
+
+    sets = {}
+    for domain in ("physics", "biology"):
+        split, _ = _prepare_splits(
+            domain, tokenizer, block_size, val_frac, seed, None, False
+        )
+        sets[domain] = split["test"]
+    sets["general"] = _tokenize_and_chunk(
+        _general_eval_corpus(general_docs), tokenizer, block_size
+    )
+    if max_blocks:
+        sets = {d: b.select(range(min(max_blocks, len(b)))) for d, b in sets.items()}
+    return tokenizer, sets
+
+
+@torch.no_grad()
+def _perplexity(model, blocks, batch_size: int = 8) -> float:
+    """Token-weighted causal-LM perplexity of ``model`` over packed ``blocks``.
+
+    Sums next-token cross-entropy over all blocks and exponentiates the per-token
+    mean, so blocks contribute in proportion to their token count. Logits are
+    upcast to fp32 before the loss (fp16 inference weights are numerically fine
+    for the forward, not for the reduction).
+    """
+    import torch.nn.functional as F
+
+    device = model.device
+    ids_all = blocks["input_ids"]
+    total_loss, total_tok = 0.0, 0
+    for i in range(0, len(ids_all), batch_size):
+        ids = torch.tensor(ids_all[i : i + batch_size], device=device)
+        logits = model(ids).logits.float()
+        shift_logits = logits[:, :-1, :].reshape(-1, logits.size(-1))
+        shift_labels = ids[:, 1:].reshape(-1)
+        loss = F.cross_entropy(shift_logits, shift_labels, reduction="sum")
+        total_loss += loss.item()
+        total_tok += shift_labels.numel()
+    return math.exp(total_loss / total_tok)
+
+
+def cross_domain_perplexity(
+    phys_manifest: pd.DataFrame,
+    bio_manifest: pd.DataFrame,
+    base_model: str = DEFAULT_MODEL,
+    **eval_kw,
+) -> pd.DataFrame:
+    """Perplexity of baseline / physics-DAPT / biology-DAPT on all three domains.
+
+    The baseline is each run's step-0 checkpoint (the un-fine-tuned model, but
+    saved with the grown embeddings so it loads identically to the adapted
+    checkpoints); physics/biology are the final checkpoint of their run. Every
+    model is scored on the *same* general/physics/biology validation blocks
+    (``build_eval_sets``), so the table reads off how DAPT for physics moves the
+    fit on biology and general text. Returns rows ``model``, ``eval_domain``,
+    ``perplexity``.
+    """
+    baseline = phys_manifest.loc[phys_manifest["index"].idxmin(), "checkpoint"]
+    physics = phys_manifest.loc[phys_manifest["index"].idxmax(), "checkpoint"]
+    biology = bio_manifest.loc[bio_manifest["index"].idxmax(), "checkpoint"]
+    models = {"baseline": baseline, "physics-DAPT": physics, "biology-DAPT": biology}
+
+    _tok, sets = build_eval_sets(base_model=base_model, **eval_kw)
+    rows = []
+    for label, ckpt in models.items():
+        model, _ = load_causal_lm(ckpt)
+        for domain, blocks in sets.items():
+            ppl = _perplexity(model, blocks)
+            rows.append({"model": label, "eval_domain": domain, "perplexity": ppl})
+            print(f"  {label:>13s} on {domain:<8s}: ppl={ppl:.2f}")
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    return pd.DataFrame(rows)
 
 
 def recompute_surprisal_over_checkpoints(

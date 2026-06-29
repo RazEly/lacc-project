@@ -6,9 +6,9 @@ model comparison with its significance tests. Prints a summary per step and
 writes every plot to ``figures/``.
 
 The whole workflow (steps 2-6) is run independently for every model in
-``config.MODELS`` — german-gpt2 plus the German-only LLäMmlein 1B and 7B decoders
+``config.MODELS`` — german-gpt2 plus the German-only LLäMmlein 1B decoder
 — each writing its own ``<slug>_*`` figures and ``results_<slug>.csv``. A final
-cross-model block compares the three on one axes (surprisal-RT correlation,
+cross-model block compares them on one axes (surprisal-RT correlation,
 regression slope, attention-vs-gaze layer curve, reader-aligned ΔLL).
 
 Runs all steps end to end (step 4 DAPT included; GPU recommended). Weights are
@@ -37,8 +37,8 @@ from src.analysis import viz
 
 MEASURE = "TFT"  # total fixation time == TRT
 # DAPT fine-tuning method (step 4). LoRA by default — cheap enough to adapt every
-# model, including the 7B Llama. Flip to False here for full fine-tuning (applies
-# to german-gpt2 and all LLäMmlein models alike).
+# model. Flip to False here for full fine-tuning (applies to german-gpt2 and the
+# LLäMmlein 1B alike).
 FINETUNE_LORA = True
 # DAPT learning rate by method. LoRA needs ~10x the full-FT LR — its adapters are
 # zero-initialised and only a few rank-r params train, so the full-FT LR barely

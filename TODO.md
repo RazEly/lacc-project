@@ -18,3 +18,5 @@ Model structure also undecided: random intercepts only vs. random slopes for sur
 - DAPT
 - LORA
 -
+
+- calculate perplexity on physics texts, biology texts, general texts (show the effects of fine-tuning on all domains)

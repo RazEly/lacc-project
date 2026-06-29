@@ -20,6 +20,28 @@ from src.config import ET_MEASURE_MAP, PCA_MEASURES
 
 WORD_KEY = ["text_id", "word_index_in_text"]
 
+# STTS (Stuttgart-Tübingen-Tagset) tags counted as FUNCTION words: determiners,
+# adpositions, conjunctions, pronouns, particles, and auxiliary/modal verbs.
+# Everything else (NN/NE nouns, ADJ*, ADV, full verbs VV*, FM, CARD, ITJ, XY) is
+# treated as a CONTENT word. Used for the function/content predictor in the
+# attention-vs-gaze regression (Mouratidi & Poesio's "functional category").
+_STTS_FUNCTION_TAGS = frozenset({
+    "ART", "APPR", "APPRART", "APPO", "APZR",
+    "KON", "KOUS", "KOUI", "KOKOM",
+    "PPER", "PPOSAT", "PPOSS", "PRELS", "PRELAT", "PDS", "PDAT",
+    "PIS", "PIAT", "PWS", "PWAT", "PWAV", "PROAV", "PAV",
+    "PTKZU", "PTKNEG", "PTKVZ", "PTKANT", "PTKA",
+    "VAFIN", "VAIMP", "VAINF", "VAPP", "VMFIN", "VMINF", "VMPP",
+})
+
+
+def function_word_flag(pos: pd.Series) -> pd.Series:
+    """1 if the STTS PoS tag is a function word, else 0 (content word).
+
+    NaN/unknown tags fall through to 0 (content), the conservative default.
+    """
+    return pos.isin(_STTS_FUNCTION_TAGS).astype(int)
+
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 def _word_positions(word_ids, n_words):
@@ -38,20 +60,33 @@ def _normalize(scores):
 
 
 @torch.no_grad()
-def _forward_attentions(word_list, model, tokenizer):
-    """Return (attentions [L, seq, seq] head-averaged, word_ids)."""
+def _forward_attentions(word_list, model, tokenizer, prefix=None):
+    """Return (attentions [L, seq, seq] head-averaged, word_ids).
+
+    ``prefix`` optionally prepends an instruction string before the sentence
+    (Mouratidi & Poesio prepend task instructions). The prefix tokens carry
+    ``word_id=None`` so they never receive a word score, but they remain in the
+    sequence as query/key positions, so each sentence word's received attention
+    is averaged over all other tokens *including* the instruction words.
+    """
     enc = tokenizer(word_list, is_split_into_words=True, return_tensors="pt")
+    input_ids = enc.input_ids
+    word_ids = list(enc.word_ids(0))
+    if prefix:
+        pre = tokenizer(prefix, return_tensors="pt", add_special_tokens=False).input_ids
+        input_ids = torch.cat([pre, input_ids], dim=1)
+        word_ids = [None] * pre.shape[1] + word_ids
     device = next(model.parameters()).device
-    out = model(enc.input_ids.to(device), output_attentions=True)
+    out = model(input_ids.to(device), output_attentions=True)
     # each layer: [1, heads, seq, seq] -> head-average -> [seq, seq]
     atts = torch.stack([a[0].mean(0) for a in out.attentions]).cpu().numpy()
-    return atts, enc.word_ids(0)
+    return atts, word_ids
 
 
 # ── raw attention ────────────────────────────────────────────────────────────
-def raw_attention(word_list, model, tokenizer) -> np.ndarray:
+def raw_attention(word_list, model, tokenizer, prefix=None) -> np.ndarray:
     """Raw attention received per word per layer. -> [n_words, n_layers]."""
-    atts, word_ids = _forward_attentions(word_list, model, tokenizer)
+    atts, word_ids = _forward_attentions(word_list, model, tokenizer, prefix=prefix)
     n_layers, seq, _ = atts.shape
     n_words = len(word_list)
     positions = _word_positions(word_ids, n_words)
@@ -73,12 +108,14 @@ def extract_attention(
     model,
     tokenizer,
     method: str = "raw",
+    prefix=None,
 ) -> pd.DataFrame:
     """Run raw attention over every sentence; long-form output.
 
     Returns columns ``text_id``, ``word_index_in_text``, ``layer``,
     ``attention``, ``attention_method``. First/last words of each sentence are
-    dropped to match the surprisal / reading-time cleaning.
+    dropped to match the surprisal / reading-time cleaning. ``prefix`` optionally
+    prepends an instruction string to every sentence (see ``raw_attention``).
     """
     sents = [
         sent
@@ -89,7 +126,9 @@ def extract_attention(
     ]
 
     scores_list = [
-        raw_attention(s["word"].fillna("").astype(str).tolist(), model, tokenizer)
+        raw_attention(
+            s["word"].fillna("").astype(str).tolist(), model, tokenizer, prefix=prefix
+        )
         for s in sents
     ]
 
@@ -110,45 +149,60 @@ def extract_attention(
 
 
 # ── eye-tracking features + PCA ──────────────────────────────────────────────
-def eyetracking_features(rm: pd.DataFrame) -> pd.DataFrame:
-    """Per-word mean of each eye-tracking measure across participants.
+def eyetracking_features(rm: pd.DataFrame, relative: bool = True) -> pd.DataFrame:
+    """Per-word eye-tracking measures, normalized to their within-sentence share.
 
-    Skips (measure == 0) are excluded from the mean. Returns one row per word
-    with the six PoTeC-mapped measures plus ``text_domain`` and
-    ``sent_index_in_text`` for within-sentence normalization.
+    Each measure is averaged across participants (skips of measure == 0 excluded),
+    then — when ``relative`` (the default and the ONLY paper-correct setting) —
+    divided by its sentence total so every word carries its *relative value within
+    the sentence*. This is Mouratidi & Poesio (2025) §3.1 ("normalized to their
+    relative value in each sentence"), and it MUST match the sum-normalization of
+    the attention scores (``_normalize``).
+
+    DO NOT remove this normalization or replace it with a within-sentence z-score:
+    the attention-vs-gaze Spearman correlation collapses from ~+0.7 to ~0/negative
+    when the gaze side is left raw or is mean-centred per sentence, because the
+    sentence-relative magnitude is exactly the signal attention tracks. See
+    ``pca_eyetracking`` and the diagnostics in ``scripts/diag_attention_drivers.py``.
+
+    Returns one row per word with the six PoTeC-mapped measures (as shares) plus
+    ``text_domain`` and ``sent_index_in_text``.
     """
     measures = list(dict.fromkeys(ET_MEASURE_MAP.values()))
-    parts = []
     meta = rm[WORD_KEY + ["text_domain", "sent_index_in_text"]].drop_duplicates(
         WORD_KEY
     )
+    out = meta
     for m in measures:
         col = rm[rm[m] > 0].groupby(WORD_KEY)[m].mean().rename(m).reset_index()
-        parts.append(col)
-    out = meta
-    for col in parts:
         out = out.merge(col, on=WORD_KEY, how="left")
+    if relative:
+        sums = out.groupby(["text_id", "sent_index_in_text"])[measures].transform("sum")
+        out[measures] = out[measures].div(sums)
     return out
-
-
-def _zscore_within_sentence(df, cols):
-    g = df.groupby(["text_id", "sent_index_in_text"])
-    return (df[cols] - g[cols].transform("mean")) / g[cols].transform("std")
 
 
 def pca_eyetracking(et_df: pd.DataFrame, domain: str):
     """Fit a 1-component PCA on the 4 informative measures for one domain.
 
-    Measures are z-scored within sentence first (per plan / Mouratidi & Poesio
-    2025). Returns ``(scored_df, explained_variance_ratio)`` where ``scored_df``
-    has ``text_id``, ``word_index_in_text`` and ``pca`` (the component score).
+    ``et_df`` already carries the measures as within-sentence *relative shares*
+    (``eyetracking_features``), so PCA runs on those shares — only globally
+    standardized for numerical scale, NEVER re-centred within sentence (that would
+    undo the relative-value normalization and collapse the gaze signal; see
+    ``eyetracking_features``). The component is sign-oriented so higher = more
+    reading (positive against the TFT share). Returns ``(scored_df,
+    explained_variance_ratio)`` with ``text_id``, ``word_index_in_text``, ``pca``.
     """
     sub = et_df[et_df["text_domain"] == domain].copy()
-    z = _zscore_within_sentence(sub, PCA_MEASURES)
-    mask = z.notna().all(axis=1)
-    z = z[mask]
+    X = sub[PCA_MEASURES]
+    mask = X.notna().all(axis=1)
+    X = X[mask]
+    Xs = (X - X.mean()) / X.std(ddof=0)  # global standardization only
     pca = PCA(n_components=1)
-    comp = pca.fit_transform(z.values).ravel()
+    comp = pca.fit_transform(Xs.values).ravel()
+    tft = ET_MEASURE_MAP["TRT"]  # "TFT" share — orient the component positively
+    if np.corrcoef(comp, X[tft].values)[0, 1] < 0:
+        comp = -comp
     scored = sub.loc[mask, WORD_KEY].copy()
     scored["pca"] = comp
     return scored, float(pca.explained_variance_ratio_[0])
