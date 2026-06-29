@@ -32,3 +32,7 @@ artifacts/*
 *.swp
 .idea/
 .vscode/
+
+# secrets
+scripts/token.txt
+.env
