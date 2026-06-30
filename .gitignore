@@ -36,3 +36,4 @@ artifacts/*
 # secrets
 scripts/token.txt
 .env
+vm.sh
