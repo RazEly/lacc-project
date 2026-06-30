@@ -55,17 +55,27 @@ _MIN_READER_WORDS = 30
 
 # ── building blocks ──────────────────────────────────────────────────────────
 def reader_table(rm: pd.DataFrame) -> pd.DataFrame:
-    """One row per reader: discipline group + background-knowledge score ``bg``.
+    """One row per reader: discipline group + the two checkpoint-depth scores.
 
-    ``bg`` aggregates the per-text background-question accuracy ``mean_acc_bq``
-    (``bg_p = mean_t bg(p,t)``); ``group`` is the reader's discipline name. Using
-    the per-text score (not the discipline split) is what keeps the calibrator
-    independent of the discipline confound (plan §6.2).
+    Two reader scores can drive each reader's checkpoint depth (both monotone, both
+    domain-matched — the LM is always routed to the reader's own discipline):
+
+    - ``bg`` — "how good a <discipline> they are": the mean background-question
+      accuracy ``mean_acc_bq`` over the reader's *own-discipline* texts only
+      (``text_domain == reader_discipline``), ignoring off-domain quiz scores. A
+      better physicist (higher physics ``bg``) gets a more fine-tuned physics LM.
+    - ``seniority`` — time spent in studies: ``level_of_studies_numeric``
+      (0=undergrad/beginner, 1=graduate/expert), constant per reader. Undergrads
+      get the less-trained checkpoints, graduates the more-trained ones.
+
+    ``group`` is the reader's discipline name.
     """
+    in_disc = rm[rm["text_domain_numeric"] == rm["reader_discipline_numeric"]]
     g = rm.groupby("reader_id")
     out = pd.DataFrame(
         {
-            "bg": g["mean_acc_bq"].mean(),
+            "bg": in_disc.groupby("reader_id")["mean_acc_bq"].mean(),
+            "seniority": g["level_of_studies_numeric"].first(),
             "comp": g["mean_acc_tq"].mean(),
             "discipline_numeric": g["reader_discipline_numeric"].first(),
         }
@@ -109,9 +119,15 @@ def _add_covariates(d: pd.DataFrame, measure: str) -> pd.DataFrame:
     return d
 
 
-def _domain_matched(d: pd.DataFrame, phys_col: str, bio_col: str) -> np.ndarray:
-    """Pick the text-domain-matched surprisal: physics LM on physics texts, else bio."""
-    return np.where(d["text_domain_numeric"] == 1, d[phys_col], d[bio_col])
+def _reader_matched(d: pd.DataFrame, phys_col: str, bio_col: str) -> np.ndarray:
+    """Pick the reader-matched surprisal: each reader is scored by their own
+    discipline's LM on *every* text (physics students -> physics-adapted LM,
+    biology students -> biology-adapted LM), regardless of the text's domain.
+
+    The reader's mean background score (``bg``) still sets the *depth* (checkpoint);
+    this function fixes the *domain* of the LM to the reader, not the text.
+    """
+    return np.where(d["reader_discipline_numeric"] == 1, d[phys_col], d[bio_col])
 
 
 def _reader_delta_ll(g: pd.DataFrame) -> float:
@@ -145,8 +161,8 @@ def per_reader_delta_ll(
 ) -> pd.DataFrame:
     """Per-reader ΔLL at every checkpoint for one reading ``measure``.
 
-    For each checkpoint ``index`` the domain-matched surprisal (physics LM on
-    physics texts, biology LM on biology texts) is joined onto the reader×word
+    For each checkpoint ``index`` the reader-matched surprisal (each reader scored
+    by their own discipline's LM on every text) is joined onto the reader×word
     table and each reader's ΔLL is read off (``_reader_delta_ll``). Returns long
     columns ``reader_id``, ``index``, ``step``, ``delta_ll`` + reader ``group`` /
     ``bg`` (merged from ``reader_tbl``).
@@ -155,7 +171,7 @@ def per_reader_delta_ll(
     for index in sorted(surp_versions["index"].unique()):
         wide = _surp_wide(surp_versions, index)
         d = wide.merge(rm, on=WORD_KEY, how="inner")
-        d["s_dom"] = _domain_matched(d, "s_phys", "s_bio")
+        d["s_dom"] = _reader_matched(d, "s_phys", "s_bio")
         d = _add_covariates(d, measure).dropna(subset=["s_dom"])
         for rid, g in d.groupby("reader_id"):
             rows.append(
@@ -177,20 +193,22 @@ def find_kstar(dll_df: pd.DataFrame) -> pd.DataFrame:
 
 # ── test 1: monotonicity ρ(k*, bg) within group ──────────────────────────────
 def within_group_rho(
-    kstar: pd.DataFrame, value_col: str = "step", n_boot: int = 2000, seed: int = 0
+    kstar: pd.DataFrame, value_col: str = "step", score_col: str = "bg",
+    n_boot: int = 2000, seed: int = 0,
 ) -> pd.DataFrame:
-    """Within-discipline Spearman ``ρ(k*_p, bg_p)`` with a reader-bootstrap 95% CI.
+    """Within-discipline Spearman ``ρ(k*_p, score_p)`` with a reader-bootstrap 95% CI.
 
     Correlating **within** each discipline group controls the discipline confound
-    (plan §8): a positive ρ means higher-knowledge readers peak at a more
-    domain-adapted checkpoint. ``value_col`` is the adaptation amount (``step`` or
-    ``index`` — Spearman is rank-based, so they agree). The CI resamples readers.
+    (plan §8): a positive ρ means higher-score readers peak at a more domain-adapted
+    checkpoint. ``score_col`` is the reader score (``bg`` knowledge or ``seniority``
+    study-level); ``value_col`` is the adaptation amount (``step`` or ``index`` —
+    Spearman is rank-based, so they agree). The CI resamples readers.
     """
     rng = np.random.default_rng(seed)
     rows = []
     for grp, g in kstar.groupby("group"):
         x = g[value_col].to_numpy(dtype=float)
-        y = g["bg"].to_numpy(dtype=float)
+        y = g[score_col].to_numpy(dtype=float)
         rho, p = spearmanr(x, y)
         boot = []
         if len(g) >= 3:
@@ -262,17 +280,18 @@ def _fit_map(bg_train, k_train, available, kind: str):
 
 def titrated_oof_index(
     kstar: pd.DataFrame, available_indices, kind: str = "tercile",
-    n_folds: int = 5, seed: int = 0,
+    score_col: str = "bg", n_folds: int = 5, seed: int = 0,
 ) -> dict[int, int]:
-    """Out-of-fold knowledge-titrated checkpoint index per reader (nested CV).
+    """Out-of-fold titrated checkpoint index per reader (nested CV).
 
-    The ``bg → k`` map is fit on training readers and applied to held-out readers,
-    so a reader's titrated checkpoint never depends on its own ``k*`` (plan §7,
-    leakage control). Returns ``{reader_id: index}``. ``kind`` selects the map
-    family (``tercile`` or ``isotonic``).
+    The ``score → k`` map (``score_col`` = ``bg`` knowledge or ``seniority`` study
+    level) is fit on training readers and applied to held-out readers, so a
+    reader's titrated checkpoint never depends on its own ``k*`` (plan §7, leakage
+    control). Returns ``{reader_id: index}``. ``kind`` selects the map family
+    (``tercile`` or ``isotonic``).
     """
     ks = kstar.dropna(subset=["index"]).reset_index(drop=True)
-    bg = ks["bg"].to_numpy(dtype=float)
+    bg = ks[score_col].to_numpy(dtype=float)
     k = ks["index"].to_numpy(dtype=float)
     rid = ks["reader_id"].to_numpy()
     out: dict[int, int] = {}
@@ -297,11 +316,12 @@ def build_headtohead(
 ) -> pd.DataFrame:
     """Reader×word frame carrying the three competing surprisal columns.
 
-    ``S_titrated`` = domain-matched surprisal at each reader's own OOF-titrated
-    checkpoint; ``S_pop`` = domain-matched surprisal at the single population
-    checkpoint; ``S_binary`` = the paper's reader-aligned model (discipline
-    routing: physicists get physics-LM surprisal, biologists biology-LM) at its
-    own optimal checkpoint. All on the same rows, with covariates + log-RT.
+    All three channels are reader-matched (each reader scored by their own
+    discipline's LM on every text); they differ only in *which checkpoint* that LM
+    is read at. ``S_titrated`` = reader's own OOF bg-titrated checkpoint; ``S_pop``
+    = the single population checkpoint; ``S_binary`` = the aligned-optimal
+    checkpoint (the paper's reader-aligned model, now a depth-only baseline since
+    the routing is shared). All on the same rows, with covariates + log-RT.
     """
     d = _add_covariates(rm.copy(), measure)
 
@@ -309,14 +329,13 @@ def build_headtohead(
         columns={"s_phys": "pop_phys", "s_bio": "pop_bio"}
     )
     d = d.merge(pop, on=WORD_KEY, how="inner")
-    d["S_pop"] = _domain_matched(d, "pop_phys", "pop_bio")
+    d["S_pop"] = _reader_matched(d, "pop_phys", "pop_bio")
 
     ali = _surp_wide(surp_versions, aligned_index).rename(
         columns={"s_phys": "ali_phys", "s_bio": "ali_bio"}
     )
     d = d.merge(ali, on=WORD_KEY, how="inner")
-    physicist = (d["reader_discipline_numeric"] == 1).to_numpy(dtype=float)
-    d["S_binary"] = physicist * d["ali_phys"] + (1.0 - physicist) * d["ali_bio"]
+    d["S_binary"] = _reader_matched(d, "ali_phys", "ali_bio")
 
     d["_oof"] = d["reader_id"].map(oof_index)
     parts = []
@@ -325,7 +344,7 @@ def build_headtohead(
             columns={"s_phys": "tit_phys", "s_bio": "tit_bio"}
         )
         gg = gd.merge(w, on=WORD_KEY, how="left")
-        gg["S_titrated"] = _domain_matched(gg, "tit_phys", "tit_bio")
+        gg["S_titrated"] = _reader_matched(gg, "tit_phys", "tit_bio")
         parts.append(gg)
     d = pd.concat(parts, ignore_index=True)
     return d.dropna(subset=["S_pop", "S_binary", "S_titrated"])
