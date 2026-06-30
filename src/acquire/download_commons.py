@@ -1,10 +1,7 @@
 """Fetch the german-commons scientific corpus.
 
-Downloads the ``Scientific`` subset of ``coral-nlp/german-commons`` from the
-Hugging Face Hub. The hub config returns one split per source (arxiv, doab,
-openalex, ...); we concatenate them into a single flat dataset and
-``save_to_disk`` so ``domain_preprocessing`` can read it with
-``load_from_disk`` as one table.
+Downloads ``coral-nlp/german-commons`` [scientific], flattens its per-source
+splits into one dataset, and ``save_to_disk`` for ``domain_preprocessing``.
 
     python -m src.acquire.download_commons
 """

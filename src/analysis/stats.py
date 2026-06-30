@@ -1,26 +1,12 @@
-"""Statistical significance tests for the four-model surprisal comparison.
+"""Significance tests for the surprisal-model comparison.
 
-``model_comparison.model_comparison_over_epochs`` ranks the four surprisal models
-(baseline / physics / biology / reader-aligned) by ΔLL, but ΔLL alone carries no
-standard error: a larger ΔLL is *descriptively* better, not *significantly*
-better. This module tests whether the reader-aligned model fits gaze
-significantly better than each single model.
-
-The models are NON-nested (aligned is not a special case of physics or biology),
-so a likelihood-ratio test does not apply. We use the **Vuong (1989) test** for
-non-nested models, clustered by reader.
-
-Clustering: a random-intercept ``mixedlm`` log-likelihood factorises over the
-reader groups, so each reader's marginal multivariate-normal log-likelihood is an
-independent contribution. Those per-reader contributions are the i.i.d. units of
-the Vuong test — this is exactly the cluster-robust variance the naive
-per-observation test would miss (the same dependence that drives the
-``p_surprisal`` p-values to underflow). All four models add exactly one surprisal
-slope (same parameter count), so the Vuong complexity correction cancels and the
-raw log-likelihood-ratio form is used. The three aligned-vs-single comparisons
-are Benjamini-Hochberg corrected.
-
-A positive z means the aligned model wins; the p-value is two-sided.
+ΔLL ranks the models but carries no standard error. The models are non-nested
+(no LR test), so we use the Vuong (1989) test, clustered by reader: a
+random-intercept ``mixedlm`` log-likelihood factorises over readers, so each
+reader's marginal log-likelihood is one i.i.d. Vuong unit (the cluster-robust
+variance the per-observation test misses). All models add one surprisal slope, so
+the complexity correction cancels. Comparisons are Benjamini-Hochberg corrected;
+positive z = aligned wins, p two-sided.
 """
 from __future__ import annotations
 
@@ -51,9 +37,8 @@ def bh_correct(pvalues, alpha=0.05):
 def _per_reader_loglik(result) -> tuple[np.ndarray, np.ndarray]:
     """Marginal log-likelihood of each reader group under a fitted MixedLM.
 
-    For a random-intercept model the marginal distribution of a reader's
-    responses is ``N(Xβ, Z·cov_re·Zᵀ + scale·I)``. Returns ``(group_ids,
-    loglik)`` aligned so the same reader sits at the same position for any model.
+    Random-intercept marginal per reader: ``N(Xβ, Z·cov_re·Zᵀ + scale·I)``.
+    Returns ``(group_ids, loglik)``.
     """
     model = result.model
     y = np.asarray(model.endog, dtype=float)
@@ -107,14 +92,10 @@ def aligned_vs_single_models(
     index=None,
     spec: str = "covariates",
 ) -> pd.DataFrame:
-    """Test reader-aligned surprisal against baseline/physics/biology/prompted.
+    """Vuong-test reader-aligned surprisal against every other model.
 
-    Fits all five mixed models at one checkpoint (default: the checkpoint where
-    the aligned model has the largest ΔLL) under fixed-effects ``spec`` and runs a
-    reader-clustered Vuong test of ``aligned`` against each other model. The
-    p-values are Benjamini-Hochberg corrected. ``prompt_surp`` carries the
-    prompted-baseline surprisal columns. Returns one row per comparison with the
-    z-statistic, raw and adjusted p-value, and the winner.
+    Fits at one checkpoint (default: aligned's best-ΔLL checkpoint) under ``spec``,
+    BH-corrects across comparisons. One row per comparison: z, raw + adjusted p, winner.
     """
     if index is None:
         index = _best_aligned_index(surp_versions, rt_df, prompt_surp, measure, spec)

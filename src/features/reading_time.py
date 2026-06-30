@@ -1,13 +1,7 @@
 """Clean and aggregate PoTeC reading times (step 1).
 
-Cleaning follows the plan:
-  1. drop sentence-initial and sentence-final words (no left/right context);
-  2. drop skipped words (reading time == 0);
-  3. Smith & Levy (2013) outlier filtering — IQR rule on the reading-time
-     distribution, applied per word so word-specific spread is respected.
-
-Aggregation produces per-word mean / std / median reading times for several
-reader groups (everyone, domain-experts only, and each expertise level).
+Cleaning: drop sentence-edge words (no left/right context), skips (RT == 0), and
+Smith & Levy (2013) IQR outliers (per-word fence).
 """
 from __future__ import annotations
 
@@ -15,7 +9,6 @@ import pandas as pd
 
 from src.config import WORD_KEY
 
-# Human-readable labels for level_of_studies_numeric.
 LEVEL_LABELS = {0: "undergraduate", 1: "graduate"}
 
 
@@ -28,23 +21,18 @@ def clean_reading_times(
 ) -> pd.DataFrame:
     """Return ``rm`` with sentence-edge words, skips, and IQR outliers removed.
 
-    Parameters
-    ----------
-    measure   : reading-time column to clean against (e.g. "TFT", "FPRT").
-    iqr_k     : whisker length for the IQR rule (1.5 = Tukey fence).
-    by        : grouping for the IQR fence; per-word by default.
-    min_count : groups with fewer non-skipped observations are left unfiltered
-                (too few points to estimate a sensible fence).
+    ``iqr_k`` = Tukey fence whisker length; ``by`` = IQR grouping (per-word);
+    ``min_count`` = groups below this many points skip the fence (too few to estimate).
     """
     df = rm
 
-    # 1. sentence-initial / sentence-final words.
+    # sentence-initial / sentence-final words
     df = df[(df["is_sent_beginning"] != 1) & (df["is_sent_end"] != 1)]
 
-    # 2. skipped words: reading time 0 (equivalently Fix == 0).
+    # skipped words (RT 0, equivalently Fix == 0)
     df = df[df[measure] > 0]
 
-    # 3. Smith & Levy (2013) IQR fence, per group.
+    # Smith & Levy (2013) IQR fence, per group
     grp = df.groupby(list(by))[measure]
     q1 = grp.transform("quantile", 0.25)
     q3 = grp.transform("quantile", 0.75)
@@ -68,16 +56,10 @@ def _agg(rm: pd.DataFrame, measure: str) -> pd.DataFrame:
 
 
 def aggregate_rt(rm: pd.DataFrame, measure: str = "TFT") -> dict[str, pd.DataFrame]:
-    """Aggregate cleaned reading times into per-word tables for reader groups.
+    """Per-word reading-time tables keyed by reader group.
 
-    Returns a dict of DataFrames keyed by group name:
-      - ``"all"``        : every reader (baseline);
-      - ``"experts"``    : domain experts only
-                           (``is_expert == 1``, i.e. reader major == text domain);
-      - ``"experts_<level>"`` : experts split by expertise level
-                           (undergraduate / graduate).
-    Each table has columns ``text_id``, ``word_index_in_text``,
-    ``mean_<m>``, ``std_<m>``, ``median_<m>``, ``n``.
+    Groups: ``all``, ``experts`` (is_expert == 1), ``experts_<level>`` (by study
+    level). Each table: WORD_KEY + ``mean_<m>`` / ``std_<m>`` / ``median_<m>`` / ``n``.
     """
     groups: dict[str, pd.DataFrame] = {"all": _agg(rm, measure)}
 

@@ -53,12 +53,9 @@ def download_data(extract: bool, output_folder: str, download_asc: bool, downloa
             continue
 
         pbar.set_description(f'Downloading {"and extracting " if extract else ""}{data}')
-        # Downloading the file by sending the request to the URL
         url = base_url + resource
-
         req = requests.get(url, stream=True)
 
-        # create new paths for the downloaded files
         filename = f'{data}.zip'
         path = folder / filename
         extract_path = folder / data
@@ -71,7 +68,6 @@ def download_data(extract: bool, output_folder: str, download_asc: bool, downloa
             print(f'\nPath for {data} already exists. Not downloaded to {extract_path}')
             continue
 
-        # Writing the file to the local file system
         with open(path, 'wb') as output_file:
             for chunk in req.iter_content(chunk_size=128):
                 output_file.write(chunk)

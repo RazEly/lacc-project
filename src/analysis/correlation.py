@@ -1,11 +1,8 @@
-"""Correlation and regression of model scores against reading times (step 5).
+"""Correlation and regression of surprisal against reading times (step 5).
 
-All functions take the per-reader cleaned reading measures so that the
-``participants`` (experts / novices / all) and ``mode`` (mean / median) options
-can be applied before aggregating to one value per word.
-
-The four-model mixed-effects surprisal comparison lives in
-``model_comparison.py``; the significance tests on top of it in ``stats.py``.
+Functions take per-reader cleaned reading measures so ``participants`` and
+``mode`` filters apply before aggregating to one value per word. The mixed-effects
+model comparison is in ``model_comparison.py``; its tests in ``stats.py``.
 """
 
 from __future__ import annotations
@@ -24,11 +21,7 @@ def _filter_domain(df, domain):
 
 
 def _filter_participants(df, participants):
-    """Split readers by ``is_expert`` (reader major == text domain).
-
-    See ``data.add_expertise``: experts are readers whose discipline matches the
-    text's domain, novices the rest. Requires the ``is_expert`` column.
-    """
+    """Keep experts / novices by ``is_expert`` (see data.add_expertise)."""
     if participants == "all":
         return df
     flag = 1 if participants == "experts" else 0
@@ -67,11 +60,10 @@ def correlate_surprisal(
     participants="all",
     measure="TFT",
 ) -> dict:
-    """Pearson and Spearman correlation between surprisal and reading time.
+    """Pearson + Spearman of surprisal vs reading time.
 
-    Filters by text ``domain``, reader ``participants`` group, and (optionally)
-    ``domain_only`` technical-term words, then aggregates reading time per word
-    with ``mode`` ('mean'/'median') before correlating.
+    Filters by ``domain`` / ``participants`` / ``domain_only`` (technical terms),
+    then aggregates RT per word with ``mode`` before correlating.
     """
     df = _filter_domain(merged, domain)
     df = _filter_participants(df, participants)
@@ -116,16 +108,12 @@ def correlation_over_epochs(
     measure="TFT",
     groups=("experts", "novices"),
 ) -> pd.DataFrame:
-    """Surprisal-RT correlation at each fine-tuning checkpoint, per reader group.
+    """Surprisal-RT correlation per fine-tuning checkpoint × reader group.
 
-    ``surp_versions`` is the output of
-    ``finetune.recompute_surprisal_over_checkpoints`` (per-word surprisal tagged
-    with ``epoch`` and the fine-tuning ``domain``). A domain-adapted model is
-    only a meaningful predictor on texts of its own domain, so each checkpoint's
-    surprisal is correlated **only against texts whose domain matches the model's
-    fine-tuning domain** (physics model -> physics texts, biology -> biology).
-    Returns long-form columns ``epoch``, ``domain``, ``group``, ``pearson``,
-    ``spearman``, ``n``.
+    ``surp_versions`` from ``finetune.recompute_surprisal_over_checkpoints``. Each
+    checkpoint is correlated only against texts of its own fine-tuning domain
+    (physics model -> physics texts). Long-form columns: ``epoch``, ``domain``,
+    ``group``, ``pearson``, ``spearman``, ``n``.
     """
     rows = []
     for (epoch, model_domain), sv in surp_versions.groupby(["epoch", "domain"]):

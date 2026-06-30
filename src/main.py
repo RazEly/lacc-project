@@ -1,19 +1,10 @@
 """Driver for the PoTeC decoder-LM pipeline (steps 1-6).
 
-Reading-time cleaning, causal-LM surprisal, the surprisal vs reading-time
-analysis, DAPT fine-tuning, and the reader-aligned model comparison with its
-significance tests. Prints a summary per step and writes every plot to
-``figures/``.
-
-The whole workflow (steps 2-6) is run independently for every model in
-``config.MODELS`` — german-gpt2 plus the German-only LLäMmlein 1B decoder
-— each writing its own ``<slug>_*`` figures and ``results_<slug>.csv``. A final
-cross-model block compares them on one axes (surprisal-RT correlation,
-regression slope, reader-aligned ΔLL).
-
-Runs all steps end to end (step 4 DAPT included; GPU recommended). Weights are
-pulled from the Hub on first use — nothing is pre-downloaded here.
-Run from the project root:
+Reading-time cleaning, surprisal, the surprisal-vs-RT analysis, DAPT fine-tuning,
+and the reader-aligned model comparison. Steps 2-6 run per model in
+``config.MODELS`` (``<slug>_*`` figures + ``results_<slug>.csv``), then a
+cross-model block compares them. Weights pull from the Hub on first use; step 4
+DAPT runs end to end (GPU recommended). Run from the project root:
 
     python -m src.main
 """
@@ -36,12 +27,8 @@ from src.features import surprisal as su
 from src.analysis import viz
 
 MEASURE = "TFT"  # total fixation time == TRT
-# DAPT (step 4) is LoRA-only. LoRA needs ~10x a full-FT LR — its adapters are
-# zero-initialised and only a few rank-r params train, so a low LR barely moves them.
-DAPT_LR = 2e-4
-# DAPT checkpoint schedule, matching Škrjanec et al. (papers/07): train ≤16,384
-# steps and save checkpoints at 4ⁿ steps for n∈{1..7}. include_baseline still
-# prepends the un-fine-tuned model as checkpoint index 0.
+DAPT_LR = 2e-4  # LoRA needs a high LR (zero-init, few rank-r params)
+# Škrjanec et al. (papers/07) schedule: ≤16,384 steps, checkpoints at 4ⁿ steps.
 DAPT_MAX_STEPS = 16_384
 DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4096, 16384]
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -72,9 +59,8 @@ def run_model(slug: str, name: str, words, rm) -> dict:
     surp = su.compute_surprisal(words, model, tok)  # prompt=None
     print(surp.head().to_string())
 
-    # prompted-baseline surprisal: the un-adapted model with a discipline-matched
-    # system prompt prepended (the prompting analogue of fine-tuning). One column
-    # per discipline; the comparison mixes them by reader discipline (S_prompted).
+    # prompted-baseline surprisal: un-adapted model + discipline-matched prompt
+    # (prompting analogue of fine-tuning), one column per discipline.
     s_pp = su.compute_surprisal(
         words, model, tok, prompt=config.GRAD_STUDENT_PROMPTS["physics"]
     ).rename(columns={"surprisal": "s_prompt_phys"})
@@ -83,10 +69,8 @@ def run_model(slug: str, name: str, words, rm) -> dict:
     ).rename(columns={"surprisal": "s_prompt_bio"})
     prompt_surp = s_pp.merge(s_pb, on=["text_id", "word_index_in_text"])
 
-    # field × level prompted baseline: same un-adapted model, but the prompt
-    # matches BOTH discipline AND study level (undergrad/grad). One column per
-    # (level, discipline) cell; the comparison mixes by reader discipline AND
-    # level (S_prompted_level). Column suffix: ug = undergraduate, grad = graduate.
+    # field × level prompted baseline: prompt matches discipline AND study level,
+    # one column per (level, discipline) cell (ug = undergrad, grad = graduate).
     _fl_cols = {
         (0, 1): "s_prompt_phys_ug",
         (1, 1): "s_prompt_phys_grad",
@@ -135,12 +119,8 @@ def run_model(slug: str, name: str, words, rm) -> dict:
     print("Step 4 — DAPT fine-tuning")
     from src.modeling import finetune as ft
 
-    # Fine-tune both domains — the model comparison needs physics- and
-    # biology-adapted surprisal (plus the shared step-0 baseline). Budget by a fixed
-    # step count, not tokens: Škrjanec et al. (papers/07) train ≤16,384 steps and
-    # checkpoint at 4ⁿ steps (n∈{1..7}). Matching that schedule here makes the
-    # checkpoint indices line up with the paper. Both domains share the schedule, so
-    # they see the same step at the same checkpoint index.
+    # Fine-tune both domains (the comparison needs both + the shared baseline) on
+    # the same fixed-step schedule, so checkpoint indices line up across domains.
     batch_size = config.DAPT_BATCH_SIZE.get(slug, 8)
     grad_accum = config.DAPT_GRAD_ACCUM.get(slug, 1)
     manifest = pd.concat(
@@ -168,11 +148,7 @@ def run_model(slug: str, name: str, words, rm) -> dict:
     viz.finetune_correlation_curve(curve, metric="pearson", ax=ax)
     save_fig(ax, f"{slug}_finetune_correlation_curve")
 
-    # Five-model surprisal comparison on the whole corpus (all readers × words):
-    # does reader-aligned surprisal (physics LM for physicists, biology LM for
-    # biologists) fit better than any single model? Repeated under each
-    # fixed-effects spec (covariates / expertise-only / full), since the right
-    # control structure is itself an open question.
+    # Surprisal-model comparison, repeated under each fixed-effects spec.
     cmps = []
     for spec in mc.MODEL_SPECS:
         print(f"Step 5 — model comparison (spec={spec})")
@@ -191,8 +167,7 @@ def run_model(slug: str, name: str, words, rm) -> dict:
     cmp_all.insert(0, "model_lm", slug)
     cmp_all.to_csv(PROJECT_ROOT / f"results_{slug}.csv", index=False)
 
-    # Cross-model summary: all-readers, both-domains surprisal-RT correlation,
-    # the regression slope, and the strongest reader-aligned ΔLL (covariates spec).
+    # Cross-model summary row: all-readers correlation, slope, best aligned ΔLL.
     base = corr_df[(corr_df["group"] == "all") & (~corr_df["domain_only"])].iloc[0]
     aligned_cov = cmp_all[(cmp_all["spec"] == "covariates") & (cmp_all["model"] == "aligned")]
     return {
@@ -236,7 +211,7 @@ def main() -> None:
     print("\n=== cross-model summary ===")
     print(summary_df.to_string(index=False))
 
-    # ── Cross-model figures (all three on one axes) ──────────────────────────
+    # ── Cross-model figures ──────────────────────────────────────────────────
     print("Cross-model figures")
     fig, ax = plt.subplots()
     viz.across_models_correlation_bars(summary_df, ax=ax)

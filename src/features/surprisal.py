@@ -1,12 +1,8 @@
 """Model surprisal from a decoder-only causal LM (step 2).
 
-Word-level surprisal = sum of token surprisals (-log2 p(token | left context))
-over the sub-tokens of a word. Sub-token -> word alignment uses the tokenizer's
-``word_ids``. The loader stays model-agnostic within the decoder family, so the
-default HF model or a fine-tuned local checkpoint can be plugged in.
-
-An optional ``prompt`` prepends domain-matched context (a system prompt) before
-the sentence; only the sentence words receive surprisal scores.
+Word surprisal = sum of sub-token surprisals (-log2 p(token | left context)),
+aligned via the tokenizer's ``word_ids``. An optional ``prompt`` prepends
+domain-matched context; only sentence words get scored.
 """
 
 from __future__ import annotations
@@ -22,9 +18,8 @@ from src.config import DEFAULT_MODEL, WORD_KEY
 
 
 def _load_tokenizer(name_or_path: str):
-    # add_prefix_space is a BPE concern (german-gpt2): it makes the first word
-    # tokenize like a mid-sentence word. Llama/SentencePiece tokenizers add the
-    # leading space themselves and may reject the kwarg, so fall back without it.
+    # add_prefix_space (BPE/german-gpt2): first word tokenizes like a mid-sentence
+    # word. SentencePiece (Llama) adds it itself and may reject the kwarg.
     try:
         return AutoTokenizer.from_pretrained(name_or_path, add_prefix_space=True)
     except (TypeError, ValueError):
@@ -39,16 +34,13 @@ def load_causal_lm(name_or_path: str = DEFAULT_MODEL):
     its base model so callers get a plain merged model either way.
     """
     kwargs = {}
-    # fp16 weights on the GPU: halves VRAM (12 GB box) and speeds the forward.
-    # Inference only — log_softmax upcasts via .float(), so this is numerically
-    # safe. Training stays fp32 (Trainer adds its own mixed precision).
+    # fp16 on GPU: halves VRAM, inference-safe (log_softmax upcasts via .float()).
     if torch.cuda.is_available():
         kwargs["torch_dtype"] = torch.float16
 
     if (Path(name_or_path) / "adapter_config.json").is_file():
-        # LoRA checkpoint: load the base model named in the adapter config, match
-        # its training-time embedding size, then attach + merge the adapter so the
-        # forward pass needs no PEFT machinery.
+        # LoRA checkpoint: load the adapter's base model, match embedding size,
+        # then merge the adapter so the forward needs no PEFT machinery.
         from peft import PeftConfig, PeftModel
 
         base = PeftConfig.from_pretrained(name_or_path).base_model_name_or_path
@@ -61,9 +53,7 @@ def load_causal_lm(name_or_path: str = DEFAULT_MODEL):
         tokenizer = _load_tokenizer(name_or_path)
         model = AutoModelForCausalLM.from_pretrained(name_or_path, **kwargs)
     model.eval()
-    # Use the GPU when present: the per-sentence forward passes dominate runtime,
-    # and from_pretrained leaves the model on CPU otherwise. sentence_surprisal
-    # moves its inputs to the model device, so this is the single placement point.
+    # from_pretrained leaves the model on CPU; move to GPU once here.
     if torch.cuda.is_available():
         model.to("cuda")
     return model, tokenizer
@@ -121,11 +111,9 @@ def compute_surprisal(
 ) -> pd.DataFrame:
     """Per-word surprisal for every PoTeC sentence.
 
-    Sentences are reconstructed from ``words_df`` (one row per word, ordered by
-    ``word_index_in_sent``). The first and last word of each sentence are dropped
-    (no usable left context / sentence-final punctuation effects), matching the
-    reading-time cleaning. ``prompt`` may be None, a string, or a
-    ``{text_domain: str}`` dict for domain-matched prompting.
+    Sentences are rebuilt from ``words_df`` (ordered by ``word_index_in_sent``);
+    sentence-edge words are dropped to match the reading-time cleaning. ``prompt``
+    may be None, a string, or a ``{text_domain: str}`` dict.
 
     Returns columns: ``text_id``, ``word_index_in_text``, ``surprisal``.
     """

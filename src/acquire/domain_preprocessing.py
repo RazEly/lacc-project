@@ -32,19 +32,15 @@ TEXT_CHARS  = 1024
 BATCH_SIZE  = 128   # tune to VRAM
 TFIDF_THRESHOLD = 0.05
 
-# Cache of the final physics/biology document ids (``config.LABEL_IDS_PATH``).
-# When present, the labelling (TF-IDF + NLI) is skipped and the datasets are
-# rebuilt straight from these ids.
+# When LABEL_IDS_PATH exists, labelling is skipped and datasets rebuilt from it.
 
 NLI_LABELS = {
     "physics": "Dieser Text handelt von Physik.",
     "biology": "Dieser Text handelt von Biologie.",
 }
 
-# TF-IDF seeds: keyword bags, not prose.
-# Prose seeds (including POTEC texts) share too many char n-grams with any
-# German text, compressing similarities into a narrow band and destroying
-# discriminative power. Pure domain-term bags avoid function words entirely.
+# TF-IDF seeds: keyword bags, not prose — prose shares too many char n-grams with
+# any German text, collapsing the similarity spread. Domain-term bags avoid that.
 PHYSICS_SEED = """
 Physik Quantenmechanik Thermodynamik Elektrodynamik Elektrochemie
 Relativitätstheorie Optik Kernphysik Teilchenphysik Feldtheorie
@@ -82,9 +78,7 @@ def load_commons():
     return ds
 
 
-# ── C: calibrate NLI threshold on POTEC texts ────────────────────────────────
-# Run NLI on all 12 labeled POTEC texts to find the score threshold that
-# correctly separates physics from biology before applying it to the corpus.
+# Calibrate the NLI threshold on the 12 gold POTEC texts before applying to corpus.
 def calibrate_nli_threshold(potec_dir, classifier):
     records = []
     for f in sorted(glob.glob(os.path.join(potec_dir, "stimuli/word_features/word_features_*.tsv"))):
@@ -242,7 +236,7 @@ def main():
     physics_ds = ds.filter(lambda x: x["domain_label"] == "physics")
     biology_ds = ds.filter(lambda x: x["domain_label"] == "biology")
 
-    print(f"\nFinal results (pass 1 ∩ pass 2):")
+    print("\nFinal results (pass 1 ∩ pass 2):")
     print(f"  physics : {len(physics_ds):,}  ({sum(r['num_tokens'] for r in physics_ds):,} tokens)")
     print(f"  biology : {len(biology_ds):,}  ({sum(r['num_tokens'] for r in biology_ds):,} tokens)")
     print(f"  rejected by NLI: {len(candidates_idx) - len(physics_ds) - len(biology_ds):,}")

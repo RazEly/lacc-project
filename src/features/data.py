@@ -1,10 +1,7 @@
 """Load PoTeC word features and reading measures into tidy DataFrames.
 
-The ``reading_measures_merged`` files already carry the full word-feature block
-*and* the reader metadata, so for reading-time work a single read per
-reader×text file is enough — no separate join to ``word_features`` is needed.
-
-Run-only helpers; import from notebooks or other ``src`` modules.
+``reading_measures_merged`` files already carry word features + reader metadata,
+so reading-time work needs one read per reader×text — no join to ``word_features``.
 """
 
 from __future__ import annotations
@@ -19,9 +16,8 @@ from src.config import (
     POTEC_WORD_FEATURES_DIR,
 )
 
-# pandas turns these into NaN by default. PoTeC contains the German word "null"
-# (text p3) which must stay a string, so we disable the defaults and supply the
-# list explicitly (minus "null").
+# pandas' default NA set minus "null" — PoTeC's German word "null" (p3) must stay
+# a string, so keep_default_na=False + this explicit list.
 _NA_VALUES = [
     "#N/A",
     "#N/A N/A",
@@ -110,13 +106,11 @@ def load_word_features(cols=WORD_COLS) -> pd.DataFrame:
 
 
 def add_expertise(rm: pd.DataFrame) -> pd.DataFrame:
-    """Add ``is_expert`` = reader's major matches the text domain.
+    """Add ``is_expert`` = reader_discipline == text_domain (any study level).
 
-    PoTeC reader-experience labelling (Škrjanec & Demberg 2026): a reader is an
-    expert on a word iff ``reader_discipline == text_domain`` (physics student on
-    a physics text, biology student on a biology text), independent of study
-    level. The dataset's ``expert_reading_label_numeric`` additionally requires
-    graduate status, which conflates expertise with seniority — so we recompute.
+    Škrjanec & Demberg 2026's definition. The dataset's
+    ``expert_reading_label_numeric`` also requires graduate status (conflates
+    expertise with seniority), so we recompute.
     """
     rm = rm.copy()
     rm["is_expert"] = (
@@ -126,11 +120,10 @@ def add_expertise(rm: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_reading_measures(cols=READING_COLS) -> pd.DataFrame:
-    """Concatenate every merged reading-measure file (~900) into one DataFrame.
+    """Concatenate the ~900 merged reading-measure files into one DataFrame.
 
-    Each row is one word for one reader; carries word features and reader
-    metadata (incl. the recomputed ``is_expert`` flag). Keyed by
-    (``reader_id``, ``text_id``, ``word_index_in_text``).
+    One row per word per reader (+ word features, reader metadata, ``is_expert``).
+    Keyed by (``reader_id``, ``text_id``, ``word_index_in_text``).
     """
     rm = _load_concat(POTEC_READING_MEASURES_DIR, "reader*_merged.tsv", cols)
     return add_expertise(rm)

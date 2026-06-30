@@ -1,9 +1,7 @@
 """Download the PoTeC eye-tracking recordings from OSF.
 
-Assumes the PoTeC GitHub repo has already been cloned into ``data/potec`` (done
-by ``init.sh``); the clone alone provides the stimuli / ``word_features`` TSVs
-that ``domain_preprocessing`` needs. This script adds the large eye-tracking
-data on top.
+Assumes the PoTeC repo is already cloned into ``data/potec`` (init.sh); that
+provides the stimuli / ``word_features`` TSVs. This adds the eye-tracking data.
 
     python -m src.acquire.download_potec
 """
@@ -15,8 +13,7 @@ from src.acquire.download_data_files import download_data
 
 def download_eyetracking() -> None:
     print(f"Downloading PoTeC eye-tracking data -> {POTEC_EYETRACKING_DIR} ...")
-    # Defaults mirror the upstream script: merged reading measures + scanpaths,
-    # fixations and raw data.
+    # merged reading measures + scanpaths, fixations, raw data (upstream defaults).
     download_data(
         extract=True,
         output_folder=str(POTEC_EYETRACKING_DIR),

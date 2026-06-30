@@ -1,21 +1,11 @@
 """Domain-adaptive continued pre-training (DAPT) of a causal LM (step 4).
 
-Continues causal next-token pre-training (Gururangan et al. 2020) of a baseline
-German decoder LM on the domain-labelled ``german-commons`` splits
-(``data/domain_phy`` / ``data/domain_bio``), which are disjoint from the PoTeC
-stimuli used for the reading-time analysis — so there is no leakage.
-
-Physics and biology are fine-tuned independently, on a shared *token* budget
-rather than a shared epoch count: training runs for a fixed number of training
-tokens (``max_tokens``), not a fixed number of passes. Because the two domain
-corpora differ in size, equal epochs would mean unequal token exposure; equal
-``max_tokens`` (with identical batch/block/grad-accum, so identical tokens per
-step) makes both domains see the *same* number of tokens at the same checkpoint
-index.
-
-The run saves ``n_checkpoints`` models evenly spaced by training step (including
-a step-0 baseline), recording validation perplexity + cumulative tokens
-processed at each, giving a fine-tuning progress curve.
+Continued next-token pre-training (Gururangan et al. 2020) of a German decoder LM
+on the ``german-commons`` domain splits (``data/domain_phy`` / ``data/domain_bio``),
+disjoint from the PoTeC stimuli (no leakage). Physics and biology train
+independently on a shared *token* budget (``max_tokens``), so both see the same
+tokens at the same checkpoint index despite different corpus sizes. Saves
+checkpoints by training step with validation perplexity, for a progress curve.
 """
 
 from __future__ import annotations
@@ -51,11 +41,9 @@ DOMAIN_DIRS = {"physics": DOMAIN_PHY_DIR, "biology": DOMAIN_BIO_DIR}
 def _lora_targets(model, override):
     """Per-architecture LoRA target + embedding modules for DAPT.
 
-    Domain-adaptive pre-training shifts vocabulary and feed-forward knowledge, so
-    LoRA targets the MLP as well as attention (PEFT's default is attention-only,
-    too thin for domain adaptation). The embedding modules are returned separately
-    so the caller can ``modules_to_save`` them when the embeddings were grown.
-    ``override`` short-circuits the target choice (embeddings still per-arch).
+    Targets MLP as well as attention (PEFT's attention-only default is too thin for
+    domain adaptation). Embeddings returned separately for ``modules_to_save`` when
+    grown. ``override`` short-circuits the targets (embeddings stay per-arch).
     """
     mt = model.config.model_type
     if mt == "gpt2":
@@ -73,10 +61,8 @@ def _lora_targets(model, override):
 def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text"):
     """Tokenize a text dataset and pack into fixed-size causal-LM blocks.
 
-    A separator token is appended to every document before packing so concatenated
-    blocks carry a boundary between documents (GPT-2's tokenizer adds none on its
-    own), preventing the model from training across unrelated documents as if they
-    were continuous text. ``labels`` are the shifted inputs (causal next-token).
+    A separator token is appended per document before packing so blocks carry a
+    document boundary (GPT-2's tokenizer adds none). ``labels`` = inputs.
     """
     sep_id = tokenizer.eos_token_id or tokenizer.sep_token_id
 
@@ -108,13 +94,11 @@ def _prepare_splits(domain, tokenizer, block_size, val_frac, seed, max_docs):
     if max_docs:
         raw = raw.select(range(min(max_docs, len(raw))))
 
-    # Split at the document level *before* packing so no document contributes
-    # blocks to both train and validation (block-level splitting leaks adjacent
-    # text and makes eval perplexity optimistic).
+    # Split at document level before packing (block-level split leaks adjacent
+    # text into val and inflates eval perplexity).
     raw_split = raw.train_test_split(test_size=val_frac, seed=seed)
 
-    # Legacy words-seen x-axis: words the model actually trains on -> count the
-    # train docs only (the held-out val fraction is never seen).
+    # Legacy words-seen x-axis: train docs only.
     words_per_epoch = sum(len(str(t).split()) for t in raw_split["train"]["text"])
 
     split = {
@@ -125,14 +109,11 @@ def _prepare_splits(domain, tokenizer, block_size, val_frac, seed, max_docs):
 
 
 class _CheckpointSchedule(TrainerCallback):
-    """Save model checkpoints by training step (NOT by epoch).
+    """Save checkpoints by training step.
 
-    Default: ``n_checkpoints`` global steps evenly spaced from 0 to ``max_steps``.
-    If ``checkpoint_steps`` is given, save at exactly those steps instead — e.g.
-    Škrjanec et al. (PoTeC reader-experience) save at 4ⁿ steps
-    ``[4, 16, 64, 256, 1024, 4096, 16384]``. With ``include_baseline`` the step-0
-    un-fine-tuned model is checkpoint index 0; the listed steps then get indices
-    1, 2, … in order.
+    Default: ``n_checkpoints`` evenly spaced over ``max_steps``. ``checkpoint_steps``
+    saves at exactly those steps (e.g. Škrjanec et al.'s 4ⁿ schedule).
+    ``include_baseline`` makes the step-0 model index 0; listed steps follow as 1, 2, …
     """
 
     def __init__(self, trainer, out_dir, n_checkpoints, words_per_epoch,
@@ -150,15 +131,12 @@ class _CheckpointSchedule(TrainerCallback):
 
     def on_train_begin(self, args, state, control, **kwargs):
         if self.checkpoint_steps is not None:
-            # Explicit step targets (e.g. the paper's 4ⁿ schedule); baseline is
-            # index 0, the listed steps are indices 1.. in order. Steps past
-            # max_steps are clamped onto the final step.
+            # explicit step targets (indices 1..), clamped onto the final step.
             steps = {min(int(s), state.max_steps): i
                      for i, s in enumerate(self.checkpoint_steps, start=1)}
             self._targets = steps
         else:
-            # Evenly space the checkpoints across the whole run. include_baseline
-            # puts the first at step 0; otherwise the first lands after one chunk.
+            # evenly spaced; include_baseline puts the first at step 0.
             lo = 0 if self.include_baseline else 1
             steps = {
                 round(i / (self.n_checkpoints - 1) * state.max_steps): i
@@ -185,9 +163,7 @@ class _CheckpointSchedule(TrainerCallback):
         self.trainer.save_model(str(ckpt))
         metrics = self.trainer.evaluate()
         ppl = math.exp(metrics["eval_loss"])
-        # tokens_seen is the cross-domain-comparable x-axis: with identical tokens
-        # per step it depends only on global_step, so the same checkpoint index
-        # carries the same tokens_seen in both domains. words_seen is kept (legacy).
+        # tokens_seen: cross-domain-comparable x-axis (depends only on global_step).
         tokens_seen = state.global_step * self.tokens_per_step
         words_seen = round(state.epoch * self.words_per_epoch)
         self.manifest.append(
@@ -225,24 +201,17 @@ class _StepProgress(TrainerCallback):
 
 
 def _run_signature(**kwargs) -> dict:
-    """Serialise the args that determine a DAPT run's checkpoints.
+    """Serialise the args that determine a run's checkpoints (the cache key).
 
-    Any change to one of these (budget, schedule, optimiser, LoRA config, …) makes
-    the saved checkpoints stale, so a cached run is only reused when its stored
-    signature matches the current call exactly. Lists are JSON-normalised to tuples
-    so ``lora_target_modules`` compares by value.
+    A cached run is reused only when its stored signature matches exactly. Lists
+    are JSON-normalised so ``lora_target_modules`` compares by value.
     """
     return {k: (list(v) if isinstance(v, (list, tuple)) else v)
             for k, v in sorted(kwargs.items())}
 
 
 def _load_cached_manifest(out_dir: Path, signature: dict) -> pd.DataFrame | None:
-    """Return the saved manifest iff it matches ``signature`` and is complete.
-
-    A run is reusable only when (1) the signature sidecar matches the current call
-    and (2) every checkpoint dir the manifest references still exists on disk.
-    Otherwise the cache is ignored and training reruns from scratch.
-    """
+    """Return the saved manifest iff its signature matches and every checkpoint exists."""
     manifest_path = out_dir / "manifest.csv"
     sig_path = out_dir / "run_signature.json"
     if not (manifest_path.exists() and sig_path.exists()):
@@ -279,45 +248,27 @@ def finetune_dapt(
 ) -> pd.DataFrame:
     """DAPT-fine-tune ``base_model`` on one domain; return a checkpoint manifest.
 
-    Continued causal (next-token) pre-training with LoRA adapters (PEFT) — the
-    only fine-tuning method. Checkpoints store the adapter only;
-    ``surprisal.load_causal_lm`` reattaches it to the base model. ``target_modules``
-    defaults (``None``) to a per-architecture attention+MLP set via ``_lora_targets``
-    (GPT-2 ``c_attn``/``c_fc``/``c_proj``; Llama q/k/v/o + gate/up/down), so DAPT
-    adapts feed-forward knowledge, not just attention, for every model.
+    LoRA continued causal pre-training (the only method). Checkpoints store the
+    adapter only; ``surprisal.load_causal_lm`` reattaches it. ``lora_target_modules``
+    defaults per-arch via ``_lora_targets`` (attention + MLP).
 
-    The run is budgeted by training *tokens*, not epochs: it trains for
-    ``max_tokens`` tokens (rounded up to whole optimiser steps), where one step
-    processes ``block_size * batch_size * grad_accum`` tokens. Passing the *same*
-    ``max_tokens`` to two domains makes both see the same number of tokens at the
-    same checkpoint index.
-    ``max_tokens=None`` defaults to a single pass over the domain's own training
-    tokens (per-domain, hence *not* equalised across domains).
-
-    ``max_steps`` overrides the token budget to train for a fixed step count.
-    Checkpoints are saved by step, NOT by epoch: ``n_checkpoints`` evenly spaced by
-    default, or — when ``checkpoint_steps`` is given — at exactly those steps (e.g.
-    Škrjanec et al.'s 4ⁿ schedule ``[4, 16, 64, 256, 1024, 4096, 16384]``). With
-    ``include_baseline`` the first checkpoint is the un-fine-tuned model (step 0).
+    Budgeted by tokens: ``max_tokens`` (one step = block_size·batch_size·grad_accum
+    tokens); the same ``max_tokens`` equalises two domains. ``None`` = one pass.
+    ``max_steps`` overrides with a fixed step count. Checkpoints saved by step
+    (``n_checkpoints`` evenly spaced, or exactly ``checkpoint_steps``).
     ``max_docs`` truncates the corpus (smoke testing).
 
-    Resumable: each run writes its manifest + a signature of every arg that affects
-    the result to ``out_dir``. A later call with the same signature whose checkpoints
-    still exist returns the saved manifest and skips training; changing any such arg
-    retrains (stale checkpoints are not reused). The returned
-    DataFrame has columns ``domain``, ``checkpoint``, ``index``, ``epoch``,
-    ``step``, ``tokens_seen``, ``words_seen``, ``perplexity``.
+    Resumable: a matching cached run (local or Hub) is reused instead of retraining
+    (see ``_run_signature``). Columns: ``domain``, ``checkpoint``, ``index``,
+    ``epoch``, ``step``, ``tokens_seen``, ``words_seen``, ``perplexity``.
     """
     out_dir = Path(
         out_dir or CHECKPOINTS_DIR / f"{Path(base_model).name}_{domain}_lora"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Resume: if this exact run already produced checkpoints, reload its manifest
-    # and skip training. The signature pins every arg that changes the result, so a
-    # different budget/schedule/LoRA config retrains rather than reusing stale weights.
-    # max_steps / checkpoint_steps enter the signature ONLY when set, so existing
-    # cached runs (which predate these args) keep matching and are still reused.
+    # Resume from a matching cached run. max_steps / checkpoint_steps enter the
+    # signature only when set, so older cached runs (predating them) still match.
     _sched = {}
     if max_steps is not None:
         _sched["max_steps"] = max_steps
@@ -331,8 +282,7 @@ def finetune_dapt(
         seed=seed, max_docs=max_docs, lora_r=lora_r,
         lora_alpha=lora_alpha, lora_dropout=lora_dropout,
         lora_target_modules=lora_target_modules,
-        # constants kept in the signature so runs cached under the old
-        # objective/lora-flag args still match (LoRA causal is now the only mode).
+        # kept so runs cached under the old objective/lora-flag args still match.
         objective="causal", lora=True,
     )
     cached = _load_cached_manifest(out_dir, signature)
@@ -341,9 +291,7 @@ def finetune_dapt(
               "(skipping training)")
         return cached
 
-    # Local cache missed: try the Hub before paying for a GPU run. A matching
-    # remote run is downloaded into out_dir and reused under the same signature
-    # gate; a miss (disabled / no repo / config drift) falls through to training.
+    # Local miss: try the Hub before paying for a GPU run.
     from src.modeling import hub
 
     remote = hub.try_download_run(out_dir, signature)
@@ -356,10 +304,8 @@ def finetune_dapt(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token or tokenizer.sep_token
     model = AutoModelForCausalLM.from_pretrained(base_model)
-    # german-gpt2 ships an eos/pad id (50265) one past its embedding rows
-    # (vocab_size 50265); using it as a document separator / pad would index out
-    # of range on the GPU (device-side assert). Grow the embeddings to cover every
-    # tokenizer id; the new rows train during DAPT.
+    # german-gpt2's eos/pad id sits one past its embedding rows; grow embeddings to
+    # cover every tokenizer id (the new rows train during DAPT) to avoid OOB indexing.
     resized = len(tokenizer) > model.config.vocab_size
     if resized:
         model.resize_token_embeddings(len(tokenizer))
@@ -373,9 +319,8 @@ def finetune_dapt(
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         target_modules=targets,  # attn + MLP (None -> PEFT per-arch default)
-        # When embeddings were grown, the new rows are randomly initialised and
-        # LoRA freezes the base — without saving them they would be re-randomised
-        # (differently) at load time. Save the embedding module so they survive.
+        # save grown embeddings: LoRA freezes the base, so the new rows would be
+        # re-randomised at load time otherwise.
         modules_to_save=embed_modules if resized else None,
         bias="none",
     )
@@ -386,20 +331,14 @@ def finetune_dapt(
         domain, tokenizer, block_size, val_frac, seed, max_docs
     )
 
-    # Optimiser steps. One step trains on tokens_per_step real tokens (blocks are
-    # packed to exactly block_size, no padding). ``max_steps`` overrides the token
-    # budget directly (e.g. the paper's fixed 16,384-step schedule); otherwise it
-    # is derived from ``max_tokens`` (default: one pass over the train blocks).
+    # Optimiser steps: from max_steps if set, else derived from the token budget.
     tokens_per_step = block_size * batch_size * grad_accum
     available_tokens = len(split["train"]) * block_size
     if max_steps is None:
         budget = max_tokens if max_tokens is not None else available_tokens
         max_steps = max(1, math.ceil(budget / tokens_per_step))
 
-    # Batch sizes (config.DAPT_BATCH_SIZE) target ~16 GB VRAM; for 124M-param
-    # GPT-2 VRAM is slack, so optimise for throughput. bf16 where the GPU supports
-    # it (Ampere+), else fp16; tf32 matmuls are free on Ampere+. grad_accum lifts
-    # the effective batch without more memory.
+    # bf16 on Ampere+, else fp16; tf32 matmuls free on Ampere+.
     use_cuda = torch.cuda.is_available()
     use_bf16 = use_cuda and torch.cuda.is_bf16_supported()
     args = TrainingArguments(
@@ -408,8 +347,7 @@ def finetune_dapt(
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size * 2,
         gradient_accumulation_steps=grad_accum,
-        # Continued pre-training: low LR + short warmup to avoid an early loss
-        # spike / catastrophic forgetting from the baseline weights.
+        # low LR + short warmup: avoid catastrophic forgetting from the base weights.
         learning_rate=learning_rate,
         warmup_ratio=warmup_ratio,
         seed=seed,
@@ -444,12 +382,10 @@ def finetune_dapt(
 
     df = pd.DataFrame(manifest)
     df.insert(0, "domain", domain)
-    # Persist manifest + signature so a later run reuses these checkpoints instead
-    # of retraining (see _load_cached_manifest).
+    # Persist manifest + signature for reuse (see _load_cached_manifest).
     df.to_csv(out_dir / "manifest.csv", index=False)
     (out_dir / "run_signature.json").write_text(json.dumps(signature))
-    # Mirror the finished run to the Hub so future runs (this disk or another)
-    # download instead of retraining. Best effort — never fails the run.
+    # Mirror to the Hub for future runs. Best effort — never fails the run.
     hub.upload_run(out_dir)
     return df
 
@@ -459,15 +395,11 @@ def recompute_surprisal_over_checkpoints(
 ) -> pd.DataFrame:
     """Recompute step-2 surprisal with each fine-tuned checkpoint.
 
-    Returns the surprisal table for every checkpoint concatenated, tagged with
-    ``checkpoint`` / ``index`` / ``epoch`` / ``domain`` so versions can be
-    compared. ``index`` is the per-domain checkpoint number (0 = baseline) and is
-    the stable key for pairing physics vs biology checkpoints (``epoch`` floats
-    can differ slightly between domains).
+    Concatenated surprisal table tagged with ``checkpoint`` / ``index`` / ``epoch``
+    / ``domain``. ``index`` (0 = baseline) is the stable key for pairing domains.
     """
     frames = []
-    # iterrows (not itertuples): the manifest has a column literally named
-    # "index" which itertuples renames (clashes with tuple.index).
+    # iterrows: the manifest has a column named "index" that itertuples would rename.
     for _, row in manifest.iterrows():
         model, tok = load_causal_lm(row.checkpoint)
         sup = compute_surprisal(words_df, model, tok, prompt=prompt)

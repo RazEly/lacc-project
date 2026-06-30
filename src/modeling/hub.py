@@ -1,28 +1,15 @@
 """Hugging Face Hub mirror for DAPT checkpoint runs.
 
-A "run" is one ``finetune_dapt`` output directory (e.g.
-``artifacts/german-gpt2_physics_lora``): the per-index ``checkpoint_NN/`` dirs
-plus ``manifest.csv`` and ``run_signature.json``. This module mirrors a whole
-run dir to/from one public Hub repo so an expensive GPU run is reused across
-machines, not just re-run-to-run on the same disk.
+Mirrors a whole ``finetune_dapt`` run dir (checkpoint_NN/ + manifest.csv +
+run_signature.json) to/from one public Hub repo, so a GPU run is reused across
+machines. Resolution: local cache -> Hub -> train; a downloaded run passes the
+same signature check as a local one. Best-effort — offline / missing repo returns
+``None`` (download) or skips (upload), never raising.
 
-Resolution order in ``finetune_dapt`` is local cache -> Hub -> train. The Hub is
-only consulted when the local cache misses; a downloaded run is reused under the
-*same* signature check as a local one (``_load_cached_manifest``), so a config
-change still retrains. Everything here degrades gracefully: offline or a missing
-repo returns ``None`` (download) or skips (upload) rather than raising, so the
-pipeline always falls back to plain local training.
-
-The repos live under a FIXED namespace (``HF_NAMESPACE``) — the project owner's
-account — regardless of who runs the code, so anyone always downloads the same
-canonical public checkpoints with zero configuration. Upload, by contrast, needs
-a write token for that namespace, so only the owner pushes. Behaviour is
-token-driven: a write ``HF_TOKEN`` enables download AND upload (push a fresh run);
-no token is download-only (reuse the public runs, never push). Env vars:
-
-* ``HF_TOKEN`` (or ``huggingface-cli login``) — write token for ``HF_NAMESPACE``;
-  presence enables upload. Absent -> download-only.
-* ``HF_AUTO_CHECKPOINTS=0`` — disable both the Hub download and upload.
+Repos live under a fixed namespace (anyone downloads tokenless); upload needs a
+write token, so only the owner pushes. Env vars:
+* ``HF_TOKEN`` — write token; present enables upload, absent = download-only.
+* ``HF_AUTO_CHECKPOINTS=0`` — disable Hub download + upload.
 """
 
 from __future__ import annotations
@@ -33,10 +20,8 @@ from pathlib import Path
 
 import pandas as pd
 
-# Fixed owner of the canonical public checkpoint repos. Hardcoded (not env) so a
-# fresh machine downloads the same weights no matter who runs it; only a token
-# holder for this account can push. Repo ids: <HF_NAMESPACE>/<prefix><run-dir>,
-# e.g. ElyR120/potec-dapt-german-gpt2_physics_lora.
+# Fixed owner of the public checkpoint repos. Repo ids:
+# <HF_NAMESPACE>/<prefix><run-dir>, e.g. ElyR120/potec-dapt-german-gpt2_physics_lora.
 HF_NAMESPACE = "ElyR120"
 REPO_PREFIX = "potec-dapt-"
 
@@ -47,12 +32,7 @@ def _enabled() -> bool:
 
 
 def _api():
-    """``(HfApi, has_token)`` or ``None`` if the Hub is disabled.
-
-    The namespace is always the hardcoded ``HF_NAMESPACE``; ``has_token`` gates
-    upload (write needs a token), while download works tokenless on the public
-    repos — so checkpoints are fetched even with no env vars set at all.
-    """
+    """``(HfApi, has_token)`` or ``None`` if disabled. ``has_token`` gates upload."""
     if not _enabled():
         return None
     try:
@@ -73,11 +53,8 @@ def repo_id_for(out_dir: Path) -> str:
 def try_download_run(out_dir: Path, signature: dict) -> pd.DataFrame | None:
     """Pull a matching run from the Hub into ``out_dir``; return its manifest.
 
-    Returns ``None`` (and downloads nothing kept) when the Hub is disabled, the
-    repo is absent, or the downloaded run's signature/checkpoints don't match the
-    current call — leaving the caller to train locally. On a match the manifest's
-    checkpoint paths are rewritten to ``out_dir`` and persisted, so the standard
-    local cache check passes on this and every later run.
+    ``None`` when disabled, repo absent, or signature/checkpoints mismatch (caller
+    trains locally). On a match the manifest paths are rewritten to ``out_dir``.
     """
     info = _api()
     if info is None:
@@ -112,8 +89,7 @@ def try_download_run(out_dir: Path, signature: dict) -> pd.DataFrame | None:
         if not manifest_path.exists():
             return None
         df = pd.read_csv(manifest_path)
-        # Stored paths are relative to the producer's cwd; repoint them at the
-        # local out_dir so existence checks + downstream loads resolve here.
+        # repoint stored paths (producer's cwd) at the local out_dir.
         df["checkpoint"] = [str(out_dir / Path(c).name) for c in df["checkpoint"]]
         if not all(Path(c).exists() for c in df["checkpoint"]):
             return None
@@ -128,15 +104,8 @@ def try_download_run(out_dir: Path, signature: dict) -> pd.DataFrame | None:
 def upload_run(out_dir: Path) -> None:
     """Mirror run directory ``out_dir`` to its public Hub repo (best effort).
 
-    Upload needs a write token: with no ``HF_TOKEN`` the pipeline is download-only
-    and this returns quietly. Otherwise creates the repo if needed and uploads the
-    checkpoints + manifest + signature, skipping the transient Trainer ``_hf/``
-    output. A network/permission error prints a hint and returns without raising.
-
-    The upload OVERWRITES the repo to exactly this run: ``delete_patterns`` prunes
-    any remote file not in the new commit (e.g. checkpoints from a prior schedule
-    with more indices), and the additions upsert the rest — both in one atomic
-    commit, so a retrained run fully replaces the previously pushed weights.
+    No-op without a write ``HF_TOKEN``. Overwrites the repo to exactly this run
+    (``delete_patterns`` prunes stale remote files in the same commit).
     """
     info = _api()
     if info is None:
@@ -153,13 +122,8 @@ def upload_run(out_dir: Path) -> None:
             repo_id=repo_id,
             repo_type="model",
             folder_path=str(out_dir),
-            # _hf/ is the live Trainer dir (optimizer state, transient); the run's
-            # reusable artifacts are the checkpoint_NN dirs + manifest + signature.
-            ignore_patterns=["_hf/*", "_hf", "**/__pycache__/*"],
-            # Sync, don't just upsert: delete remote files absent from this run so a
-            # retrain (e.g. a new checkpoint schedule) fully overwrites the repo
-            # instead of leaving stale checkpoints behind. Files also being uploaded
-            # are kept (upsert wins over delete within the same commit).
+            ignore_patterns=["_hf/*", "_hf", "**/__pycache__/*"],  # skip transient Trainer dir
+            # delete remote files absent from this run (upsert wins within the commit).
             delete_patterns=["*"],
         )
         print(f"  [hub] uploaded {out_dir.name} -> {repo_id}")

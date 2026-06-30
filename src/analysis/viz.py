@@ -18,13 +18,10 @@ def surprisal_scatter(agg_df, x="surprisal", y="rt", bins=15, ax=None):
 
 
 def finetune_correlation_curve(curve_df, metric="pearson", ax=None):
-    """Surprisal-RT correlation vs fine-tuning epoch, per reader group × domain.
+    """Surprisal-RT correlation vs fine-tuning epoch, one line per (group, domain).
 
-    ``curve_df`` is the output of ``correlation.correlation_over_epochs``, which
-    holds BOTH fine-tuning domains (physics model on physics texts, biology on
-    biology). Each (group, domain) is its own line — pooling the two domains into
-    one line per group would weave a single series through both runs' checkpoints,
-    whose ``epoch`` floats differ, and conflate physics with biology adaptation.
+    ``curve_df`` from ``correlation.correlation_over_epochs``. Domains stay
+    separate lines (their epoch floats differ; pooling would conflate them).
     """
     ax = ax or plt.gca()
     for (group, domain), g in curve_df.groupby(["group", "domain"]):
@@ -36,13 +33,11 @@ def finetune_correlation_curve(curve_df, metric="pearson", ax=None):
 
 
 def model_comparison_curve(cmp_df, metric="delta_ll", ax=None):
-    """Four-model surprisal fit vs fine-tuning epoch, one line per surprisal model.
+    """Surprisal fit vs fine-tuning epoch, one line per surprisal model.
 
-    ``cmp_df`` is the output of ``model_comparison.model_comparison_over_epochs``: the
-    ``baseline`` / ``physics`` / ``biology`` / ``aligned`` surprisal sources. With
-    ``metric="delta_ll"`` a higher line = that source improves the fit more. If
-    ``aligned`` sits above the three single-model sources, matching the language
-    model to the reader's discipline helps.
+    ``cmp_df`` from ``model_comparison.model_comparison_over_epochs``. With
+    ``delta_ll``, higher = better fit; ``aligned`` above the single models means
+    matching the LM to the reader's discipline helps.
     """
     ax = ax or plt.gca()
     for model, g in cmp_df.groupby("model"):
@@ -69,10 +64,7 @@ def perplexity_curve(manifest_df, ax=None):
 def across_models_correlation_bars(summary_df, metrics=("pearson", "spearman"), ax=None):
     """Grouped bar of the surprisal-vs-RT correlation per model.
 
-    ``summary_df`` has one row per model (column ``model``) plus a column per
-    metric in ``metrics`` — the all-readers, both-domains correlation from
-    ``correlation.correlate_surprisal``. One bar group per model lets the
-    models be read off side by side.
+    ``summary_df``: one row per model + a column per metric in ``metrics``.
     """
     ax = ax or plt.gca()
     models = summary_df["model"].tolist()
