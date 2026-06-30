@@ -1,15 +1,15 @@
 """Driver for the PoTeC decoder-LM pipeline (steps 1-6).
 
-Reading-time cleaning, causal-LM surprisal, raw attention, the
-surprisal/attention vs gaze analysis, DAPT fine-tuning, and the reader-aligned
-model comparison with its significance tests. Prints a summary per step and
-writes every plot to ``figures/``.
+Reading-time cleaning, causal-LM surprisal, the surprisal vs reading-time
+analysis, DAPT fine-tuning, and the reader-aligned model comparison with its
+significance tests. Prints a summary per step and writes every plot to
+``figures/``.
 
 The whole workflow (steps 2-6) is run independently for every model in
 ``config.MODELS`` — german-gpt2 plus the German-only LLäMmlein 1B decoder
 — each writing its own ``<slug>_*`` figures and ``results_<slug>.csv``. A final
 cross-model block compares them on one axes (surprisal-RT correlation,
-regression slope, attention-vs-gaze layer curve, reader-aligned ΔLL).
+regression slope, reader-aligned ΔLL).
 
 Runs all steps end to end (step 4 DAPT included; GPU recommended). Weights are
 pulled from the Hub on first use — nothing is pre-downloaded here.
@@ -62,8 +62,7 @@ def run_model(slug: str, name: str, words, rm) -> dict:
     """Run steps 2-6 for one model; write ``<slug>_*`` figures + csv; return a summary.
 
     The summary row feeds the cross-model comparison: the all-readers surprisal-RT
-    correlation, the regression slope, and the best reader-aligned ΔLL, plus the
-    attention-correlation table for the combined layer curve.
+    correlation, the regression slope, and the best reader-aligned ΔLL.
     """
     print(f"\n=== model: {slug} ({name}) ===")
 

@@ -4,7 +4,6 @@ import pandas as pd
 import pytest
 
 from src.features.data import add_expertise
-from src.features import attention as at
 from src.analysis import correlation as co
 
 
@@ -16,7 +15,7 @@ def rt_df(rm):
 @pytest.fixture
 def surprisal_df(rm):
     """Per-word surprisal for interior words, correlated with word index."""
-    words = rm[at.WORD_KEY].drop_duplicates()
+    words = rm[co.WORD_KEY].drop_duplicates()
     words = words[words["word_index_in_text"].isin([1, 2, 3])].copy()
     words["surprisal"] = words["word_index_in_text"].astype(float) + 1.0
     return words.reset_index(drop=True)
@@ -63,35 +62,6 @@ def test_regress_rt_slope_positive(surprisal_df, rt_df):
     fit = co.regress_rt(merged, measure="TFT")
     assert "surprisal" in fit.params.index
     assert fit.params["surprisal"] > 0  # higher surprisal -> longer RT
-
-
-def test_build_et_table_has_pca_column(rt_df):
-    et = co.build_et_table(rt_df, domain="all", participants="all")
-    assert "pca" in et.columns
-    assert set(et["text_domain"].unique()) <= {"physics", "biology"}
-
-
-def test_correlate_attention_layerwise(rt_df):
-    et = co.build_et_table(rt_df)
-    # build a small attention frame for interior words across 2 layers.
-    rows = []
-    words = et[at.WORD_KEY].drop_duplicates()
-    for _, w in words.iterrows():
-        for layer in (0, 1):
-            rows.append(
-                {
-                    "text_id": w["text_id"],
-                    "word_index_in_text": w["word_index_in_text"],
-                    "layer": layer,
-                    "attention": float(w["word_index_in_text"] + layer),
-                    "attention_method": "raw",
-                }
-            )
-    attn = pd.DataFrame(rows)
-    out = co.correlate_attention(attn, et, layer="all", attention_method="raw")
-    assert set(out.columns) == {"layer", "feature", "attention_method", "spearman", "p", "n"}
-    assert set(out["layer"].unique()) == {0, 1}
-    assert "pca" in out["feature"].unique()
 
 
 def test_correlation_over_epochs_long_form(rt_df, surprisal_df):

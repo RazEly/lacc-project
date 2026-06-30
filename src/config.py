@@ -42,7 +42,7 @@ POTEC_PARTICIPANTS = POTEC_DIR / "participants" / "participant_data.tsv"
 DEFAULT_MODEL = "dbmdz/german-gpt2"
 
 # Decoder LMs the whole pipeline is run over, slug -> HF repo. Every model runs
-# the same workflow independently (surprisal, attention, DAPT, model comparison),
+# the same workflow independently (surprisal, DAPT, model comparison),
 # then they are compared. All German: german-gpt2 (124M) plus the LLäMmlein 1B
 # (LSX-UniWue), a German-ONLY decoder trained from scratch on one dataset.
 # Weights are NOT downloaded here; the GPU run pulls them on first use.
@@ -65,12 +65,8 @@ DAPT_BATCH_SIZE = {
 DAPT_GRAD_ACCUM = {
     "llammlein-1b": 3,  # 2 × 3 = 6 effective (matches original intent)
 }
-# German encoder for the attention diagnostic (scripts/diag_encoder.py). Mouratidi
-# & Poesio (2025) study encoder attention vs gaze; their bert-base-uncased is
-# English, so we use a German BERT for the German corpus.
-ENCODER_MODEL = "deepset/gbert-base"
 
-OUTPUTS_DIR = PROJECT_ROOT / "outputs"  # surprisal/attention/analysis tables
+OUTPUTS_DIR = PROJECT_ROOT / "outputs"  # surprisal / analysis tables
 # Run artifacts (checkpoints + the domain label-id map). Relative -> resolved
 # against the cwd at run time, so artifacts land in ./artifacts/ wherever the
 # pipeline is launched.
@@ -79,21 +75,8 @@ CHECKPOINTS_DIR = ARTIFACTS_DIR  # fine-tuned model weights (DAPT)
 # domain_preprocessing's expensive NLI labelling output (tracked in git).
 LABEL_IDS_PATH = ARTIFACTS_DIR / "domain_label_ids.json"
 
-# Per-word join key for every word-level table (surprisal, attention, gaze).
+# Per-word join key for every word-level table (surprisal, reading times).
 WORD_KEY = ["text_id", "word_index_in_text"]
-
-# Eye-tracking measure name mapping: plan name -> PoTeC column.
-ET_MEASURE_MAP = {
-    "GD": "FPRT",  # gaze duration       == first-pass reading time
-    "TRT": "TFT",  # total reading time  == total fixation time
-    "FFD": "FFD",  # first fixation duration
-    "SFD": "SFD",  # single fixation duration
-    "GPT": "RPD_inc",  # go-past time     == inclusive regression-path duration
-    "F": "TFC",  # fixation count      == total fixation count
-}
-
-# The 4 informative measures kept for PCA (drop SFD, GPT per plan / Mouratidi & Poesio 2025).
-PCA_MEASURES = ["FPRT", "TFT", "FFD", "TFC"]
 
 # ── reader-discipline system prompt (prompted-surprisal variant) ─────────────
 # Baseline-model surprisal under a discipline-matched system prompt — the

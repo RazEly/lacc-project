@@ -15,8 +15,7 @@ import pandas as pd
 import statsmodels.api as sm
 from scipy.stats import pearsonr, spearmanr
 
-from src.features.attention import eyetracking_features, pca_eyetracking
-from src.config import ET_MEASURE_MAP, WORD_KEY
+from src.config import WORD_KEY
 
 
 # ── filters ──────────────────────────────────────────────────────────────────
@@ -106,58 +105,6 @@ def regress_rt(
     agg = _aggregate_words(df, measure, mode)
     X = sm.add_constant(agg["surprisal"])
     return sm.OLS(agg["rt"], X).fit()
-
-
-# ── attention <-> eye-tracking ───────────────────────────────────────────────
-def build_et_table(rm: pd.DataFrame, domain="all", participants="all"):
-    """Per-word eye-tracking features (+ per-domain PCA component).
-
-    Applies the ``participants`` filter before averaging across readers, so the
-    feature table reflects the chosen reader group. PCA is fit per domain and
-    concatenated.
-    """
-    rm = _filter_participants(rm, participants)
-    et = eyetracking_features(rm)
-    et = _filter_domain(et, domain)
-    pcas = []
-    for dom in et["text_domain"].unique():
-        scored, _ = pca_eyetracking(et, dom)
-        pcas.append(scored)
-    if pcas:
-        et = et.merge(pd.concat(pcas), on=WORD_KEY, how="left")
-    return et
-
-
-def correlate_attention(
-    attn_df: pd.DataFrame, et_df: pd.DataFrame, layer="all", attention_method="raw"
-) -> pd.DataFrame:
-    """Layer-wise Spearman of attention against each eye-tracking feature.
-
-    Returns a table with columns ``layer``, ``feature``, ``attention_method``,
-    ``spearman``, ``p``, ``n`` — one row per (layer, feature). Features are the
-    six mapped eye-tracking measures plus the ``pca`` component.
-    """
-    attn = attn_df[attn_df["attention_method"] == attention_method]
-    if layer != "all":
-        attn = attn[attn["layer"] == layer]
-
-    features = [m for m in dict.fromkeys(ET_MEASURE_MAP.values()) if m in et_df.columns]
-    if "pca" in et_df.columns:
-        features.append("pca")
-
-    merged = attn.merge(et_df, on=WORD_KEY, how="inner")
-    rows = []
-    for lyr, g in merged.groupby("layer"):
-        for feat in features:
-            sub = g[["attention", feat]].dropna()
-            if len(sub) < 3:
-                rho, p = np.nan, np.nan
-            else:
-                rho, p = spearmanr(sub["attention"], sub[feat])
-            rows.append((lyr, feat, attention_method, rho, p, len(sub)))
-    return pd.DataFrame(
-        rows, columns=["layer", "feature", "attention_method", "spearman", "p", "n"]
-    )
 
 
 # ── fine-tuning progress: correlation per checkpoint ─────────────────────────

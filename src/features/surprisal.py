@@ -31,22 +31,17 @@ def _load_tokenizer(name_or_path: str):
         return AutoTokenizer.from_pretrained(name_or_path)
 
 
-def load_causal_lm(name_or_path: str = DEFAULT_MODEL, attn: bool = False):
-    """Load a causal LM + tokenizer for surprisal (and optionally attention).
+def load_causal_lm(name_or_path: str = DEFAULT_MODEL):
+    """Load a causal LM + tokenizer for surprisal.
 
-    ``attn=True`` selects the eager attention implementation and turns on
-    ``output_attentions`` so attention matrices are returned (step 3).
     Accepts an HF model id, a full fine-tuned checkpoint, or a LoRA (PEFT) adapter
     checkpoint — the latter is detected by ``adapter_config.json`` and folded onto
     its base model so callers get a plain merged model either way.
     """
     kwargs = {}
-    if attn:
-        kwargs["attn_implementation"] = "eager"
     # fp16 weights on the GPU: halves VRAM (12 GB box) and speeds the forward.
-    # Inference only — log_softmax upcasts via .float() (and attention is read
-    # post-softmax), so this is numerically safe. Training stays fp32 (Trainer
-    # adds its own mixed precision).
+    # Inference only — log_softmax upcasts via .float(), so this is numerically
+    # safe. Training stays fp32 (Trainer adds its own mixed precision).
     if torch.cuda.is_available():
         kwargs["torch_dtype"] = torch.float16
 
@@ -58,22 +53,17 @@ def load_causal_lm(name_or_path: str = DEFAULT_MODEL, attn: bool = False):
 
         base = PeftConfig.from_pretrained(name_or_path).base_model_name_or_path
         tokenizer = _load_tokenizer(base)
-        model = AutoModelForCausalLM.from_pretrained(
-            base, output_attentions=attn, **kwargs
-        )
+        model = AutoModelForCausalLM.from_pretrained(base, **kwargs)
         if len(tokenizer) > model.config.vocab_size:
             model.resize_token_embeddings(len(tokenizer))
         model = PeftModel.from_pretrained(model, name_or_path).merge_and_unload()
     else:
         tokenizer = _load_tokenizer(name_or_path)
-        model = AutoModelForCausalLM.from_pretrained(
-            name_or_path, output_attentions=attn, **kwargs
-        )
+        model = AutoModelForCausalLM.from_pretrained(name_or_path, **kwargs)
     model.eval()
     # Use the GPU when present: the per-sentence forward passes dominate runtime,
-    # and load_*_pretrained leaves the model on CPU otherwise. extract_attention /
-    # sentence_surprisal move their inputs to model.device, so this is the single
-    # placement point for the whole surprisal+attention path.
+    # and from_pretrained leaves the model on CPU otherwise. sentence_surprisal
+    # moves its inputs to the model device, so this is the single placement point.
     if torch.cuda.is_available():
         model.to("cuda")
     return model, tokenizer

@@ -1,8 +1,8 @@
 """Shared fixtures: synthetic PoTeC-shaped frames + tiny fake LM/tokenizer.
 
 Everything here is CPU-only and network-free. The fakes stand in for the HF
-model + tokenizer so the surprisal / attention code paths can be exercised
-without downloading weights or touching a GPU.
+model + tokenizer so the surprisal code paths can be exercised without
+downloading weights or touching a GPU.
 """
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ def rm() -> pd.DataFrame:
 
 @pytest.fixture
 def words_df() -> pd.DataFrame:
-    """Per-word sentence frame for surprisal / attention extraction."""
+    """Per-word sentence frame for surprisal extraction."""
     rows = []
     for text_id, domain, _ in TEXTS:
         for wi in range(N_WORDS):
@@ -133,9 +133,8 @@ class FakeTokenizer:
 
 
 class _Out:
-    def __init__(self, logits=None, attentions=None):
+    def __init__(self, logits=None):
         self.logits = logits
-        self.attentions = attentions
 
 
 class FakeCausalLM(nn.Module):
@@ -146,27 +145,10 @@ class FakeCausalLM(nn.Module):
         self.vocab = vocab
         self._p = nn.Parameter(torch.zeros(1))  # gives .parameters()/.device
 
-    def forward(self, input_ids, output_attentions=False):
+    def forward(self, input_ids):
         seq = input_ids.shape[1]
         logits = torch.zeros(1, seq, self.vocab)
         return _Out(logits=logits)
-
-
-class FakeAttnLM(nn.Module):
-    """Returns deterministic causal (lower-triangular, row-normalized) attentions."""
-
-    def __init__(self, n_layers: int = 3, n_heads: int = 2):
-        super().__init__()
-        self.n_layers = n_layers
-        self.n_heads = n_heads
-        self._p = nn.Parameter(torch.zeros(1))
-
-    def forward(self, input_ids, output_attentions=True):
-        seq = input_ids.shape[1]
-        causal = torch.tril(torch.ones(seq, seq))
-        causal = causal / causal.sum(-1, keepdim=True)
-        att = causal.expand(1, self.n_heads, seq, seq).contiguous()
-        return _Out(attentions=tuple(att.clone() for _ in range(self.n_layers)))
 
 
 @pytest.fixture
@@ -177,11 +159,6 @@ def fake_tokenizer():
 @pytest.fixture
 def fake_causal_lm():
     return FakeCausalLM()
-
-
-@pytest.fixture
-def fake_attn_lm():
-    return FakeAttnLM()
 
 
 # ── larger frame for the mixed-effects model comparison (steps 5/stats) ───────

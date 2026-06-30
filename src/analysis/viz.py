@@ -1,4 +1,4 @@
-"""Plots for the surprisal / attention / fine-tuning results (step 6).
+"""Plots for the surprisal / fine-tuning results (step 6).
 
 Each function takes prepared DataFrames (from ``analysis`` / ``finetune``) and
 returns a matplotlib Axes so the caller can save or compose figures.
@@ -14,19 +14,6 @@ def surprisal_scatter(agg_df, x="surprisal", y="rt", bins=15, ax=None):
     ax = ax or plt.gca()
     sns.regplot(data=agg_df, x=x, y=y, x_bins=bins, ax=ax)
     ax.set(xlabel="surprisal (bits)", ylabel="reading time (ms)")
-    return ax
-
-
-def attention_layer_curve(corr_table, feature="pca", ax=None):
-    """Per-layer Spearman curve for one eye-tracking feature (raw attention)."""
-    ax = ax or plt.gca()
-    sub = corr_table[corr_table["feature"] == feature]
-    for method, g in sub.groupby("attention_method"):
-        g = g.sort_values("layer")
-        ax.plot(g["layer"], g["spearman"], marker="o", label=method)
-    ax.axhline(0, color="grey", lw=0.8)
-    ax.set(xlabel="layer", ylabel=f"Spearman r ({feature})")
-    ax.legend(title="attention")
     return ax
 
 
