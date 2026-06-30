@@ -36,14 +36,9 @@ from src.features import surprisal as su
 from src.analysis import viz
 
 MEASURE = "TFT"  # total fixation time == TRT
-# DAPT fine-tuning method (step 4). LoRA by default — cheap enough to adapt every
-# model. Flip to False here for full fine-tuning (applies to german-gpt2 and the
-# LLäMmlein 1B alike).
-FINETUNE_LORA = True
-# DAPT learning rate by method. LoRA needs ~10x the full-FT LR — its adapters are
-# zero-initialised and only a few rank-r params train, so the full-FT LR barely
-# moves them. Full continued-pretraining stays low to avoid catastrophic forgetting.
-DAPT_LR = 2e-4 if FINETUNE_LORA else 2e-5
+# DAPT (step 4) is LoRA-only. LoRA needs ~10x a full-FT LR — its adapters are
+# zero-initialised and only a few rank-r params train, so a low LR barely moves them.
+DAPT_LR = 2e-4
 # DAPT checkpoint schedule, matching Škrjanec et al. (papers/07): train ≤16,384
 # steps and save checkpoints at 4ⁿ steps for n∈{1..7}. include_baseline still
 # prepends the un-fine-tuned model as checkpoint index 0.
@@ -154,11 +149,11 @@ def run_model(slug: str, name: str, words, rm) -> dict:
             ft.finetune_dapt("physics", base_model=name, max_steps=DAPT_MAX_STEPS,
                              checkpoint_steps=DAPT_CHECKPOINT_STEPS,
                              batch_size=batch_size, grad_accum=grad_accum,
-                             learning_rate=DAPT_LR, lora=FINETUNE_LORA),
+                             learning_rate=DAPT_LR),
             ft.finetune_dapt("biology", base_model=name, max_steps=DAPT_MAX_STEPS,
                              checkpoint_steps=DAPT_CHECKPOINT_STEPS,
                              batch_size=batch_size, grad_accum=grad_accum,
-                             learning_rate=DAPT_LR, lora=FINETUNE_LORA),
+                             learning_rate=DAPT_LR),
         ],
         ignore_index=True,
     )

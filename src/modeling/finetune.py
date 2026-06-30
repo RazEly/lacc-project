@@ -30,7 +30,6 @@ from datasets import load_from_disk
 from tqdm.auto import tqdm
 from transformers import (
     AutoModelForCausalLM,
-    AutoModelForMaskedLM,
     AutoTokenizer,
     DataCollatorForLanguageModeling,
     Trainer,
@@ -71,14 +70,13 @@ def _lora_targets(model, override):
     return (override or targets), embed
 
 
-def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text", mlm=False):
-    """Tokenize a text dataset and pack into fixed-size LM blocks.
+def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text"):
+    """Tokenize a text dataset and pack into fixed-size causal-LM blocks.
 
     A separator token is appended to every document before packing so concatenated
     blocks carry a boundary between documents (GPT-2's tokenizer adds none on its
     own), preventing the model from training across unrelated documents as if they
-    were continuous text. For causal training ``labels`` are the shifted inputs;
-    for ``mlm`` they are omitted so the MLM collator can mask dynamically.
+    were continuous text. ``labels`` are the shifted inputs (causal next-token).
     """
     sep_id = tokenizer.eos_token_id or tokenizer.sep_token_id
 
@@ -95,15 +93,12 @@ def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text", mlm=False):
         concat = sum(batch["input_ids"], [])
         n = (len(concat) // block_size) * block_size
         ids = [concat[i : i + block_size] for i in range(0, n, block_size)]
-        out = {"input_ids": ids}
-        if not mlm:  # MLM collator builds masked labels itself
-            out["labels"] = [x[:] for x in ids]
-        return out
+        return {"input_ids": ids, "labels": [x[:] for x in ids]}
 
     return ds.map(group, batched=True, remove_columns=ds.column_names)
 
 
-def _prepare_splits(domain, tokenizer, block_size, val_frac, seed, max_docs, is_mlm):
+def _prepare_splits(domain, tokenizer, block_size, val_frac, seed, max_docs):
     """Load a domain corpus and build packed train/test LM blocks.
 
     Returns the split dict plus ``words_per_epoch`` (whitespace words in the
@@ -123,8 +118,8 @@ def _prepare_splits(domain, tokenizer, block_size, val_frac, seed, max_docs, is_
     words_per_epoch = sum(len(str(t).split()) for t in raw_split["train"]["text"])
 
     split = {
-        "train": _tokenize_and_chunk(raw_split["train"], tokenizer, block_size, mlm=is_mlm),
-        "test": _tokenize_and_chunk(raw_split["test"], tokenizer, block_size, mlm=is_mlm),
+        "train": _tokenize_and_chunk(raw_split["train"], tokenizer, block_size),
+        "test": _tokenize_and_chunk(raw_split["test"], tokenizer, block_size),
     }
     return split, words_per_epoch
 
@@ -277,8 +272,6 @@ def finetune_dapt(
     seed: int = 0,
     out_dir=None,
     max_docs=None,
-    objective: str = "causal",
-    lora: bool = False,
     lora_r: int = 32,
     lora_alpha: int = 64,
     lora_dropout: float = 0.05,
@@ -286,11 +279,8 @@ def finetune_dapt(
 ) -> pd.DataFrame:
     """DAPT-fine-tune ``base_model`` on one domain; return a checkpoint manifest.
 
-    ``objective`` is ``"causal"`` (decoder, next-token; the surprisal pipeline) or
-    ``"mlm"`` (encoder, masked-LM; the attention experiment).
-
-    ``lora=True`` trains LoRA adapters (PEFT) instead of all weights — the default
-    method driven from ``main.py``. Checkpoints then store the adapter only;
+    Continued causal (next-token) pre-training with LoRA adapters (PEFT) — the
+    only fine-tuning method. Checkpoints store the adapter only;
     ``surprisal.load_causal_lm`` reattaches it to the base model. ``target_modules``
     defaults (``None``) to a per-architecture attention+MLP set via ``_lora_targets``
     (GPT-2 ``c_attn``/``c_fc``/``c_proj``; Llama q/k/v/o + gate/up/down), so DAPT
@@ -316,14 +306,10 @@ def finetune_dapt(
     still exist returns the saved manifest and skips training; changing any such arg
     retrains (stale checkpoints are not reused). The returned
     DataFrame has columns ``domain``, ``checkpoint``, ``index``, ``epoch``,
-    ``step``, ``tokens_seen``, ``words_seen``, ``perplexity`` (pseudo-perplexity
-    over masked tokens when ``objective="mlm"``).
+    ``step``, ``tokens_seen``, ``words_seen``, ``perplexity``.
     """
-    is_mlm = objective == "mlm"
-    # Suffix the run dir by method so LoRA and full-FT checkpoints never clobber.
-    suffix = "_lora" if lora else ""
     out_dir = Path(
-        out_dir or CHECKPOINTS_DIR / f"{Path(base_model).name}_{domain}{suffix}"
+        out_dir or CHECKPOINTS_DIR / f"{Path(base_model).name}_{domain}_lora"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -342,9 +328,12 @@ def finetune_dapt(
         n_checkpoints=n_checkpoints, include_baseline=include_baseline,
         block_size=block_size, batch_size=batch_size, grad_accum=grad_accum,
         val_frac=val_frac, learning_rate=learning_rate, warmup_ratio=warmup_ratio,
-        seed=seed, max_docs=max_docs, objective=objective, lora=lora, lora_r=lora_r,
+        seed=seed, max_docs=max_docs, lora_r=lora_r,
         lora_alpha=lora_alpha, lora_dropout=lora_dropout,
         lora_target_modules=lora_target_modules,
+        # constants kept in the signature so runs cached under the old
+        # objective/lora-flag args still match (LoRA causal is now the only mode).
+        objective="causal", lora=True,
     )
     cached = _load_cached_manifest(out_dir, signature)
     if cached is not None:
@@ -366,8 +355,7 @@ def finetune_dapt(
     tokenizer = AutoTokenizer.from_pretrained(base_model)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token or tokenizer.sep_token
-    model_cls = AutoModelForMaskedLM if is_mlm else AutoModelForCausalLM
-    model = model_cls.from_pretrained(base_model)
+    model = AutoModelForCausalLM.from_pretrained(base_model)
     # german-gpt2 ships an eos/pad id (50265) one past its embedding rows
     # (vocab_size 50265); using it as a document separator / pad would index out
     # of range on the GPU (device-side assert). Grow the embeddings to cover every
@@ -376,27 +364,26 @@ def finetune_dapt(
     if resized:
         model.resize_token_embeddings(len(tokenizer))
 
-    if lora:
-        from peft import LoraConfig, TaskType, get_peft_model
+    from peft import LoraConfig, TaskType, get_peft_model
 
-        targets, embed_modules = _lora_targets(model, lora_target_modules)
-        peft_cfg = LoraConfig(
-            task_type=None if is_mlm else TaskType.CAUSAL_LM,
-            r=lora_r,
-            lora_alpha=lora_alpha,
-            lora_dropout=lora_dropout,
-            target_modules=targets,  # attn + MLP (None -> PEFT per-arch default)
-            # When embeddings were grown, the new rows are randomly initialised and
-            # LoRA freezes the base — without saving them they would be re-randomised
-            # (differently) at load time. Save the embedding module so they survive.
-            modules_to_save=embed_modules if resized else None,
-            bias="none",
-        )
-        model = get_peft_model(model, peft_cfg)
-        model.print_trainable_parameters()
+    targets, embed_modules = _lora_targets(model, lora_target_modules)
+    peft_cfg = LoraConfig(
+        task_type=TaskType.CAUSAL_LM,
+        r=lora_r,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
+        target_modules=targets,  # attn + MLP (None -> PEFT per-arch default)
+        # When embeddings were grown, the new rows are randomly initialised and
+        # LoRA freezes the base — without saving them they would be re-randomised
+        # (differently) at load time. Save the embedding module so they survive.
+        modules_to_save=embed_modules if resized else None,
+        bias="none",
+    )
+    model = get_peft_model(model, peft_cfg)
+    model.print_trainable_parameters()
 
     split, words_per_epoch = _prepare_splits(
-        domain, tokenizer, block_size, val_frac, seed, max_docs, is_mlm
+        domain, tokenizer, block_size, val_frac, seed, max_docs
     )
 
     # Optimiser steps. One step trains on tokens_per_step real tokens (blocks are
@@ -435,9 +422,7 @@ def finetune_dapt(
         logging_steps=50,
         report_to=[],
     )
-    collator = DataCollatorForLanguageModeling(
-        tokenizer, mlm=is_mlm, mlm_probability=0.15 if is_mlm else None
-    )
+    collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
     trainer = Trainer(
         model=model,
         args=args,
