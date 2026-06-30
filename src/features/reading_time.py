@@ -1,7 +1,7 @@
 """Clean and aggregate PoTeC reading times (step 1).
 
-Cleaning: drop sentence-edge words (no left/right context), skips (RT == 0), and
-Smith & Levy (2013) IQR outliers (per-word fence).
+Cleaning follows Škrjanec & Demberg (2026): drop the text's first/last word (no
+left/right context), skips (RT == 0), and per-reader ±3 SD outliers.
 """
 from __future__ import annotations
 
@@ -15,31 +15,29 @@ LEVEL_LABELS = {0: "undergraduate", 1: "graduate"}
 def clean_reading_times(
     rm: pd.DataFrame,
     measure: str = "TFT",
-    iqr_k: float = 1.5,
-    by=("text_id", "word_index_in_text"),
-    min_count: int = 4,
+    sd_k: float = 3.0,
 ) -> pd.DataFrame:
-    """Return ``rm`` with sentence-edge words, skips, and IQR outliers removed.
+    """Return ``rm`` with text-edge words, skips, and per-reader outliers removed.
 
-    ``iqr_k`` = Tukey fence whisker length; ``by`` = IQR grouping (per-word);
-    ``min_count`` = groups below this many points skip the fence (too few to estimate).
+    ``sd_k`` = number of standard deviations around each reader's mean RT beyond
+    which a data point is dropped (paper uses 3).
     """
     df = rm
 
-    # sentence-initial / sentence-final words
-    df = df[(df["is_sent_beginning"] != 1) & (df["is_sent_end"] != 1)]
+    # first / last word of each text (no preceding / following context)
+    grp_idx = df.groupby("text_id")["word_index_in_text"]
+    df = df[(df["word_index_in_text"] != grp_idx.transform("min"))
+            & (df["word_index_in_text"] != grp_idx.transform("max"))]
 
     # skipped words (RT 0, equivalently Fix == 0)
     df = df[df[measure] > 0]
 
-    # Smith & Levy (2013) IQR fence, per group
-    grp = df.groupby(list(by))[measure]
-    q1 = grp.transform("quantile", 0.25)
-    q3 = grp.transform("quantile", 0.75)
-    n = grp.transform("size")
-    iqr = q3 - q1
-    lo, hi = q1 - iqr_k * iqr, q3 + iqr_k * iqr
-    keep = (n < min_count) | ((df[measure] >= lo) & (df[measure] <= hi))
+    # per-reader ±sd_k·SD fence around that reader's mean RT
+    grp = df.groupby("reader_id")[measure]
+    mean = grp.transform("mean")
+    sd = grp.transform("std")
+    lo, hi = mean - sd_k * sd, mean + sd_k * sd
+    keep = sd.isna() | ((df[measure] >= lo) & (df[measure] <= hi))
     return df[keep].copy()
 
 

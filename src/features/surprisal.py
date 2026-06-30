@@ -1,8 +1,9 @@
 """Model surprisal from a decoder-only causal LM (step 2).
 
 Word surprisal = sum of sub-token surprisals (-log2 p(token | left context)),
-aligned via the tokenizer's ``word_ids``. An optional ``prompt`` prepends
-domain-matched context; only sentence words get scored.
+aligned via the tokenizer's ``word_ids``. Each text is scored as one sequence so
+context spans sentence boundaries (Eq. 1). An optional ``prompt`` prepends
+domain-matched context.
 """
 
 from __future__ import annotations
@@ -69,8 +70,8 @@ def _resolve_prompt(prompt, domain: str | None) -> str | None:
 
 
 @torch.no_grad()
-def sentence_surprisal(word_list, model, tokenizer, prompt=None, domain=None):
-    """Per-word surprisal (bits) for one sentence given as a list of words.
+def score_words(word_list, model, tokenizer, prompt=None, domain=None):
+    """Per-word surprisal (bits) for an ordered word sequence (a full text).
 
     Returns a list the same length as ``word_list``; the first word is ``None``
     when it has no left context (no prompt prepended).
@@ -109,26 +110,26 @@ def sentence_surprisal(word_list, model, tokenizer, prompt=None, domain=None):
 def compute_surprisal(
     words_df: pd.DataFrame, model, tokenizer, prompt=None
 ) -> pd.DataFrame:
-    """Per-word surprisal for every PoTeC sentence.
+    """Per-word surprisal for every PoTeC text.
 
-    Sentences are rebuilt from ``words_df`` (ordered by ``word_index_in_sent``);
-    sentence-edge words are dropped to match the reading-time cleaning. ``prompt``
-    may be None, a string, or a ``{text_domain: str}`` dict.
+    Each text is rebuilt as one sequence (ordered by ``word_index_in_text``) so
+    context carries across sentences (Eq. 1). The text's first/last word is
+    dropped to match the reading-time cleaning. ``prompt`` may be None, a string,
+    or a ``{text_domain: str}`` dict.
 
     Returns columns: ``text_id``, ``word_index_in_text``, ``surprisal``.
     """
     rows = []
-    for (text_id, _sent), sent in words_df.sort_values(
-        ["text_id", "sent_index_in_text", "word_index_in_sent"]
-    ).groupby(["text_id", "sent_index_in_text"], sort=False):
-        domain = sent["text_domain"].iloc[0]
-        words = sent["word"].fillna("").astype(str).tolist()
-        bits = sentence_surprisal(words, model, tokenizer, prompt=prompt, domain=domain)
-        idx = sent["word_index_in_text"].tolist()
-        is_beg = sent["is_sent_beginning"].tolist()
-        is_end = sent["is_sent_end"].tolist()
+    for text_id, text in words_df.sort_values(
+        ["text_id", "word_index_in_text"]
+    ).groupby("text_id", sort=False):
+        domain = text["text_domain"].iloc[0]
+        words = text["word"].fillna("").astype(str).tolist()
+        bits = score_words(words, model, tokenizer, prompt=prompt, domain=domain)
+        idx = text["word_index_in_text"].tolist()
+        last = len(words) - 1
         for k, (wi, b) in enumerate(zip(idx, bits)):
-            if b is None or is_beg[k] == 1 or is_end[k] == 1:
+            if b is None or k == last:  # text first (no context) / last word
                 continue
             rows.append((text_id, wi, b))
 
