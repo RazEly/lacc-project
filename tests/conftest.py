@@ -272,6 +272,7 @@ def mc_inputs():
                     "text_domain": dom,
                     "text_domain_numeric": dom_num,
                     "word_index_in_text": wi,
+                    "word_index_in_sent": wi,
                     "word_length": wlen[(tid, dom, wi)],
                     "lemma_frequency_normalized": freq[(tid, dom, wi)],
                     "is_expert_technical_term": int(wi % 5 == 0),
@@ -279,6 +280,10 @@ def mc_inputs():
                     "reader_id": reader_id,
                     "reader_discipline_numeric": disc,
                     "level_of_studies_numeric": level,
+                    # background-question accuracy per trial; >0.9 = demonstrated
+                    # expert, drives S_expertise_aligned routing in _prep_models.
+                    # tied to discipline-matches-text so DE lines up with is_expert.
+                    "mean_acc_bq": 0.95 if disc == dom_num else 0.6,
                     "TFT": float(max(tft, 1.0)),
                 }
             )

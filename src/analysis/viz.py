@@ -6,7 +6,6 @@ returns a matplotlib Axes so the caller can save or compose figures.
 from __future__ import annotations
 
 import matplotlib.pyplot as plt
-import pandas as pd
 import seaborn as sns
 
 
@@ -79,73 +78,6 @@ def perplexity_curve(manifest_df, ax=None):
     return ax
 
 
-def attention_prediction_bars(pred_df, ax=None):
-    """Adjusted-R² bars (text-only vs +attention) per gaze target.
-
-    ``pred_df`` is a single (model, group) slice of
-    ``attention_prediction.run_model_prediction``'s summary. Two bars per target;
-    a ★ over the pair marks a significant Wilcoxon test on holdout squared errors
-    (p<0.05), i.e. raw attention significantly changes prediction error.
-    """
-    ax = ax or plt.gca()
-    df = pred_df.sort_values("target")
-    x = range(len(df))
-    width = 0.4
-    ax.bar([xi - width / 2 for xi in x], df["adj_r2_text"], width, label="text only")
-    ax.bar([xi + width / 2 for xi in x], df["adj_r2_attn"], width, label="text + attention")
-    top = max(df[["adj_r2_text", "adj_r2_attn"]].to_numpy().max(), 0)
-    for xi, (_, r) in zip(x, df.iterrows()):
-        if pd.notna(r["wilcoxon_p"]) and r["wilcoxon_p"] < 0.05:
-            ax.text(xi, top * 1.02 + 0.005, "★", ha="center", va="bottom")
-    ax.set_xticks(list(x))
-    ax.set_xticklabels(df["target"], rotation=20, ha="right")
-    ax.axhline(0, color="grey", lw=0.8)
-    ax.set(ylabel="adjusted R² (holdout)")
-    ax.legend(title="predictors")
-    return ax
-
-
-def feature_importance_bars(imp_df, ax=None):
-    """Mean |t-value| per predictor across gaze targets (paper Fig 4).
-
-    ``imp_df`` is a single (model, group) slice of the importance table; bars are
-    averaged over targets so each text/attention predictor's overall contribution
-    to the regression is read off at a glance.
-    """
-    ax = ax or plt.gca()
-    m = imp_df.groupby("predictor")["abs_t"].mean().sort_values(ascending=False)
-    ax.bar(range(len(m)), m.values)
-    ax.set_xticks(range(len(m)))
-    ax.set_xticklabels(m.index, rotation=20, ha="right")
-    ax.set(ylabel="mean |t-value|")
-    return ax
-
-
-def cross_domain_perplexity_bars(ppl_df, ax=None):
-    """Grouped perplexity bars: each model on the general/physics/biology val sets.
-
-    ``ppl_df`` is ``finetune.cross_domain_perplexity`` output (``model``,
-    ``eval_domain``, ``perplexity``). One bar group per model, one bar per eval
-    domain — so a DAPT model's bars on the *other* domains (a physics-adapted
-    model on biology / general text) show what fine-tuning for one field costs
-    elsewhere, read against the baseline group.
-    """
-    ax = ax or plt.gca()
-    domains = ["general", "physics", "biology"]
-    models = ppl_df["model"].drop_duplicates().tolist()
-    table = ppl_df.pivot(index="model", columns="eval_domain", values="perplexity")
-    table = table.reindex(index=models, columns=domains)
-    x = range(len(models))
-    width = 0.8 / len(domains)
-    for i, d in enumerate(domains):
-        ax.bar([xi + i * width for xi in x], table[d].values, width, label=d)
-    ax.set_xticks([xi + width * (len(domains) - 1) / 2 for xi in x])
-    ax.set_xticklabels(models, rotation=15, ha="right")
-    ax.set(ylabel="validation perplexity")
-    ax.legend(title="eval domain")
-    return ax
-
-
 # ── cross-model comparison (all models on one axes) ──────────────────────────
 def across_models_correlation_bars(summary_df, metrics=("pearson", "spearman"), ax=None):
     """Grouped bar of the surprisal-vs-RT correlation per model.
@@ -178,23 +110,4 @@ def across_models_bar(summary_df, value, ylabel=None, ax=None):
     ax.set_xticklabels(summary_df["model"], rotation=15, ha="right")
     ax.axhline(0, color="grey", lw=0.8)
     ax.set(ylabel=ylabel or value.replace("_", " "))
-    return ax
-
-
-def across_models_attention_curve(attn_by_model, feature="pca", method="raw", ax=None):
-    """Per-layer attention-vs-gaze Spearman curve, one line per model.
-
-    ``attn_by_model`` maps model slug -> the ``correlate_attention`` table for
-    that model. Models differ in depth, so the x-axis is the raw layer index;
-    the comparison is of where (and how strongly) each model's attention tracks
-    gaze, not a layer-for-layer alignment.
-    """
-    ax = ax or plt.gca()
-    for model, corr in attn_by_model.items():
-        sub = corr[(corr["feature"] == feature) & (corr["attention_method"] == method)]
-        sub = sub.sort_values("layer")
-        ax.plot(sub["layer"], sub["spearman"], marker="o", label=model)
-    ax.axhline(0, color="grey", lw=0.8)
-    ax.set(xlabel="layer", ylabel=f"Spearman r ({feature})")
-    ax.legend(title="model")
     return ax

@@ -49,7 +49,8 @@ def test_eyetracking_features_one_row_per_word(rm):
 
 def test_eyetracking_features_excludes_skips_from_mean(rm):
     # word idx2 in b1 was skipped (0) by reader rb2; mean must ignore the zero.
-    et = at.eyetracking_features(rm)
+    # relative=False isolates the skip-exclusion from the sentence-share rescale.
+    et = at.eyetracking_features(rm, relative=False)
     row = et[(et["text_id"] == "b1") & (et["word_index_in_text"] == 2)]
     nonzero_mean = rm[(rm["text_id"] == "b1") & (rm["word_index_in_text"] == 2) & (rm["TFT"] > 0)]["TFT"].mean()
     assert abs(row["TFT"].iloc[0] - nonzero_mean) < 1e-6

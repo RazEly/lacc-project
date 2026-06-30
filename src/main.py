@@ -179,9 +179,7 @@ def run_model(slug: str, name: str, words, rm) -> dict:
     # biologists) fit better than any single model? Repeated under each
     # fixed-effects spec (covariates / expertise-only / full), since the right
     # control structure is itself an open question.
-    # from src.analysis import stats as st  # Step 6 tests, run per spec
-
-    cmps = []  # , vuongs = [], []
+    cmps = []
     for spec in mc.MODEL_SPECS:
         print(f"Step 5 — model comparison (spec={spec})")
         cmp = mc.model_comparison_over_epochs(
@@ -195,23 +193,9 @@ def run_model(slug: str, name: str, words, rm) -> dict:
         viz.model_comparison_curve(cmp, metric="delta_ll", ax=ax)
         save_fig(ax, f"{slug}_finetune_model_comparison_{spec}")
 
-        # # Reader-clustered Vuong test at the checkpoint where aligned peaks.
-        # aligned = cmp[cmp["model"] == "aligned"]
-        # best_index = aligned.loc[aligned["delta_ll"].idxmax(), "index"]
-        # vuong = st.aligned_vs_single_models(
-        #     surp_versions, rm, prompt_surp, measure=MEASURE,
-        #     index=best_index, spec=spec,
-        # )
-        # vuong["spec"] = spec
-        # vuongs.append(vuong)
-        # print(vuong.to_string(index=False))
-
     cmp_all = pd.concat(cmps, ignore_index=True)
     cmp_all.insert(0, "model_lm", slug)
     cmp_all.to_csv(PROJECT_ROOT / f"results_{slug}.csv", index=False)
-    # pd.concat(vuongs, ignore_index=True).to_csv(
-    #     PROJECT_ROOT / f"results_vuong_{slug}.csv", index=False
-    # )
 
     # Cross-model summary: all-readers, both-domains surprisal-RT correlation,
     # the regression slope, and the strongest reader-aligned ΔLL (covariates spec).

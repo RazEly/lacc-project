@@ -110,7 +110,7 @@ def sentence_surprisal(word_list, model, tokenizer, prompt=None, domain=None):
         input_ids = sent_ids
         offset = 0
 
-    input_ids = input_ids.to(model.device)
+    input_ids = input_ids.to(next(model.parameters()).device)
     logits = model(input_ids.unsqueeze(0)).logits[0]  # [seq, vocab]
     logprobs = torch.log_softmax(logits.float(), dim=-1)  # natural log
 
