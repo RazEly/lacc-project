@@ -18,9 +18,7 @@ import pandas as pd
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from src.config import DEFAULT_MODEL
-
-WORD_KEY = ["text_id", "word_index_in_text"]
+from src.config import DEFAULT_MODEL, WORD_KEY
 
 
 def _load_tokenizer(name_or_path: str):

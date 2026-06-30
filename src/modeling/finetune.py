@@ -11,8 +11,7 @@ tokens (``max_tokens``), not a fixed number of passes. Because the two domain
 corpora differ in size, equal epochs would mean unequal token exposure; equal
 ``max_tokens`` (with identical batch/block/grad-accum, so identical tokens per
 step) makes both domains see the *same* number of tokens at the same checkpoint
-index. ``count_domain_tokens`` reports a domain's available training tokens so a
-caller can pick the largest equal budget that fits one pass of each.
+index.
 
 The run saves ``n_checkpoints`` models evenly spaced by training step (including
 a step-0 baseline), recording validation perplexity + cumulative tokens
@@ -44,8 +43,6 @@ from src.config import (
     DEFAULT_MODEL,
     DOMAIN_BIO_DIR,
     DOMAIN_PHY_DIR,
-    GENERAL_HF_CONFIG,
-    GENERAL_HF_REPO,
 )
 from src.features.surprisal import compute_surprisal, load_causal_lm
 
@@ -109,10 +106,8 @@ def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text", mlm=False):
 def _prepare_splits(domain, tokenizer, block_size, val_frac, seed, max_docs, is_mlm):
     """Load a domain corpus and build packed train/test LM blocks.
 
-    Shared by ``finetune_dapt`` and ``count_domain_tokens`` so the token count a
-    caller budgets against is exactly the count the trainer will see (same load,
-    split, tokenizer and packing). Returns the split dict plus ``words_per_epoch``
-    (whitespace words in the train docs, for the legacy words-seen column).
+    Returns the split dict plus ``words_per_epoch`` (whitespace words in the
+    train docs, for the legacy words-seen column).
     """
     raw = load_from_disk(str(DOMAIN_DIRS[domain]))
     if max_docs:
@@ -132,32 +127,6 @@ def _prepare_splits(domain, tokenizer, block_size, val_frac, seed, max_docs, is_
         "test": _tokenize_and_chunk(raw_split["test"], tokenizer, block_size, mlm=is_mlm),
     }
     return split, words_per_epoch
-
-
-def count_domain_tokens(
-    domain: str,
-    base_model: str = DEFAULT_MODEL,
-    block_size: int = 512,
-    val_frac: float = 0.05,
-    seed: int = 0,
-    max_docs=None,
-    objective: str = "causal",
-) -> int:
-    """Available training tokens for ``domain`` (= packed train blocks × block_size).
-
-    Use ``min(count_domain_tokens("physics"), count_domain_tokens("biology"))`` as
-    a shared ``max_tokens`` so both domains train on an equal token budget that
-    fits within one pass of each corpus. Args must match the ``finetune_dapt`` call
-    they budget for (``base_model``/``block_size``/``val_frac``/``seed``/``max_docs``),
-    since those determine the packed block count.
-    """
-    tokenizer = AutoTokenizer.from_pretrained(base_model)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token or tokenizer.sep_token
-    split, _ = _prepare_splits(
-        domain, tokenizer, block_size, val_frac, seed, max_docs, objective == "mlm"
-    )
-    return len(split["train"]) * block_size
 
 
 class _CheckpointSchedule(TrainerCallback):
@@ -331,7 +300,7 @@ def finetune_dapt(
     ``max_tokens`` tokens (rounded up to whole optimiser steps), where one step
     processes ``block_size * batch_size * grad_accum`` tokens. Passing the *same*
     ``max_tokens`` to two domains makes both see the same number of tokens at the
-    same checkpoint index — use ``count_domain_tokens`` to size an equal budget.
+    same checkpoint index.
     ``max_tokens=None`` defaults to a single pass over the domain's own training
     tokens (per-domain, hence *not* equalised across domains).
 
@@ -498,128 +467,6 @@ def finetune_dapt(
     # download instead of retraining. Best effort — never fails the run.
     hub.upload_run(out_dir)
     return df
-
-
-# ── cross-domain perplexity (lite pipeline) ──────────────────────────────────
-# How DAPT for one field shifts the model's fit on the OTHER field and on plain
-# general text: score the baseline and both DAPT models on the SAME held-out
-# general / physics / biology validation blocks.
-
-EVAL_GENERAL_DOCS = 400  # streamed German-Wikipedia docs for the general val set
-EVAL_MAX_BLOCKS = 200    # cap packed eval blocks per domain (keep the run light)
-
-
-def _general_eval_corpus(max_docs: int = EVAL_GENERAL_DOCS):
-    """A small German-Wikipedia slice as the general-domain eval corpus.
-
-    Streamed so nothing downloads beyond the first ``max_docs`` articles, then
-    materialised into an in-memory ``text`` dataset that packs exactly like the
-    domain corpora. This is the out-of-domain reference for cross-domain ppl.
-    """
-    import itertools
-
-    from datasets import Dataset, load_dataset
-
-    stream = load_dataset(
-        GENERAL_HF_REPO, GENERAL_HF_CONFIG, split="train", streaming=True
-    )
-    docs = [d["text"] for d in itertools.islice(stream, max_docs)]
-    return Dataset.from_dict({"text": docs})
-
-
-def build_eval_sets(
-    base_model: str = DEFAULT_MODEL,
-    block_size: int = 512,
-    val_frac: float = 0.05,
-    seed: int = 0,
-    general_docs: int = EVAL_GENERAL_DOCS,
-    max_blocks: int = EVAL_MAX_BLOCKS,
-) -> tuple:
-    """Packed validation blocks for general/physics/biology under one tokenizer.
-
-    Physics and biology reuse each domain's *held-out* training split (same
-    ``val_frac``/``seed`` as ``finetune_dapt``), so the eval text never overlaps
-    that domain's DAPT data; general is a German-Wikipedia slice. All three are
-    tokenized once with the base model's tokenizer — every checkpoint shares that
-    tokenizer, so the identical blocks score all models (the apples-to-apples
-    requirement for cross-domain perplexity). Returns ``(tokenizer, {domain: blocks})``.
-    """
-    tokenizer = AutoTokenizer.from_pretrained(base_model)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token or tokenizer.sep_token
-
-    sets = {}
-    for domain in ("physics", "biology"):
-        split, _ = _prepare_splits(
-            domain, tokenizer, block_size, val_frac, seed, None, False
-        )
-        sets[domain] = split["test"]
-    sets["general"] = _tokenize_and_chunk(
-        _general_eval_corpus(general_docs), tokenizer, block_size
-    )
-    if max_blocks:
-        sets = {d: b.select(range(min(max_blocks, len(b)))) for d, b in sets.items()}
-    return tokenizer, sets
-
-
-@torch.no_grad()
-def _perplexity(model, blocks, batch_size: int = 8) -> float:
-    """Token-weighted causal-LM perplexity of ``model`` over packed ``blocks``.
-
-    Sums next-token cross-entropy over all blocks and exponentiates the per-token
-    mean, so blocks contribute in proportion to their token count. Logits are
-    upcast to fp32 before the loss (fp16 inference weights are numerically fine
-    for the forward, not for the reduction).
-    """
-    import torch.nn.functional as F
-
-    device = model.device
-    ids_all = blocks["input_ids"]
-    total_loss, total_tok = 0.0, 0
-    for i in range(0, len(ids_all), batch_size):
-        ids = torch.tensor(ids_all[i : i + batch_size], device=device)
-        logits = model(ids).logits.float()
-        shift_logits = logits[:, :-1, :].reshape(-1, logits.size(-1))
-        shift_labels = ids[:, 1:].reshape(-1)
-        loss = F.cross_entropy(shift_logits, shift_labels, reduction="sum")
-        total_loss += loss.item()
-        total_tok += shift_labels.numel()
-    return math.exp(total_loss / total_tok)
-
-
-def cross_domain_perplexity(
-    phys_manifest: pd.DataFrame,
-    bio_manifest: pd.DataFrame,
-    base_model: str = DEFAULT_MODEL,
-    **eval_kw,
-) -> pd.DataFrame:
-    """Perplexity of baseline / physics-DAPT / biology-DAPT on all three domains.
-
-    The baseline is each run's step-0 checkpoint (the un-fine-tuned model, but
-    saved with the grown embeddings so it loads identically to the adapted
-    checkpoints); physics/biology are the final checkpoint of their run. Every
-    model is scored on the *same* general/physics/biology validation blocks
-    (``build_eval_sets``), so the table reads off how DAPT for physics moves the
-    fit on biology and general text. Returns rows ``model``, ``eval_domain``,
-    ``perplexity``.
-    """
-    baseline = phys_manifest.loc[phys_manifest["index"].idxmin(), "checkpoint"]
-    physics = phys_manifest.loc[phys_manifest["index"].idxmax(), "checkpoint"]
-    biology = bio_manifest.loc[bio_manifest["index"].idxmax(), "checkpoint"]
-    models = {"baseline": baseline, "physics-DAPT": physics, "biology-DAPT": biology}
-
-    _tok, sets = build_eval_sets(base_model=base_model, **eval_kw)
-    rows = []
-    for label, ckpt in models.items():
-        model, _ = load_causal_lm(ckpt)
-        for domain, blocks in sets.items():
-            ppl = _perplexity(model, blocks)
-            rows.append({"model": label, "eval_domain": domain, "perplexity": ppl})
-            print(f"  {label:>13s} on {domain:<8s}: ppl={ppl:.2f}")
-        del model
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-    return pd.DataFrame(rows)
 
 
 def recompute_surprisal_over_checkpoints(

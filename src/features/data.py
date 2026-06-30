@@ -92,20 +92,21 @@ def read_potec(path, **kw) -> pd.DataFrame:
     )
 
 
+def _load_concat(directory, pattern, cols) -> pd.DataFrame:
+    """Read + concat every ``pattern`` file under ``directory`` (selected ``cols``)."""
+    files = sorted(glob.glob(os.path.join(directory, pattern)))
+    if not files:
+        raise FileNotFoundError(f"no {pattern} under {directory}")
+    frames = [read_potec(f, usecols=cols) for f in files]
+    return pd.concat(frames, ignore_index=True)[cols]
+
+
 def load_word_features(cols=WORD_COLS) -> pd.DataFrame:
     """Concatenate every ``word_features_*.tsv`` into one words DataFrame.
 
     One row per word per text, keyed by (``text_id``, ``word_index_in_text``).
     """
-    files = sorted(
-        glob.glob(os.path.join(POTEC_WORD_FEATURES_DIR, "word_features_*.tsv"))
-    )
-    if not files:
-        raise FileNotFoundError(
-            f"no word_features_*.tsv under {POTEC_WORD_FEATURES_DIR}"
-        )
-    frames = [read_potec(f, usecols=cols) for f in files]
-    return pd.concat(frames, ignore_index=True)[cols]
+    return _load_concat(POTEC_WORD_FEATURES_DIR, "word_features_*.tsv", cols)
 
 
 def add_expertise(rm: pd.DataFrame) -> pd.DataFrame:
@@ -131,12 +132,5 @@ def load_reading_measures(cols=READING_COLS) -> pd.DataFrame:
     metadata (incl. the recomputed ``is_expert`` flag). Keyed by
     (``reader_id``, ``text_id``, ``word_index_in_text``).
     """
-    files = sorted(
-        glob.glob(os.path.join(POTEC_READING_MEASURES_DIR, "reader*_merged.tsv"))
-    )
-    if not files:
-        raise FileNotFoundError(
-            f"no reader*_merged.tsv under {POTEC_READING_MEASURES_DIR}"
-        )
-    frames = [read_potec(f, usecols=cols) for f in files]
-    return add_expertise(pd.concat(frames, ignore_index=True)[cols])
+    rm = _load_concat(POTEC_READING_MEASURES_DIR, "reader*_merged.tsv", cols)
+    return add_expertise(rm)

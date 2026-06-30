@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-WORD_KEY = ["text_id", "word_index_in_text"]
+from src.config import WORD_KEY
 
 # Human-readable labels for level_of_studies_numeric.
 LEVEL_LABELS = {0: "undergraduate", 1: "graduate"}

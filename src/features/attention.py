@@ -16,9 +16,7 @@ import pandas as pd
 import torch
 from sklearn.decomposition import PCA
 
-from src.config import ET_MEASURE_MAP, PCA_MEASURES
-
-WORD_KEY = ["text_id", "word_index_in_text"]
+from src.config import ET_MEASURE_MAP, PCA_MEASURES, WORD_KEY
 
 # STTS (Stuttgart-Tübingen-Tagset) tags counted as FUNCTION words: determiners,
 # adpositions, conjunctions, pronouns, particles, and auxiliary/modal verbs.

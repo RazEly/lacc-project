@@ -16,9 +16,7 @@ import statsmodels.api as sm
 from scipy.stats import pearsonr, spearmanr
 
 from src.features.attention import eyetracking_features, pca_eyetracking
-from src.config import ET_MEASURE_MAP
-
-WORD_KEY = ["text_id", "word_index_in_text"]
+from src.config import ET_MEASURE_MAP, WORD_KEY
 
 
 # ── filters ──────────────────────────────────────────────────────────────────

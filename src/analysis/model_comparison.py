@@ -46,10 +46,6 @@ SURPRISAL_MODELS = (
     "baseline", "physics", "biology", "aligned", "prompted", "prompted_level"
 )
 
-# Prompt-dependent surprisal models: skipped when prompt columns are absent
-# (e.g. the expertise variant in src/main_expertise.py never builds them).
-_PROMPT_MODELS = ("prompted", "prompted_level")
-
 # (level_of_studies_numeric, reader_discipline_numeric) → field×level prompt column.
 _FIELD_LEVEL_COLS = {
     (0, 1): "s_prompt_phys_ug",

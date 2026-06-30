@@ -81,6 +81,9 @@ CHECKPOINTS_DIR = ARTIFACTS_DIR  # fine-tuned model weights (DAPT)
 # domain_preprocessing's expensive NLI labelling output (tracked in git).
 LABEL_IDS_PATH = ARTIFACTS_DIR / "domain_label_ids.json"
 
+# Per-word join key for every word-level table (surprisal, attention, gaze).
+WORD_KEY = ["text_id", "word_index_in_text"]
+
 # Eye-tracking measure name mapping: plan name -> PoTeC column.
 ET_MEASURE_MAP = {
     "GD": "FPRT",  # gaze duration       == first-pass reading time
