@@ -1,6 +1,5 @@
 """Significance machinery: BH correction + reader-clustered Vuong test."""
 import numpy as np
-import pandas as pd
 
 from src.analysis import stats
 from src.analysis import model_comparison as mc

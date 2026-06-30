@@ -1,6 +1,5 @@
 """Four/five-model surprisal comparison (step 5): data prep + mixed fits."""
 import numpy as np
-import pandas as pd
 
 from src.analysis import model_comparison as mc
 
