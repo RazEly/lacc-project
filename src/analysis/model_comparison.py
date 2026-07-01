@@ -24,6 +24,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
+from scipy.stats import chi2
 from tqdm import tqdm
 
 from src.analysis.correlation import WORD_KEY
@@ -118,6 +119,21 @@ def _prep_models(df, measure):
         (d["is_expert_technical_term"] == 1) | (d["is_general_technical_term"] == 1)
     ).astype(int)
     d["is_domain_term"] = (d["is_expert_technical_term"] == 1).astype(int)
+    # residual (split-signal) columns: what each adapted model ADDS over the base
+    # LM. D_<name> = S_<name> - S_baseline. Fit as S_baseline + D_<name> when
+    # model_comparison_over_epochs(residual=True) so p(D) tests the fine-tune's
+    # own contribution. D_baseline == 0, so baseline stays the reference.
+    for _name in ("physics", "biology", "aligned", "expertise_aligned",
+                  "graded_aligned", "prompted", "prompted_level"):
+        _col = f"S_{_name}"
+        if _col in d.columns:
+            d[f"D_{_name}"] = d[_col] - d["S_baseline"]
+    # deviation (sum) coding for the two factors that interact with surprisal: -1
+    # novice / +1 expert, -1 common / +1 technical. Makes the surprisal (and D)
+    # main effect the GRAND-MEAN slope over the 2x2 cells, not the novice-common
+    # corner that 0/1 treatment coding would report. Fit / ΔLL unchanged.
+    d["is_expert"] = 2 * d["is_expert"] - 1
+    d["is_technical"] = 2 * d["is_technical"] - 1
     # single grouping key for the by-word random effect (lme4 word_id).
     d["word_id"] = (
         d["text_id"].astype(str) + "_" + d["word_index_in_text"].astype(str)
@@ -152,12 +168,13 @@ MODEL_SPECS = {
 }
 
 
-def _fit_model(d, measure, surprisal_col=None, spec="covariates"):
+def _fit_model(d, measure, surprisal_col=None, spec="covariates", extra_terms=None):
     """lme4 mixed model ``log(measure) ~ <spec> [+ surprisal terms] + <re>``.
 
-    Fit with ML (``REML=False``) via pymer4 (lme4) so log-likelihoods are
-    comparable across the surprisal term; p-values are Wald z (significance is
-    Vuong in stats.py, so the Satterthwaite Hessian is skipped). Without
+    Fit with ML (``REML=False``) via pymer4 (lme4) so the log-likelihoods drive
+    a nested likelihood-ratio test (the split-signal exp model adds one term, the
+    residual, to the base-surprisal reference). Coefficient p-values are Wald z;
+    the Satterthwaite Hessian is skipped since significance is the LRT. Without
     ``surprisal_col`` the no-surprisal reference is fit. Returns the fitted
     ``pymer4.models.lmer``.
     """
@@ -168,6 +185,10 @@ def _fit_model(d, measure, surprisal_col=None, spec="covariates"):
     rhs = base
     if surprisal_col is not None:
         rhs += " + " + surp_tmpl.format(col=surprisal_col)
+    # raw extra terms (e.g. the split-signal residual D_<name> as a plain slope,
+    # added on top of the base surprisal's full interaction block).
+    if extra_terms:
+        rhs += " + " + extra_terms
     # paper always models log RT; measure is filtered > 0 in _prep_models. Precompute
     # the response so residuals/log-likelihood are on the log scale.
     dd = d.copy()
@@ -178,7 +199,7 @@ def _fit_model(d, measure, surprisal_col=None, spec="covariates"):
     with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
         warnings.simplefilter("ignore")
         # conf_method="wald" skips the Satterthwaite Hessian (unused: significance
-        # is Vuong in stats.py); a large win on the random-slope specs.
+        # is the nested LRT); a large win on the random-slope specs.
         m.fit(summary=False, REML=False, conf_method="wald")
     return m
 
@@ -214,9 +235,6 @@ def build_index_df(surp_versions, rt_df, prompt_surp, index, measure):  # prompt
         surp = surp.merge(prompt_surp, on=WORD_KEY)
     merged = surp.merge(rt_df, on=WORD_KEY, how="inner")
     d = _prep_models(merged, measure).reset_index(drop=True)
-    # stable row id so the Vuong test can pair observations across two fits
-    # (valid R identifier — pymer4 round-trips the frame through R).
-    d["row_id"] = np.arange(len(d))
     return d
 
 
@@ -233,6 +251,14 @@ def _coef(m, name, field):
         return np.nan
 
 
+def _n_fixed(m) -> int | None:
+    """Number of fixed-effect terms in a fitted pymer4 ``lmer`` (LRT df helper)."""
+    try:
+        return int(m.result_fit.height)
+    except (AttributeError, TypeError):
+        return None
+
+
 def model_comparison_over_epochs(
     surp_versions: pd.DataFrame,
     rt_df: pd.DataFrame,
@@ -241,14 +267,30 @@ def model_comparison_over_epochs(
     spec="covariates",
     models=SURPRISAL_MODELS,
     indices=None,
+    residual=True,
 ) -> pd.DataFrame:
     """Per-checkpoint surprisal-model comparison on the whole corpus.
 
     ``surp_versions`` must hold both domains. ``prompt_surp=None`` skips the
     prompted models. ``models`` defaults to ``SURPRISAL_MODELS`` (``expertise_aligned``
-    also available). ``indices`` restricts the checkpoint sweep. Each model is fit
-    against the no-surprisal baseline. Long-form columns: ``index``, ``epoch``,
-    ``spec``, ``model``, ``n``, ``ll``, ``delta_ll``, ``b_surprisal``, ``p_surprisal``.
+    also available). ``indices`` restricts the checkpoint sweep.
+
+    Two modes:
+      residual=True (default, split-signal) — the base LM surprisal
+        (``S_baseline``, full interaction) is in BOTH reference and experimental
+        model; each adapted model adds only its residual
+        ``D_<name> = S_<name> - S_baseline`` as a plain slope. ``b_surprisal`` /
+        ``p_surprisal`` test that residual (Wald z); ``delta_ll`` = gain of the
+        residual OVER base surprisal; ``p_lrt`` = nested likelihood-ratio p (the
+        reference is nested in the experimental model). ``baseline`` is skipped
+        (D == 0, it IS the reference).
+      residual=False — each model's surprisal is fit against the NO-surprisal
+        reference. ``b_surprisal`` / ``p_surprisal`` = the source's own slope;
+        ``delta_ll`` = gain over no surprisal; ``p_lrt`` = LRT p for the whole
+        surprisal block.
+
+    Long-form columns: ``index``, ``epoch``, ``spec``, ``ref``, ``model``, ``n``,
+    ``ll``, ``delta_ll``, ``b_surprisal``, ``p_surprisal``, ``p_lrt``.
     """
     all_indices = sorted(surp_versions["index"].unique())
     if indices is not None:
@@ -256,32 +298,54 @@ def model_comparison_over_epochs(
         all_indices = [i for i in all_indices if i in keep]
     epoch_of = surp_versions.groupby("index")["epoch"].first().to_dict()
 
-    total_fits = len(all_indices) * (1 + len(models))
+    fit_models = [m for m in models if not (residual and m == "baseline")]
+    ref_label = "base_surprisal" if residual else "no_surprisal"
+    total_fits = len(all_indices) * (1 + len(fit_models))
     rows = []
     with tqdm(total=total_fits, desc=f"lme4 fits ({spec})", unit="fit") as pbar:
         for index in all_indices:
             d = build_index_df(surp_versions, rt_df, prompt_surp, index, measure)
-            pbar.set_postfix(index=index, model="baseline")
-            ll0 = _loglik(_fit_model(d, measure, None, spec=spec))
+            pbar.set_postfix(index=index, model=ref_label)
+            # reference: no surprisal, or base surprisal only (split-signal mode).
+            ref = _fit_model(d, measure, "S_baseline" if residual else None, spec=spec)
+            ll0 = _loglik(ref)
+            n_ref = _n_fixed(ref)
             pbar.update(1)
-            for name in models:
-                col = f"S_{name}"
+            for name in fit_models:
                 pbar.set_postfix(index=index, model=name)
-                res = _fit_model(d, measure, col, spec=spec)
+                if residual:
+                    report_col = f"D_{name}"
+                    res = _fit_model(d, measure, "S_baseline", spec=spec,
+                                     extra_terms=report_col)
+                else:
+                    report_col = f"S_{name}"
+                    res = _fit_model(d, measure, report_col, spec=spec)
                 ll = _loglik(res)
                 pbar.update(1)
+                dll = ll - ll0
+                # nested LRT: 2*ΔLL ~ chi2 with df = added fixed terms (residual
+                # mode: 1, the D slope). Negative ΔLL (exp no better) -> p = 1.
+                df_lrt = (_n_fixed(res) or 0) - (n_ref or 0)
+                p_lrt = (
+                    float(chi2.sf(2.0 * max(dll, 0.0), df_lrt))
+                    if df_lrt > 0 else np.nan
+                )
                 rows.append(
                     {
                         "index": index,
                         "epoch": epoch_of[index],
                         "spec": spec,
+                        "ref": ref_label,
                         "model": name,
                         "n": len(d),
                         "ll": ll,
-                        "delta_ll": ll - ll0,
-                        # main-effect slope + Wald p; interaction terms carry the rest.
-                        "b_surprisal": _coef(res, col, "estimate"),
-                        "p_surprisal": _coef(res, col, "p_value"),
+                        "delta_ll": dll,
+                        # slope (grand-mean, sum-coded) + Wald p of the tested term;
+                        # interaction terms carry the expert/terminology modulation.
+                        "b_surprisal": _coef(res, report_col, "estimate"),
+                        "p_surprisal": _coef(res, report_col, "p_value"),
+                        # nested likelihood-ratio p (replaces the old Vuong test).
+                        "p_lrt": p_lrt,
                     }
                 )
     return pd.DataFrame(rows).sort_values(["model", "index"])
