@@ -24,6 +24,7 @@ from src.features import data
 from src.analysis import model_comparison as mc
 from src.features import reading_time as rt
 from src.features import surprisal as su
+from src.features import surprisal_cache as sc
 from src.analysis import viz
 
 MEASURE = "TFT"  # total fixation time == TRT
@@ -46,45 +47,53 @@ def save_fig(ax, name: str) -> None:
     print(f"  wrote {out.relative_to(PROJECT_ROOT)}")
 
 
-def run_model(slug: str, name: str, words, rm) -> dict:
+def run_model(slug: str, name: str, words, rm, cache=None) -> dict:
     """Run steps 2-6 for one model; write ``<slug>_*`` figures + csv; return a summary.
 
     The summary row feeds the cross-model comparison: the regression slope and
-    the best reader-aligned ΔLL.
+    the best reader-aligned ΔLL. When this model's surprisal is already in
+    ``cache`` it is reloaded (no model forwards); otherwise it is computed and
+    returned in ``"wide"`` for the caller to persist.
     """
     print(f"\n=== model: {slug} ({name}) ===")
+    prefix = config.MODEL_PREFIX[slug]
+    cached = sc.has_model(cache, prefix)
 
     # ── Step 2 — model surprisal (baseline) ──────────────────────────────────
-    print("Step 2 — surprisal")
-    model, tok = su.load_causal_lm(name)
-    surp = su.compute_surprisal(words, model, tok)  # prompt=None
+    print("Step 2 — surprisal" + (" (cache hit)" if cached else ""))
+    if cached:
+        surp = sc.baseline_surp(cache, prefix)
+        prompt_surp = sc.prompt_surp(cache, prefix)
+    else:
+        model, tok = su.load_causal_lm(name)
+        surp = su.compute_surprisal(words, model, tok)  # prompt=None
+
+        # prompted-baseline surprisal: un-adapted model + discipline-matched prompt
+        # (prompting analogue of fine-tuning), one column per discipline.
+        s_pp = su.compute_surprisal(
+            words, model, tok, prompt=config.GRAD_STUDENT_PROMPTS["physics"]
+        ).rename(columns={"surprisal": "s_prompt_phys"})
+        s_pb = su.compute_surprisal(
+            words, model, tok, prompt=config.GRAD_STUDENT_PROMPTS["biology"]
+        ).rename(columns={"surprisal": "s_prompt_bio"})
+        prompt_surp = s_pp.merge(s_pb, on=["text_id", "word_index_in_text"])
+
+        # field × level prompted baseline: prompt matches discipline AND study level,
+        # one column per (level, discipline) cell (ug = undergrad, grad = graduate).
+        _fl_cols = {
+            (0, 1): "s_prompt_phys_ug",
+            (1, 1): "s_prompt_phys_grad",
+            (0, 0): "s_prompt_bio_ug",
+            (1, 0): "s_prompt_bio_grad",
+        }
+        for key, col in _fl_cols.items():
+            prompt_surp = prompt_surp.merge(
+                su.compute_surprisal(
+                    words, model, tok, prompt=config.FIELD_LEVEL_PROMPTS[key]
+                ).rename(columns={"surprisal": col}),
+                on=["text_id", "word_index_in_text"],
+            )
     print(surp.head().to_string())
-
-    # prompted-baseline surprisal: un-adapted model + discipline-matched prompt
-    # (prompting analogue of fine-tuning), one column per discipline.
-    s_pp = su.compute_surprisal(
-        words, model, tok, prompt=config.GRAD_STUDENT_PROMPTS["physics"]
-    ).rename(columns={"surprisal": "s_prompt_phys"})
-    s_pb = su.compute_surprisal(
-        words, model, tok, prompt=config.GRAD_STUDENT_PROMPTS["biology"]
-    ).rename(columns={"surprisal": "s_prompt_bio"})
-    prompt_surp = s_pp.merge(s_pb, on=["text_id", "word_index_in_text"])
-
-    # field × level prompted baseline: prompt matches discipline AND study level,
-    # one column per (level, discipline) cell (ug = undergrad, grad = graduate).
-    _fl_cols = {
-        (0, 1): "s_prompt_phys_ug",
-        (1, 1): "s_prompt_phys_grad",
-        (0, 0): "s_prompt_bio_ug",
-        (1, 0): "s_prompt_bio_grad",
-    }
-    for key, col in _fl_cols.items():
-        prompt_surp = prompt_surp.merge(
-            su.compute_surprisal(
-                words, model, tok, prompt=config.FIELD_LEVEL_PROMPTS[key]
-            ).rename(columns={"surprisal": col}),
-            on=["text_id", "word_index_in_text"],
-        )
 
     # ── Step 5 — analysis ────────────────────────────────────────────────────
     print("Step 5 — analysis")
@@ -129,7 +138,10 @@ def run_model(slug: str, name: str, words, rm) -> dict:
     viz.perplexity_curve(manifest, ax=ax)
     save_fig(ax, f"{slug}_perplexity_curve")
 
-    surp_versions = ft.recompute_surprisal_over_checkpoints(words, manifest)
+    if cached:
+        surp_versions = sc.surp_versions(cache, prefix, manifest)
+    else:
+        surp_versions = ft.recompute_surprisal_over_checkpoints(words, manifest)
 
     # Surprisal-model comparison. Only the richest (paper_full) spec is run;
     # the covariates/full specs remain in MODEL_SPECS for ad-hoc use.
@@ -153,6 +165,8 @@ def run_model(slug: str, name: str, words, rm) -> dict:
 
     # Cross-model summary row: regression slope, best reader-aligned ΔLL.
     aligned_cov = cmp_all[(cmp_all["spec"] == "paper_full") & (cmp_all["model"] == "aligned")]
+    # Newly computed surprisal -> wide columns for the caller to persist (None on hit).
+    wide = None if cached else sc.build_wide(prefix, surp_versions, prompt_surp)
     return {
         "summary": {
             "model": slug,
@@ -160,6 +174,7 @@ def run_model(slug: str, name: str, words, rm) -> dict:
             "r2": float(fit.rsquared),
             "aligned_delta_ll": float(aligned_cov["delta_ll"].max()),
         },
+        "wide": wide,
     }
 
 
@@ -182,10 +197,20 @@ def main() -> None:
     )
 
     # ── Steps 2-6 — run the whole workflow per model ─────────────────────────
+    # Reuse cached surprisal (artifacts/surprisal.csv) when present; compute + merge
+    # in any model still missing, then persist the combined wide table.
+    cache = sc.load_cache()
+    if cache is not None:
+        print(f"  surprisal cache: {config.SURPRISAL_CACHE_PATH} "
+              f"({len(cache)} words, cols={len(cache.columns)})")
     summaries = []
     for slug, name in config.MODELS.items():
-        out = run_model(slug, name, words, rm)
+        out = run_model(slug, name, words, rm, cache=cache)
         summaries.append(out["summary"])
+        if out["wide"] is not None:
+            cache = sc.merge_model(cache, out["wide"])
+            sc.save_cache(cache)
+            print(f"  wrote surprisal cache -> {config.SURPRISAL_CACHE_PATH}")
 
     summary_df = pd.DataFrame(summaries)
     summary_df.to_csv(PROJECT_ROOT / "results_models_summary.csv", index=False)

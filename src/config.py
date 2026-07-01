@@ -34,6 +34,13 @@ MODELS = {
     "llammlein-1b": "LSX-UniWue/LLaMmlein_1B",
 }
 
+# Short column prefix per model for the wide surprisal cache (surprisal.csv):
+# <prefix>_0 baseline, <prefix>_<i>_<phys|bio> checkpoints, <prefix>_prompt_* prompted.
+MODEL_PREFIX = {
+    "german-gpt2": "gpt",
+    "llammlein-1b": "llama",
+}
+
 # Per-model DAPT train batch (LoRA + bf16 + block_size=512, ~16 GB VRAM).
 DAPT_BATCH_SIZE = {
     "german-gpt2": 8,
@@ -49,6 +56,8 @@ OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 ARTIFACTS_DIR = Path("artifacts")
 CHECKPOINTS_DIR = ARTIFACTS_DIR
 LABEL_IDS_PATH = ARTIFACTS_DIR / "domain_label_ids.json"
+# Wide per-word surprisal cache: computed once, reloaded to skip model forwards.
+SURPRISAL_CACHE_PATH = ARTIFACTS_DIR / "surprisal.csv"
 
 # Per-word join key for every word-level table.
 WORD_KEY = ["text_id", "word_index_in_text"]
