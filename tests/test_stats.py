@@ -41,7 +41,7 @@ def _fit_two(mc_inputs, col_a, col_b):
 def test_pointwise_loglik_columns_and_readers(mc_inputs):
     a, _ = _fit_two(mc_inputs, "S_aligned", "S_baseline")
     out = stats._pointwise_loglik(a)
-    assert set(out.columns) == {"_row", "reader_id", "ll"}
+    assert set(out.columns) == {"row_id", "reader_id", "ll"}
     assert np.isfinite(out["ll"]).all()
     assert out["reader_id"].nunique() == mc_inputs["rt_df"]["reader_id"].nunique()
 

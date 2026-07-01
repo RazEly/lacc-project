@@ -38,6 +38,35 @@ from src.features.surprisal import compute_surprisal, load_causal_lm
 DOMAIN_DIRS = {"physics": DOMAIN_PHY_DIR, "biology": DOMAIN_BIO_DIR}
 
 
+def _slim_adapter(ckpt: Path) -> None:
+    """Drop the redundant embedding copies PEFT writes for ``modules_to_save``.
+
+    Resizing the vocab forces ``modules_to_save=["wte"]``; PEFT then serialises the
+    full embedding four times in fp32 (top-level ``wte.weight``, ``original_module``,
+    ``modules_to_save``, plus the tied ``lm_head``) — ~4x the real signal for a
+    ~600MB adapter. Only the top-level ``wte.weight`` is read back at load; the
+    ``original_module``/``lm_head`` copies equal the frozen base and reconstruct from
+    it. Keep the LoRA deltas + trained top-level embedding, drop the rest. No-op for
+    pure-LoRA adapters (no ``modules_to_save``).
+    """
+    from safetensors.torch import load_file, save_file
+
+    path = ckpt / "adapter_model.safetensors"
+    sd = load_file(str(path))
+    if not any(k.endswith(".modules_to_save.weight") for k in sd):
+        return  # pure-LoRA adapter, nothing to slim
+    keep = {
+        k: v
+        for k, v in sd.items()
+        if not (
+            k.endswith(".modules_to_save.weight")
+            or k.endswith(".original_module.weight")
+            or k == "base_model.model.lm_head.weight"
+        )
+    }
+    save_file(keep, str(path), metadata={"format": "pt"})
+
+
 def _lora_targets(model, override):
     """Per-architecture LoRA target + embedding modules for DAPT.
 
@@ -161,6 +190,7 @@ class _CheckpointSchedule(TrainerCallback):
     def _save(self, state, idx):
         ckpt = self.out_dir / f"checkpoint_{idx:02d}"
         self.trainer.save_model(str(ckpt))
+        _slim_adapter(ckpt)  # strip PEFT's redundant fp32 embedding copies
         metrics = self.trainer.evaluate()
         ppl = math.exp(metrics["eval_loss"])
         # tokens_seen: cross-domain-comparable x-axis (depends only on global_step).

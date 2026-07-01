@@ -22,13 +22,16 @@ dependencies = [
     # analysis pipeline
     "scipy>=1.10.0",
     "statsmodels>=0.14.0",
-    "pymer4>=0.8,<0.9",       # lme4/lmerTest mixed models via rpy2 (classic Lmer API)
-    "rpy2>=3.5,<3.6",        # pymer4 0.8 needs rpy2 3.5 (NULL.rx2); pairs with R 4.4
+    "pymer4>=0.9",            # lme4/lmerTest mixed models via rpy2 (needs system R + easystats)
+    "rpy2>=3.6",              # pymer4 R bridge (supports current R)
+    "polars>=1.42",          # pymer4 0.9 dataframe backend
+    "great-tables>=0.22",    # pymer4 0.9 summary tables
     "accelerate>=0.26.0",     # Trainer backend for DAPT fine-tuning
     "peft>=0.10.0",           # LoRA adapters (default DAPT method)
     "matplotlib>=3.7.0",
     "seaborn>=0.13.0",
     "multimatch-gaze>=0.1.3",
+    "formulae>=0.6.2",
 ]
 
 [tool.uv]

@@ -24,6 +24,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from src.analysis.correlation import WORD_KEY
 
@@ -46,13 +47,19 @@ def _prep_models(df, measure):
     ``df`` must carry ``s_base`` / ``s_phys`` / ``s_bio`` + reading measures. The
     prompted columns are optional; absent, the prompted models are not built.
     """
-    prompt_cols = ["s_prompt_phys", "s_prompt_bio", *_FIELD_LEVEL_COLS.values()]
-    has_prompt = all(c in df.columns for c in prompt_cols)
+    basic_prompt_cols = ["s_prompt_phys", "s_prompt_bio"]
+    level_prompt_cols = list(_FIELD_LEVEL_COLS.values())
+    graded_cols = ["s_phys_ck1", "s_phys_ck2", "s_bio_ck1", "s_bio_ck2"]
+    has_basic_prompt = all(c in df.columns for c in basic_prompt_cols)
+    has_level_prompt = has_basic_prompt and all(c in df.columns for c in level_prompt_cols)
+    has_graded = all(c in df.columns for c in graded_cols)
     d = df[df[measure] > 0].copy()
     d = d.dropna(
         subset=[measure, "word_length", "lemma_frequency_normalized",
                 "s_base", "s_phys", "s_bio",
-                *(prompt_cols if has_prompt else [])]
+                *(basic_prompt_cols if has_basic_prompt else []),
+                *(level_prompt_cols if has_level_prompt else []),
+                *(graded_cols if has_graded else [])]
     )
     d = d[d["word_length"] > 0]
     # dlexDB lemma freq is right-skewed; log1p keeps zero-freq words finite.
@@ -75,10 +82,21 @@ def _prep_models(df, measure):
         de_phys * d["s_phys"] + de_bio * d["s_bio"]
         + (1.0 - de_phys - de_bio) * d["s_base"]
     )
-    if has_prompt:
+    if has_graded:
+        # graded_aligned: reader always matched to their own domain's model, but
+        # checkpoint depth varies by expertise — low scorers (mean_acc_bq <= 0.5)
+        # get the shallower checkpoint (ck1), high scorers (> 0.5) get ck2.
+        low_exp = (d["mean_acc_bq"] <= 0.5).to_numpy(dtype=float)
+        high_exp = 1.0 - low_exp
+        d["S_graded_aligned"] = (
+            physicist * (low_exp * d["s_phys_ck1"] + high_exp * d["s_phys_ck2"])
+            + (1.0 - physicist) * (low_exp * d["s_bio_ck1"] + high_exp * d["s_bio_ck2"])
+        )
+    if has_basic_prompt:
         d["S_prompted"] = (
             physicist * d["s_prompt_phys"] + (1.0 - physicist) * d["s_prompt_bio"]
         )
+    if has_level_prompt:
         # prompted_level: pick each reader's (level, discipline) prompt column.
         graduate = (d["level_of_studies_numeric"] == 1).to_numpy(dtype=float)
         pl_phys = (
@@ -137,25 +155,39 @@ MODEL_SPECS = {
 def _fit_model(d, measure, surprisal_col=None, spec="covariates"):
     """lme4 mixed model ``log(measure) ~ <spec> [+ surprisal terms] + <re>``.
 
-    Fit with ML (``REML=False``) via pymer4 so log-likelihoods are comparable
-    across the surprisal term. Without ``surprisal_col`` the no-surprisal
-    reference is fit. Returns the fitted ``pymer4.models.Lmer``.
+    Fit with ML (``REML=False``) via pymer4 (lme4) so log-likelihoods are
+    comparable across the surprisal term; p-values are Wald z (significance is
+    Vuong in stats.py, so the Satterthwaite Hessian is skipped). Without
+    ``surprisal_col`` the no-surprisal reference is fit. Returns the fitted
+    ``pymer4.models.lmer``.
     """
-    from pymer4.models import Lmer  # lazy: importing loads R via rpy2
+    import polars as pl
+    from pymer4.models import lmer  # lazy: importing loads R via rpy2
 
     base, surp_tmpl, re = MODEL_SPECS[spec]
     rhs = base
     if surprisal_col is not None:
         rhs += " + " + surp_tmpl.format(col=surprisal_col)
-    # paper always models log RT; measure is filtered > 0 in _prep_models.
-    formula = f"log({measure}) ~ {rhs} + {re}"
-    m = Lmer(formula, data=d)
-    # pymer4 prints a full summary table + a pandas applymap FutureWarning per
-    # fit; silence both for the sweep.
+    # paper always models log RT; measure is filtered > 0 in _prep_models. Precompute
+    # the response so residuals/log-likelihood are on the log scale.
+    dd = d.copy()
+    dd["resp_log"] = np.log(dd[measure].to_numpy())  # valid R identifier (no leading _)
+    formula = f"resp_log ~ {rhs} + {re}"
+    m = lmer(formula, data=pl.from_pandas(dd))
+    # pymer4 streams R convergence chatter to stdout; silence it for the sweep.
     with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
-        warnings.simplefilter("ignore", FutureWarning)
-        m.fit(REML=False, no_warnings=True)
+        warnings.simplefilter("ignore")
+        # conf_method="wald" skips the Satterthwaite Hessian (unused: significance
+        # is Vuong in stats.py); a large win on the random-slope specs.
+        m.fit(summary=False, REML=False, conf_method="wald")
     return m
+
+
+def _loglik(m) -> float:
+    """ML log-likelihood of a fitted pymer4 0.9 ``lmer`` (via the R model)."""
+    import rpy2.robjects as ro
+
+    return float(np.asarray(ro.r("logLik")(m.r_model)).ravel()[0])
 
 
 def build_index_df(surp_versions, rt_df, prompt_surp, index, measure):  # prompt_surp may be None
@@ -182,16 +214,22 @@ def build_index_df(surp_versions, rt_df, prompt_surp, index, measure):  # prompt
         surp = surp.merge(prompt_surp, on=WORD_KEY)
     merged = surp.merge(rt_df, on=WORD_KEY, how="inner")
     d = _prep_models(merged, measure).reset_index(drop=True)
-    # stable row id so the Vuong test can pair observations across two fits.
-    d["_row"] = np.arange(len(d))
+    # stable row id so the Vuong test can pair observations across two fits
+    # (valid R identifier — pymer4 round-trips the frame through R).
+    d["row_id"] = np.arange(len(d))
     return d
 
 
 def _coef(m, name, field):
-    """Fixed-effect ``field`` ('Estimate'/'P-val') for term ``name`` from a Lmer."""
+    """Fixed-effect ``field`` ('estimate'/'p_value') for term ``name``.
+
+    Reads pymer4 0.9's ``result_fit`` (a polars frame keyed by ``term``).
+    """
     try:
-        return float(m.coefs.loc[name, field])
-    except (KeyError, AttributeError, TypeError):
+        rf = m.result_fit
+        row = rf.filter(rf["term"] == name)
+        return float(row[field][0]) if row.height else np.nan
+    except (KeyError, AttributeError, TypeError, IndexError):
         return np.nan
 
 
@@ -218,25 +256,32 @@ def model_comparison_over_epochs(
         all_indices = [i for i in all_indices if i in keep]
     epoch_of = surp_versions.groupby("index")["epoch"].first().to_dict()
 
+    total_fits = len(all_indices) * (1 + len(models))
     rows = []
-    for index in all_indices:
-        d = build_index_df(surp_versions, rt_df, prompt_surp, index, measure)
-        ll0 = _fit_model(d, measure, None, spec=spec).logLike  # reference
-        for name in models:
-            col = f"S_{name}"
-            res = _fit_model(d, measure, col, spec=spec)
-            rows.append(
-                {
-                    "index": index,
-                    "epoch": epoch_of[index],
-                    "spec": spec,
-                    "model": name,
-                    "n": len(d),
-                    "ll": res.logLike,
-                    "delta_ll": res.logLike - ll0,
-                    # main-effect slope + Satterthwaite p; interaction terms carry the rest.
-                    "b_surprisal": _coef(res, col, "Estimate"),
-                    "p_surprisal": _coef(res, col, "P-val"),
-                }
-            )
+    with tqdm(total=total_fits, desc=f"lme4 fits ({spec})", unit="fit") as pbar:
+        for index in all_indices:
+            d = build_index_df(surp_versions, rt_df, prompt_surp, index, measure)
+            pbar.set_postfix(index=index, model="baseline")
+            ll0 = _loglik(_fit_model(d, measure, None, spec=spec))
+            pbar.update(1)
+            for name in models:
+                col = f"S_{name}"
+                pbar.set_postfix(index=index, model=name)
+                res = _fit_model(d, measure, col, spec=spec)
+                ll = _loglik(res)
+                pbar.update(1)
+                rows.append(
+                    {
+                        "index": index,
+                        "epoch": epoch_of[index],
+                        "spec": spec,
+                        "model": name,
+                        "n": len(d),
+                        "ll": ll,
+                        "delta_ll": ll - ll0,
+                        # main-effect slope + Wald p; interaction terms carry the rest.
+                        "b_surprisal": _coef(res, col, "estimate"),
+                        "p_surprisal": _coef(res, col, "p_value"),
+                    }
+                )
     return pd.DataFrame(rows).sort_values(["model", "index"])

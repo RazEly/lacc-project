@@ -33,6 +33,5 @@ artifacts/*
 .vscode/
 
 # secrets
-scripts/token.txt
 .env
 vm.sh

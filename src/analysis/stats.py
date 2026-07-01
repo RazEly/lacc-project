@@ -41,15 +41,16 @@ def _pointwise_loglik(m) -> pd.DataFrame:
 
     Uses the residuals about the fitted values (which include the random-effect
     BLUPs): ``logpdf(resid; 0, σ̂)`` with σ̂ the conditional residual SD. Returns a
-    frame with ``_row`` (pairing key), ``reader_id`` and ``ll``.
+    frame with ``row_id`` (pairing key), ``reader_id`` and ``ll``. ``m.data`` is the
+    polars frame pymer4 0.9 augments with a ``resid`` column.
     """
     df = m.data
-    resid = np.asarray(df["residuals"], dtype=float)
+    resid = df["resid"].to_numpy().astype(float)
     sigma = resid.std(ddof=0) or 1.0
     return pd.DataFrame(
         {
-            "_row": np.asarray(df["_row"]),
-            "reader_id": np.asarray(df["reader_id"]),
+            "row_id": df["row_id"].to_numpy(),
+            "reader_id": df["reader_id"].to_numpy(),
             "ll": norm.logpdf(resid, loc=0.0, scale=sigma),
         }
     )
@@ -58,14 +59,14 @@ def _pointwise_loglik(m) -> pd.DataFrame:
 def vuong_test(m_a, m_b) -> dict:
     """Reader-clustered Vuong test that model A fits better than model B.
 
-    Both fits must come from the same rows (paired by ``_row``). Pointwise
+    Both fits must come from the same rows (paired by ``row_id``). Pointwise
     log-density differences are summed within reader, giving one cluster unit per
     reader. Returns the z-statistic, two-sided p-value, mean per-reader summed
     log-likelihood difference and the number of reader clusters.
     """
     a = _pointwise_loglik(m_a)
     b = _pointwise_loglik(m_b)
-    merged = a.merge(b, on=["_row", "reader_id"], suffixes=("_a", "_b"))
+    merged = a.merge(b, on=["row_id", "reader_id"], suffixes=("_a", "_b"))
     merged["d"] = merged["ll_a"] - merged["ll_b"]
     s = merged.groupby("reader_id")["d"].sum()
 
@@ -86,7 +87,7 @@ def aligned_vs_single_models(
     prompt_surp: pd.DataFrame,
     measure: str = "TFT",
     index=None,
-    spec: str = "covariates",
+    spec: str = "paper_full",
 ) -> pd.DataFrame:
     """Vuong-test reader-aligned surprisal against every other model.
 
@@ -123,7 +124,7 @@ def aligned_vs_single_models(
     return out
 
 
-def _best_aligned_index(surp_versions, rt_df, prompt_surp, measure, spec="covariates"):
+def _best_aligned_index(surp_versions, rt_df, prompt_surp, measure, spec="paper_full"):
     """Checkpoint index at which the aligned model has the largest ΔLL."""
     cmp = mc.model_comparison_over_epochs(
         surp_versions, rt_df, prompt_surp, measure=measure, spec=spec

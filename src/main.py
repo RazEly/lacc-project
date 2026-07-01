@@ -131,9 +131,10 @@ def run_model(slug: str, name: str, words, rm) -> dict:
 
     surp_versions = ft.recompute_surprisal_over_checkpoints(words, manifest)
 
-    # Surprisal-model comparison, repeated under each fixed-effects spec.
+    # Surprisal-model comparison. Only the richest (paper_full) spec is run;
+    # the covariates/full specs remain in MODEL_SPECS for ad-hoc use.
     cmps = []
-    for spec in mc.MODEL_SPECS:
+    for spec in ("paper_full",):
         print(f"Step 5 — model comparison (spec={spec})")
         cmp = mc.model_comparison_over_epochs(
             surp_versions, rm, prompt_surp, measure=MEASURE, spec=spec
@@ -151,7 +152,7 @@ def run_model(slug: str, name: str, words, rm) -> dict:
     cmp_all.to_csv(PROJECT_ROOT / f"results_{slug}.csv", index=False)
 
     # Cross-model summary row: regression slope, best reader-aligned ΔLL.
-    aligned_cov = cmp_all[(cmp_all["spec"] == "covariates") & (cmp_all["model"] == "aligned")]
+    aligned_cov = cmp_all[(cmp_all["spec"] == "paper_full") & (cmp_all["model"] == "aligned")]
     return {
         "summary": {
             "model": slug,

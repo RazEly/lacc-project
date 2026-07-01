@@ -53,6 +53,10 @@
 - number of parameters tuned
 - perplexity curve for each domain on a fixed test-set
 
+### zero-shot (prompting)
+
+- example: the probabilities (color coded) on a sentence with / without a prompt to influence them.
+
 ### linear regression fit
 
 - linear regression model(s)
