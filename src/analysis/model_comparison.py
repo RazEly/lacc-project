@@ -1,8 +1,9 @@
 """Surprisal comparison: reader-aligned vs single model (step 5).
 
-On the whole corpus, fit each surprisal source S in the same mixed model
-``RT ~ log_word_freq + log_word_length + S + (1|reader)`` and compare ΔLL over
-the no-surprisal baseline. S is one of:
+On the whole corpus, fit each surprisal source S in the same lme4 mixed model
+(via pymer4) and compare ΔLL over the no-surprisal baseline. Following Škrjanec &
+Demberg the response is ``log(RT)`` and the random effects are crossed —
+``(1|reader_id) + (1 + is_expert|word_id)`` in the richer specs. S is one of:
   baseline          : un-adapted step-0 model (same for every reader)
   physics / biology : the domain fine-tuned model (every reader)
   aligned           : by READER discipline — physics surprisal for physicists,
@@ -19,7 +20,6 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import statsmodels.formula.api as smf
 
 from src.analysis.correlation import WORD_KEY
 
@@ -96,43 +96,58 @@ def _prep_models(df, measure):
         (d["is_expert_technical_term"] == 1) | (d["is_general_technical_term"] == 1)
     ).astype(int)
     d["is_domain_term"] = (d["is_expert_technical_term"] == 1).astype(int)
+    # single grouping key for the by-word random effect (lme4 word_id).
+    d["word_id"] = (
+        d["text_id"].astype(str) + "_" + d["word_index_in_text"].astype(str)
+    )
     return d
 
 
-# Fixed-effects specs. Each = (terms WITHOUT surprisal, terms ADDED with it);
-# ``{col}`` is the surprisal column. ΔLL is comparable across models within a
-# spec, not across specs.
+# Fixed-effects specs. Each = (fixed terms WITHOUT surprisal, terms ADDED with it,
+# random-effects string). ``{col}`` is the surprisal column. ΔLL is comparable
+# across models within a spec, not across specs.
 MODEL_SPECS = {
-    # freq/length covariates + plain surprisal slope (the original).
-    "covariates": ("log_word_freq + log_word_length", "{col}"),
+    # freq/length covariates + plain surprisal slope. Crossed random intercepts.
+    "covariates": (
+        "log_word_freq + log_word_length",
+        "{col}",
+        "(1|reader_id) + (1|word_id)",
+    ),
     # + position + expertise×terminology; surprisal interacts with both.
     "full": (
         "log_word_freq + log_word_length + word_position"
         " + is_expert * is_technical + is_domain_term",
         "{col} * is_expert + {col}:is_technical",
+        "(1|reader_id) + (1 + is_expert|word_id)",
     ),
     # Škrjanec, Broy & Demberg (2023) richest model (footnote 5): the three-way
     # surprisal × expertise × terminology interaction. For checkpoints 0-1.
     "paper_full": (
         "word_length + word_position + is_expert * is_technical",
         "{col} * is_expert * is_technical",
+        "(1|reader_id) + (1 + is_expert|word_id)",
     ),
 }
 
 
-def _fit_model(d, measure, surprisal_col=None, spec="covariates", log_rt=False):
-    """Mixed model ``[log] measure ~ <spec> [+ surprisal terms] + (1|reader)``.
+def _fit_model(d, measure, surprisal_col=None, spec="covariates"):
+    """lme4 mixed model ``log(measure) ~ <spec> [+ surprisal terms] + <re>``.
 
-    Without ``surprisal_col`` the no-surprisal reference is fit. ``log_rt`` logs
-    the RT response; its LLs are only comparable within one ``log_rt`` setting.
+    Fit with ML (``REML=False``) via pymer4 so log-likelihoods are comparable
+    across the surprisal term. Without ``surprisal_col`` the no-surprisal
+    reference is fit. Returns the fitted ``pymer4.models.Lmer``.
     """
-    base, surp_tmpl = MODEL_SPECS[spec]
+    from pymer4.models import Lmer  # lazy: importing loads R via rpy2
+
+    base, surp_tmpl, re = MODEL_SPECS[spec]
     rhs = base
     if surprisal_col is not None:
         rhs += " + " + surp_tmpl.format(col=surprisal_col)
-    lhs = f"np.log({measure})" if log_rt else measure  # np in scope for patsy
-    md = smf.mixedlm(f"{lhs} ~ {rhs}", d, groups=d["reader_id"])
-    return md.fit(reml=False)  # ML so LLs are comparable across the surprisal term
+    # paper always models log RT; measure is filtered > 0 in _prep_models.
+    formula = f"log({measure}) ~ {rhs} + {re}"
+    m = Lmer(formula, data=d)
+    m.fit(REML=False, no_warnings=True)
+    return m
 
 
 def build_index_df(surp_versions, rt_df, prompt_surp, index, measure):  # prompt_surp may be None
@@ -158,7 +173,18 @@ def build_index_df(surp_versions, rt_df, prompt_surp, index, measure):  # prompt
     if prompt_surp is not None:
         surp = surp.merge(prompt_surp, on=WORD_KEY)
     merged = surp.merge(rt_df, on=WORD_KEY, how="inner")
-    return _prep_models(merged, measure)
+    d = _prep_models(merged, measure).reset_index(drop=True)
+    # stable row id so the Vuong test can pair observations across two fits.
+    d["_row"] = np.arange(len(d))
+    return d
+
+
+def _coef(m, name, field):
+    """Fixed-effect ``field`` ('Estimate'/'P-val') for term ``name`` from a Lmer."""
+    try:
+        return float(m.coefs.loc[name, field])
+    except (KeyError, AttributeError, TypeError):
+        return np.nan
 
 
 def model_comparison_over_epochs(
@@ -169,7 +195,6 @@ def model_comparison_over_epochs(
     spec="covariates",
     models=SURPRISAL_MODELS,
     indices=None,
-    log_rt=False,
 ) -> pd.DataFrame:
     """Per-checkpoint surprisal-model comparison on the whole corpus.
 
@@ -188,10 +213,10 @@ def model_comparison_over_epochs(
     rows = []
     for index in all_indices:
         d = build_index_df(surp_versions, rt_df, prompt_surp, index, measure)
-        ll0 = _fit_model(d, measure, None, spec=spec, log_rt=log_rt).llf  # reference
+        ll0 = _fit_model(d, measure, None, spec=spec).logLike  # reference
         for name in models:
             col = f"S_{name}"
-            res = _fit_model(d, measure, col, spec=spec, log_rt=log_rt)
+            res = _fit_model(d, measure, col, spec=spec)
             rows.append(
                 {
                     "index": index,
@@ -199,11 +224,11 @@ def model_comparison_over_epochs(
                     "spec": spec,
                     "model": name,
                     "n": len(d),
-                    "ll": res.llf,
-                    "delta_ll": res.llf - ll0,
-                    # main-effect slope; spec interaction terms carry the rest.
-                    "b_surprisal": res.fe_params.get(col, np.nan),
-                    "p_surprisal": res.pvalues.get(col, np.nan),
+                    "ll": res.logLike,
+                    "delta_ll": res.logLike - ll0,
+                    # main-effect slope + Satterthwaite p; interaction terms carry the rest.
+                    "b_surprisal": _coef(res, col, "Estimate"),
+                    "p_surprisal": _coef(res, col, "P-val"),
                 }
             )
     return pd.DataFrame(rows).sort_values(["model", "index"])

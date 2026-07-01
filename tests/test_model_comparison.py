@@ -39,8 +39,8 @@ def test_fit_model_returns_loglik(mc_inputs):
         index=1, measure="TFT",
     )
     res = mc._fit_model(d, "TFT", "S_baseline", spec="covariates")
-    assert np.isfinite(res.llf)
-    assert "S_baseline" in res.fe_params.index
+    assert np.isfinite(res.logLike)
+    assert "S_baseline" in res.coefs.index
 
 
 def test_model_comparison_over_epochs_columns_and_baseline(mc_inputs):

@@ -38,12 +38,12 @@ def _fit_two(mc_inputs, col_a, col_b):
     return a, b
 
 
-def test_per_reader_loglik_one_value_per_reader(mc_inputs):
+def test_pointwise_loglik_columns_and_readers(mc_inputs):
     a, _ = _fit_two(mc_inputs, "S_aligned", "S_baseline")
-    groups, ll = stats._per_reader_loglik(a)
-    assert len(groups) == len(np.unique(groups))  # unique readers
-    assert len(ll) == len(groups)
-    assert np.isfinite(ll).all()
+    out = stats._pointwise_loglik(a)
+    assert set(out.columns) == {"_row", "reader_id", "ll"}
+    assert np.isfinite(out["ll"]).all()
+    assert out["reader_id"].nunique() == mc_inputs["rt_df"]["reader_id"].nunique()
 
 
 def test_vuong_test_keys_and_ranges(mc_inputs):

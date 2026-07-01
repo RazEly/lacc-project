@@ -9,7 +9,7 @@ dependencies = [
     "transformers>=4.47.0,<5",
     "datasets>=2.18.0",
     "scikit-learn>=1.3.0",
-    "pandas>=2.0.0",
+    "pandas>=2.0,<3",
     "numpy>=1.24.0,<2.0",
     # XLM-RoBERTa tokenizer (SentencePiece) + protobuf for model loading
     "sentencepiece>=0.1.99",
@@ -22,6 +22,8 @@ dependencies = [
     # analysis pipeline
     "scipy>=1.10.0",
     "statsmodels>=0.14.0",
+    "pymer4>=0.8,<0.9",            # lme4/lmerTest mixed models via rpy2 (needs system R)
+    "rpy2>=3.5",              # pymer4 R bridge
     "accelerate>=0.26.0",     # Trainer backend for DAPT fine-tuning
     "peft>=0.10.0",           # LoRA adapters (default DAPT method)
     "matplotlib>=3.7.0",

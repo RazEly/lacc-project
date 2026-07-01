@@ -1,18 +1,20 @@
 """Significance tests for the surprisal-model comparison.
 
 ΔLL ranks the models but carries no standard error. The models are non-nested
-(no LR test), so we use the Vuong (1989) test, clustered by reader: a
-random-intercept ``mixedlm`` log-likelihood factorises over readers, so each
-reader's marginal log-likelihood is one i.i.d. Vuong unit (the cluster-robust
-variance the per-observation test misses). All models add one surprisal slope, so
-the complexity correction cancels. Comparisons are Benjamini-Hochberg corrected;
-positive z = aligned wins, p two-sided.
+(no LR test), so we use the Vuong (1989) test, clustered by reader. Under the
+crossed random effects ``(1|reader_id) + (1 + is_expert|word_id)`` the likelihood
+no longer factorises over readers (shared words couple them), so we take the
+*conditional* per-observation log-density given the fitted values (BLUPs) as the
+pointwise Vuong contribution and sum it within reader to get one cluster-robust
+unit per reader. All models add one surprisal slope, so the complexity correction
+cancels. Comparisons are Benjamini-Hochberg corrected; positive z = aligned wins,
+p two-sided.
 """
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from scipy.stats import multivariate_normal, norm
+from scipy.stats import norm
 from statsmodels.stats.multitest import multipletests
 
 from src.analysis import model_comparison as mc
@@ -34,52 +36,46 @@ def bh_correct(pvalues, alpha=0.05):
     return reject, p_adj
 
 
-def _per_reader_loglik(result) -> tuple[np.ndarray, np.ndarray]:
-    """Marginal log-likelihood of each reader group under a fitted MixedLM.
+def _pointwise_loglik(m) -> pd.DataFrame:
+    """Conditional per-observation log-density from a fitted pymer4 ``Lmer``.
 
-    Random-intercept marginal per reader: ``N(Xβ, Z·cov_re·Zᵀ + scale·I)``.
-    Returns ``(group_ids, loglik)``.
+    Uses the residuals about the fitted values (which include the random-effect
+    BLUPs): ``logpdf(resid; 0, σ̂)`` with σ̂ the conditional residual SD. Returns a
+    frame with ``_row`` (pairing key), ``reader_id`` and ``ll``.
     """
-    model = result.model
-    y = np.asarray(model.endog, dtype=float)
-    x = np.asarray(model.exog, dtype=float)
-    z = np.asarray(model.exog_re, dtype=float)
-    groups = np.asarray(model.groups)
-    beta = np.asarray(result.fe_params.values, dtype=float)
-    cov_re = np.asarray(result.cov_re, dtype=float)
-    scale = float(result.scale)
-
-    mu = x @ beta
-    uniq = pd.unique(groups)
-    ll = np.empty(len(uniq))
-    for i, g in enumerate(uniq):
-        m = groups == g
-        zg = z[m]
-        cov = zg @ cov_re @ zg.T + scale * np.eye(m.sum())
-        ll[i] = multivariate_normal.logpdf(y[m], mean=mu[m], cov=cov)
-    return uniq, ll
+    df = m.data
+    resid = np.asarray(df["residuals"], dtype=float)
+    sigma = resid.std(ddof=0) or 1.0
+    return pd.DataFrame(
+        {
+            "_row": np.asarray(df["_row"]),
+            "reader_id": np.asarray(df["reader_id"]),
+            "ll": norm.logpdf(resid, loc=0.0, scale=sigma),
+        }
+    )
 
 
-def vuong_test(result_a, result_b) -> dict:
+def vuong_test(m_a, m_b) -> dict:
     """Reader-clustered Vuong test that model A fits better than model B.
 
-    Both results must be fit on the same rows (same reader groups). Returns the
-    z-statistic, two-sided p-value, per-reader mean log-likelihood difference and
-    the number of reader clusters.
+    Both fits must come from the same rows (paired by ``_row``). Pointwise
+    log-density differences are summed within reader, giving one cluster unit per
+    reader. Returns the z-statistic, two-sided p-value, mean per-reader summed
+    log-likelihood difference and the number of reader clusters.
     """
-    ga, lla = _per_reader_loglik(result_a)
-    gb, llb = _per_reader_loglik(result_b)
-    # align by reader id so differences are paired
-    order = pd.Series(np.arange(len(gb)), index=gb)
-    d = lla - llb[order.loc[ga].to_numpy()]
+    a = _pointwise_loglik(m_a)
+    b = _pointwise_loglik(m_b)
+    merged = a.merge(b, on=["_row", "reader_id"], suffixes=("_a", "_b"))
+    merged["d"] = merged["ll_a"] - merged["ll_b"]
+    s = merged.groupby("reader_id")["d"].sum()
 
-    n = len(d)
-    sd = d.std(ddof=0)
-    z = np.sqrt(n) * d.mean() / sd if sd > 0 else 0.0
+    n = len(s)
+    sd = s.std(ddof=0)
+    z = np.sqrt(n) * s.mean() / sd if sd > 0 else 0.0
     return {
         "n_readers": n,
-        "mean_dll": d.mean(),
-        "z": z,
+        "mean_dll": float(s.mean()),
+        "z": float(z),
         "p": 2.0 * norm.sf(abs(z)),
     }
 
