@@ -17,21 +17,6 @@ def surprisal_scatter(agg_df, x="surprisal", y="rt", bins=15, ax=None):
     return ax
 
 
-def finetune_correlation_curve(curve_df, metric="pearson", ax=None):
-    """Surprisal-RT correlation vs fine-tuning epoch, one line per (group, domain).
-
-    ``curve_df`` from ``correlation.correlation_over_epochs``. Domains stay
-    separate lines (their epoch floats differ; pooling would conflate them).
-    """
-    ax = ax or plt.gca()
-    for (group, domain), g in curve_df.groupby(["group", "domain"]):
-        g = g.sort_values("epoch")
-        ax.plot(g["epoch"], g[metric], marker="o", label=f"{group}·{domain}")
-    ax.set(xlabel="fine-tuning epoch", ylabel=f"{metric} r (surprisal vs RT)")
-    ax.legend(title="readers·domain")
-    return ax
-
-
 def model_comparison_curve(cmp_df, metric="delta_ll", ax=None):
     """Surprisal fit vs fine-tuning epoch, one line per surprisal model.
 
@@ -61,25 +46,6 @@ def perplexity_curve(manifest_df, ax=None):
 
 
 # ── cross-model comparison (all models on one axes) ──────────────────────────
-def across_models_correlation_bars(summary_df, metrics=("pearson", "spearman"), ax=None):
-    """Grouped bar of the surprisal-vs-RT correlation per model.
-
-    ``summary_df``: one row per model + a column per metric in ``metrics``.
-    """
-    ax = ax or plt.gca()
-    models = summary_df["model"].tolist()
-    x = range(len(models))
-    width = 0.8 / len(metrics)
-    for i, m in enumerate(metrics):
-        ax.bar([xi + i * width for xi in x], summary_df[m], width, label=m)
-    ax.set_xticks([xi + width * (len(metrics) - 1) / 2 for xi in x])
-    ax.set_xticklabels(models, rotation=15, ha="right")
-    ax.axhline(0, color="grey", lw=0.8)
-    ax.set(ylabel="correlation (surprisal vs RT)")
-    ax.legend(title="metric")
-    return ax
-
-
 def across_models_bar(summary_df, value, ylabel=None, ax=None):
     """Single-metric bar across models (e.g. regression slope, aligned ΔLL)."""
     ax = ax or plt.gca()

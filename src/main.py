@@ -28,9 +28,10 @@ from src.analysis import viz
 
 MEASURE = "TFT"  # total fixation time == TRT
 DAPT_LR = 2e-4  # LoRA needs a high LR (zero-init, few rank-r params)
-# Škrjanec et al. (papers/07) schedule: ≤16,384 steps, checkpoints at 4ⁿ steps.
-DAPT_MAX_STEPS = 16_384
-DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4096, 16384]
+# Škrjanec et al. (papers/07) schedule: ≤4,096 steps, checkpoints at 4ⁿ steps.
+# Matches the published DAPT runs on the Hub (ElyR120/potec-dapt-*).
+DAPT_MAX_STEPS = 4_096
+DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4096]
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FIG_DIR = PROJECT_ROOT / "figures"
 
@@ -48,8 +49,8 @@ def save_fig(ax, name: str) -> None:
 def run_model(slug: str, name: str, words, rm) -> dict:
     """Run steps 2-6 for one model; write ``<slug>_*`` figures + csv; return a summary.
 
-    The summary row feeds the cross-model comparison: the all-readers surprisal-RT
-    correlation, the regression slope, and the best reader-aligned ΔLL.
+    The summary row feeds the cross-model comparison: the regression slope and
+    the best reader-aligned ΔLL.
     """
     print(f"\n=== model: {slug} ({name}) ===")
 
@@ -88,18 +89,6 @@ def run_model(slug: str, name: str, words, rm) -> dict:
     # ── Step 5 — analysis ────────────────────────────────────────────────────
     print("Step 5 — analysis")
     merged = co.merge_surprisal_rt(surp, rm)
-    rows = []
-    for grp in ["all", "experts", "novices"]:
-        for dom_only in (False, True):
-            r = co.correlate_surprisal(
-                merged, participants=grp, domain_only=dom_only, mode="mean"
-            )
-            rows.append({"group": grp, "domain_only": dom_only, **r})
-    corr_df = pd.DataFrame(rows)[
-        ["group", "domain_only", "n", "pearson", "spearman"]
-    ]
-    print(corr_df.to_string(index=False))
-
     fit = co.regress_rt(merged, participants="all")
     print(
         f"  slope={fit.params['surprisal']:.2f} ms/bit  R2={fit.rsquared:.3f}"
@@ -141,12 +130,6 @@ def run_model(slug: str, name: str, words, rm) -> dict:
     save_fig(ax, f"{slug}_perplexity_curve")
 
     surp_versions = ft.recompute_surprisal_over_checkpoints(words, manifest)
-    curve = co.correlation_over_epochs(
-        surp_versions, rm, domain_only=True, mode="mean"
-    )
-    fig, ax = plt.subplots()
-    viz.finetune_correlation_curve(curve, metric="pearson", ax=ax)
-    save_fig(ax, f"{slug}_finetune_correlation_curve")
 
     # Surprisal-model comparison, repeated under each fixed-effects spec.
     cmps = []
@@ -167,14 +150,11 @@ def run_model(slug: str, name: str, words, rm) -> dict:
     cmp_all.insert(0, "model_lm", slug)
     cmp_all.to_csv(PROJECT_ROOT / f"results_{slug}.csv", index=False)
 
-    # Cross-model summary row: all-readers correlation, slope, best aligned ΔLL.
-    base = corr_df[(corr_df["group"] == "all") & (~corr_df["domain_only"])].iloc[0]
+    # Cross-model summary row: regression slope, best reader-aligned ΔLL.
     aligned_cov = cmp_all[(cmp_all["spec"] == "covariates") & (cmp_all["model"] == "aligned")]
     return {
         "summary": {
             "model": slug,
-            "pearson": base["pearson"],
-            "spearman": base["spearman"],
             "slope_ms_per_bit": float(fit.params["surprisal"]),
             "r2": float(fit.rsquared),
             "aligned_delta_ll": float(aligned_cov["delta_ll"].max()),
@@ -213,10 +193,6 @@ def main() -> None:
 
     # ── Cross-model figures ──────────────────────────────────────────────────
     print("Cross-model figures")
-    fig, ax = plt.subplots()
-    viz.across_models_correlation_bars(summary_df, ax=ax)
-    save_fig(ax, "across_models_correlation")
-
     fig, ax = plt.subplots()
     viz.across_models_bar(summary_df, "slope_ms_per_bit", ylabel="slope (ms/bit)", ax=ax)
     save_fig(ax, "across_models_slope")

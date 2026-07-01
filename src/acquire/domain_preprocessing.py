@@ -8,6 +8,7 @@ Two-pass weak labelling:
 Run from the project root:
     python -m src.acquire.domain_preprocessing
 """
+
 import glob
 import json
 import os
@@ -28,8 +29,8 @@ from src.config import (
     POTEC_DIR,
 )
 
-TEXT_CHARS  = 1024
-BATCH_SIZE  = 128   # tune to VRAM
+TEXT_CHARS = 1024
+BATCH_SIZE = 128
 TFIDF_THRESHOLD = 0.05
 
 # When LABEL_IDS_PATH exists, labelling is skipped and datasets rebuilt from it.
@@ -68,11 +69,9 @@ ATP Glucose Aminosäure Fettsäure Nukleotid
 """
 
 
-# ── load corpus ──────────────────────────────────────────────────────────────
 def load_commons():
     """Load the saved german-commons scientific corpus as a single Dataset."""
     ds = load_from_disk(str(COMMONS_DIR))
-    # save_to_disk may yield a DatasetDict (one split per source); flatten it.
     if not hasattr(ds, "column_names") or isinstance(ds.column_names, dict):
         ds = concatenate_datasets([ds[name] for name in ds.keys()])
     return ds
@@ -81,29 +80,62 @@ def load_commons():
 # Calibrate the NLI threshold on the 12 gold POTEC texts before applying to corpus.
 def calibrate_nli_threshold(potec_dir, classifier):
     records = []
-    for f in sorted(glob.glob(os.path.join(potec_dir, "stimuli/word_features/word_features_*.tsv"))):
-        df = pd.read_csv(f, sep="\t", keep_default_na=False,
-            na_values=["#N/A","#N/A N/A","#NA","-1.#IND","-1.#QNAN","-NaN","-nan",
-                       "1.#IND","1.#QNAN","<NA>","N/A","NA","NaN","None","n/a","nan",""])
-        records.append({
-            "text_id": os.path.basename(f).replace("word_features_","").replace(".tsv",""),
-            "gold":    df["text_domain"].iloc[0],
-            "text":    " ".join(df["word"].fillna("").astype(str).tolist()),
-        })
+    for f in sorted(
+        glob.glob(os.path.join(potec_dir, "stimuli/word_features/word_features_*.tsv"))
+    ):
+        df = pd.read_csv(
+            f,
+            sep="\t",
+            keep_default_na=False,
+            na_values=[
+                "#N/A",
+                "#N/A N/A",
+                "#NA",
+                "-1.#IND",
+                "-1.#QNAN",
+                "-NaN",
+                "-nan",
+                "1.#IND",
+                "1.#QNAN",
+                "<NA>",
+                "N/A",
+                "NA",
+                "NaN",
+                "None",
+                "n/a",
+                "nan",
+                "",
+            ],
+        )
+        records.append(
+            {
+                "text_id": os.path.basename(f)
+                .replace("word_features_", "")
+                .replace(".tsv", ""),
+                "gold": df["text_domain"].iloc[0],
+                "text": " ".join(df["word"].fillna("").astype(str).tolist()),
+            }
+        )
 
     hyps = list(NLI_LABELS.values())
     keys = list(NLI_LABELS.keys())
-    results = classifier([r["text"][:TEXT_CHARS] for r in records],
-                         candidate_labels=hyps, multi_label=False, batch_size=16)
+    results = classifier(
+        [r["text"][:TEXT_CHARS] for r in records],
+        candidate_labels=hyps,
+        multi_label=False,
+        batch_size=16,
+    )
 
     print("\nC: NLI scores on POTEC (gold labels):")
     correct_scores, wrong_scores = [], []
     for rec, res in zip(records, results):
         top_label = keys[hyps.index(res["labels"][0])]
-        score     = res["scores"][0]
-        correct   = top_label == rec["gold"]
-        mark      = "✓" if correct else "✗"
-        print(f"  {mark} [{rec['text_id']}] gold={rec['gold']} nli={top_label} score={score:.3f}")
+        score = res["scores"][0]
+        correct = top_label == rec["gold"]
+        mark = "✓" if correct else "✗"
+        print(
+            f"  {mark} [{rec['text_id']}] gold={rec['gold']} nli={top_label} score={score:.3f}"
+        )
         (correct_scores if correct else wrong_scores).append(score)
 
     # threshold = midpoint between lowest correct and highest wrong score
@@ -111,9 +143,13 @@ def calibrate_nli_threshold(potec_dir, classifier):
         threshold = (min(correct_scores) + max(wrong_scores)) / 2
     else:
         threshold = min(correct_scores) if correct_scores else 0.6
-    print(f"\n  correct scores: min={min(correct_scores):.3f} max={max(correct_scores):.3f}")
+    print(
+        f"\n  correct scores: min={min(correct_scores):.3f} max={max(correct_scores):.3f}"
+    )
     if wrong_scores:
-        print(f"  wrong scores:   min={min(wrong_scores):.3f} max={max(wrong_scores):.3f}")
+        print(
+            f"  wrong scores:   min={min(wrong_scores):.3f} max={max(wrong_scores):.3f}"
+        )
     print(f"  → calibrated threshold: {threshold:.3f}")
     return threshold
 
@@ -124,8 +160,10 @@ def save_label_ids(physics_ds, biology_ds, path=LABEL_IDS_PATH):
     ids = {"physics": list(physics_ds["id"]), "biology": list(biology_ds["id"])}
     with open(path, "w") as f:
         json.dump(ids, f)
-    print(f"  wrote label ids: {path} "
-          f"({len(ids['physics']):,} physics, {len(ids['biology']):,} biology)")
+    print(
+        f"  wrote label ids: {path} "
+        f"({len(ids['physics']):,} physics, {len(ids['biology']):,} biology)"
+    )
 
 
 def build_from_label_ids(path=LABEL_IDS_PATH):
@@ -170,9 +208,9 @@ def main():
         dtype=np.float32,
     )
     tfidf_matrix = vectorizer.fit_transform(texts + [PHYSICS_SEED, BIOLOGY_SEED])
-    corpus_vecs  = tfidf_matrix[:-2]
-    sim_physics  = cosine_similarity(corpus_vecs, tfidf_matrix[-2]).ravel()
-    sim_biology  = cosine_similarity(corpus_vecs, tfidf_matrix[-1]).ravel()
+    corpus_vecs = tfidf_matrix[:-2]
+    sim_physics = cosine_similarity(corpus_vecs, tfidf_matrix[-2]).ravel()
+    sim_biology = cosine_similarity(corpus_vecs, tfidf_matrix[-1]).ravel()
 
     pass1_labels = []
     for sp, sb in zip(sim_physics, sim_biology):
@@ -184,16 +222,16 @@ def main():
             pass1_labels.append("biology")
 
     candidates_idx = [i for i, l in enumerate(pass1_labels) if l != "other"]
-    print(f"  candidates: {len(candidates_idx):,} "
-          f"({pass1_labels.count('physics'):,} physics, "
-          f"{pass1_labels.count('biology'):,} biology)")
+    print(
+        f"  candidates: {len(candidates_idx):,} "
+        f"({pass1_labels.count('physics'):,} physics, "
+        f"{pass1_labels.count('biology'):,} biology)"
+    )
 
     # ── pass 2: NLI with calibrated threshold ────────────────────────────────
     device = 0 if torch.cuda.is_available() else -1
-    print(f"\nLoading NLI model (device={'cuda' if device==0 else 'cpu'})...")
+    print(f"\nLoading NLI model (device={'cuda' if device == 0 else 'cpu'})...")
 
-    # AutoTokenizer wrongly tries tiktoken for XLM-RoBERTa in transformers>=4.47;
-    # load SentencePiece tokenizer directly to bypass the bug.
     _model_name = "joeddav/xlm-roberta-large-xnli"
     classifier = pipeline(
         "zero-shot-classification",
@@ -204,10 +242,12 @@ def main():
 
     nli_threshold = calibrate_nli_threshold(str(POTEC_DIR), classifier)
 
-    print(f"\nPass 2 — NLI on {len(candidates_idx):,} candidates (threshold={nli_threshold:.3f})...")
-    hyps      = list(NLI_LABELS.values())
-    keys      = list(NLI_LABELS.keys())
-    results   = classifier(
+    print(
+        f"\nPass 2 — NLI on {len(candidates_idx):,} candidates (threshold={nli_threshold:.3f})..."
+    )
+    hyps = list(NLI_LABELS.values())
+    keys = list(NLI_LABELS.keys())
+    results = classifier(
         [texts[i] for i in candidates_idx],
         candidate_labels=hyps,
         multi_label=False,
@@ -215,41 +255,51 @@ def main():
     )
 
     final_labels = ["other"] * len(ds)
-    nli_scores   = [0.0]    * len(ds)
+    nli_scores = [0.0] * len(ds)
 
-    for idx, p1_label, result in zip(candidates_idx, [pass1_labels[i] for i in candidates_idx], results):
+    for idx, p1_label, result in zip(
+        candidates_idx, [pass1_labels[i] for i in candidates_idx], results
+    ):
         top_label = keys[hyps.index(result["labels"][0])]
-        score     = result["scores"][0]
+        score = result["scores"][0]
         if top_label == p1_label and score >= nli_threshold:
             final_labels[idx] = p1_label
-            nli_scores[idx]   = score
+            nli_scores[idx] = score
 
     # ── results ──────────────────────────────────────────────────────────────
     ds = (
-        ds
-        .add_column("domain_label", final_labels)
-        .add_column("sim_physics",  sim_physics.tolist())
-        .add_column("sim_biology",  sim_biology.tolist())
-        .add_column("nli_score",    nli_scores)
+        ds.add_column("domain_label", final_labels)
+        .add_column("sim_physics", sim_physics.tolist())
+        .add_column("sim_biology", sim_biology.tolist())
+        .add_column("nli_score", nli_scores)
     )
 
     physics_ds = ds.filter(lambda x: x["domain_label"] == "physics")
     biology_ds = ds.filter(lambda x: x["domain_label"] == "biology")
 
     print("\nFinal results (pass 1 ∩ pass 2):")
-    print(f"  physics : {len(physics_ds):,}  ({sum(r['num_tokens'] for r in physics_ds):,} tokens)")
-    print(f"  biology : {len(biology_ds):,}  ({sum(r['num_tokens'] for r in biology_ds):,} tokens)")
-    print(f"  rejected by NLI: {len(candidates_idx) - len(physics_ds) - len(biology_ds):,}")
+    print(
+        f"physics : {len(physics_ds):,}  ({sum(r['num_tokens'] for r in physics_ds):,} tokens)"
+    )
+    print(
+        f"biology : {len(biology_ds):,}  ({sum(r['num_tokens'] for r in biology_ds):,} tokens)"
+    )
+    print(
+        f"rejected by NLI: {len(candidates_idx) - len(physics_ds) - len(biology_ds):,}"
+    )
 
     print("\n-- top physics docs --")
     for row in sorted(physics_ds, key=lambda x: x["nli_score"], reverse=True)[:3]:
-        print(f"  nli={row['nli_score']:.2f} tfidf={row['sim_physics']:.3f} [{row['source']}] {row['text'][:100]!r}")
+        print(
+            f"  nli={row['nli_score']:.2f} tfidf={row['sim_physics']:.3f} [{row['source']}] {row['text'][:100]!r}"
+        )
 
     print("\n-- top biology docs --")
     for row in sorted(biology_ds, key=lambda x: x["nli_score"], reverse=True)[:3]:
-        print(f"  nli={row['nli_score']:.2f} tfidf={row['sim_biology']:.3f} [{row['source']}] {row['text'][:100]!r}")
+        print(
+            f"  nli={row['nli_score']:.2f} tfidf={row['sim_biology']:.3f} [{row['source']}] {row['text'][:100]!r}"
+        )
 
-    # Cache the selected ids so a rerun can skip the labelling above.
     save_label_ids(physics_ds, biology_ds)
     _save_domain_datasets(physics_ds, biology_ds)
 
@@ -259,8 +309,8 @@ def _save_domain_datasets(physics_ds, biology_ds):
     print("\nSaving datasets...")
     physics_ds.save_to_disk(str(DOMAIN_PHY_DIR))
     biology_ds.save_to_disk(str(DOMAIN_BIO_DIR))
-    print(f"  saved: {DOMAIN_PHY_DIR}, {DOMAIN_BIO_DIR}")
-    print(f"  load with: load_from_disk('{DOMAIN_PHY_DIR}')")
+    print(f"saved: {DOMAIN_PHY_DIR}, {DOMAIN_BIO_DIR}")
+    print(f"load with: load_from_disk('{DOMAIN_PHY_DIR}')")
 
 
 if __name__ == "__main__":
