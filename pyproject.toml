@@ -55,8 +55,17 @@ python = ">=3.10,<3.13"
 numpy = ">=1.24,<2"     # keep conda's pin in sync with the PyPI numpy<2 pin
 rpy2 = ">=3.6"          # from conda-forge: prebuilt against this R (PyPI sdist won't link)
 r-base = ">=4.4,<4.6"   # let the solver match rpy2's R build (4.4 or 4.5) — avoids backtracking
+# pymer4 0.9's tidystats layer importr()s this whole easystats chain at import.
 r-lme4 = "*"
 r-lmertest = "*"
+r-tibble = "*"
+r-broom = "*"
+"r-broom.mixed" = "*"
+r-emmeans = "*"
+r-insight = "*"
+r-parameters = "*"
+r-performance = "*"
+r-report = "*"
 
 [tool.pixi.pypi-dependencies]
 # Run-only repo (package = false): install the pinned runtime deps directly
