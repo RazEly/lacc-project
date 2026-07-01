@@ -18,6 +18,10 @@ The question: does ``aligned`` beat the single-model sources? Significance in
 
 from __future__ import annotations
 
+import contextlib
+import io
+import warnings
+
 import numpy as np
 import pandas as pd
 
@@ -146,7 +150,11 @@ def _fit_model(d, measure, surprisal_col=None, spec="covariates"):
     # paper always models log RT; measure is filtered > 0 in _prep_models.
     formula = f"log({measure}) ~ {rhs} + {re}"
     m = Lmer(formula, data=d)
-    m.fit(REML=False, no_warnings=True)
+    # pymer4 prints a full summary table + a pandas applymap FutureWarning per
+    # fit; silence both for the sweep.
+    with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        m.fit(REML=False, no_warnings=True)
     return m
 
 
