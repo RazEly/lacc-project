@@ -1,9 +1,12 @@
-"""Model surprisal from a decoder-only causal LM (step 2).
+"""Model surprisal from a decoder-only causal LM (step 2) + its wide cache.
 
 Word surprisal = sum of sub-token surprisals (-log2 p(token | left context)),
 aligned via the tokenizer's ``word_ids``. Each text is scored as one sequence so
 context spans sentence boundaries (Eq. 1). An optional ``prompt`` prepends
 domain-matched context.
+
+The bottom half persists the (expensive) forwards to one wide CSV so reruns
+reload instead of re-scoring — see the "wide surprisal cache" section.
 """
 
 from __future__ import annotations
@@ -15,7 +18,7 @@ import pandas as pd
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from src.config import DEFAULT_MODEL, WORD_KEY
+from src.config import DEFAULT_MODEL, SURPRISAL_CACHE_PATH, WORD_KEY
 
 
 def _load_tokenizer(name_or_path: str):
@@ -134,3 +137,126 @@ def compute_surprisal(
             rows.append((text_id, wi, b))
 
     return pd.DataFrame(rows, columns=WORD_KEY + ["surprisal"])
+
+
+# ── wide surprisal cache ─────────────────────────────────────────────────────
+# One CSV for every model + checkpoint. One row per word (``WORD_KEY``), one
+# column per source named ``<prefix>_<what>`` (prefix from ``config.MODEL_PREFIX``,
+# e.g. ``gpt`` / ``llama``):
+#
+#     <p>_0                            baseline (un-adapted, checkpoint index 0)
+#     <p>_<i>_phys / <p>_<i>_bio       domain-adapted checkpoint i>=1 (physics/biology)
+#     <p>_prompt_phys / _bio           discipline-matched prompted baseline
+#     <p>_prompt_<phys|bio>_<ug|grad>  field x level prompted baseline
+#
+# Each model fills its own columns; a model already present is reused while
+# missing ones are computed and merged in.
+_DOMAIN_SHORT = {"physics": "phys", "biology": "bio"}
+# prompt_surp column (``s_prompt_*``) suffixes -> cache column ``<prefix>_prompt_*``.
+_PROMPT_SUFFIXES = ["phys", "bio", "phys_ug", "phys_grad", "bio_ug", "bio_grad"]
+
+
+def _prompt_map(prefix: str) -> dict[str, str]:
+    return {f"s_prompt_{s}": f"{prefix}_prompt_{s}" for s in _PROMPT_SUFFIXES}
+
+
+def load_cache(path: Path = SURPRISAL_CACHE_PATH) -> pd.DataFrame | None:
+    """Return the cached wide table, or ``None`` when no file exists yet."""
+    path = Path(path)
+    return pd.read_csv(path) if path.exists() else None
+
+
+def save_cache(cache: pd.DataFrame, path: Path = SURPRISAL_CACHE_PATH) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cache.to_csv(path, index=False)
+
+
+def has_model(cache: pd.DataFrame | None, prefix: str) -> bool:
+    """True when ``cache`` fully holds this model — baseline + every prompt column.
+
+    Requires the full prompt schema, not just the baseline, so a partial cache (e.g.
+    one written by the slim driver, which skips the field×level prompts) forces a
+    clean recompute in the full pipeline instead of a broken reload.
+    """
+    if cache is None:
+        return False
+    needed = [f"{prefix}_0", *_prompt_map(prefix).values()]
+    return all(c in cache.columns for c in needed)
+
+
+def build_wide(
+    prefix: str, surp_versions: pd.DataFrame, prompt_surp: pd.DataFrame
+) -> pd.DataFrame:
+    """Fold one model's ``surp_versions`` + ``prompt_surp`` into wide columns."""
+    base_index = surp_versions["index"].min()
+
+    def _col(sel, col):
+        return sel[WORD_KEY + ["surprisal"]].rename(columns={"surprisal": col})
+
+    base = surp_versions[surp_versions["index"] == base_index].drop_duplicates(WORD_KEY)
+    wide = _col(base, f"{prefix}_0")
+    for idx in sorted(surp_versions["index"].unique()):
+        if idx == base_index:
+            continue
+        for domain, short in _DOMAIN_SHORT.items():
+            sel = surp_versions[
+                (surp_versions["index"] == idx) & (surp_versions["domain"] == domain)
+            ]
+            wide = wide.merge(_col(sel, f"{prefix}_{idx}_{short}"), on=WORD_KEY, how="outer")
+
+    # keep only mapped prompt columns (drops any extra scratch columns callers merged in)
+    prompts = prompt_surp.rename(columns=_prompt_map(prefix))
+    keep = [c for c in prompts.columns if c.startswith(f"{prefix}_prompt_")]
+    return wide.merge(prompts[WORD_KEY + keep], on=WORD_KEY, how="outer")
+
+
+def merge_model(cache: pd.DataFrame | None, wide: pd.DataFrame) -> pd.DataFrame:
+    """Add/replace one model's columns in the cache and return the combined table."""
+    if cache is None:
+        return wide
+    new_cols = [c for c in wide.columns if c not in WORD_KEY]
+    cache = cache.drop(columns=[c for c in new_cols if c in cache.columns])
+    return cache.merge(wide, on=WORD_KEY, how="outer")
+
+
+# ── reload: reconstruct the pieces the pipeline consumes ─────────────────────
+def _reload(cache: pd.DataFrame, cols, rename) -> pd.DataFrame:
+    """Slice ``cols`` from the cache, drop rows missing any, apply ``rename``."""
+    return (
+        cache[WORD_KEY + list(cols)]
+        .dropna(subset=list(cols))
+        .rename(columns=rename)
+        .reset_index(drop=True)
+    )
+
+
+def baseline_surp(cache: pd.DataFrame, prefix: str) -> pd.DataFrame:
+    """The baseline (prompt=None, un-adapted) surprisal table for step 5."""
+    col = f"{prefix}_0"
+    return _reload(cache, [col], {col: "surprisal"})
+
+
+def prompt_surp(cache: pd.DataFrame, prefix: str) -> pd.DataFrame:
+    """The checkpoint-independent prompted columns (``s_prompt_*``)."""
+    rev = {v: k for k, v in _prompt_map(prefix).items()}
+    return _reload(cache, list(rev), rev)
+
+
+def surp_versions(
+    cache: pd.DataFrame, prefix: str, manifest: pd.DataFrame
+) -> pd.DataFrame:
+    """Rebuild the long per-checkpoint table (``recompute_surprisal_over_checkpoints``).
+
+    ``manifest`` supplies ``checkpoint`` / ``index`` / ``epoch`` / ``domain`` per row;
+    surprisal is read from the matching cache column (baseline shared across domains).
+    """
+    frames = []
+    for _, row in manifest.iterrows():
+        idx = int(row["index"])
+        col = f"{prefix}_0" if idx == 0 else f"{prefix}_{idx}_{_DOMAIN_SHORT[row.domain]}"
+        sup = _reload(cache, [col], {col: "surprisal"})
+        sup["checkpoint"], sup["index"] = row.checkpoint, idx
+        sup["epoch"], sup["domain"] = row.epoch, row.domain
+        frames.append(sup)
+    return pd.concat(frames, ignore_index=True)

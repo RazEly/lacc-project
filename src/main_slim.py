@@ -48,6 +48,7 @@ def save_fig(ax, name: str) -> None:
 
 def run_model(slug: str, name: str, words, rm) -> dict:
     print(f"\n=== model: {slug} ({name}) ===")
+    prefix = config.MODEL_PREFIX[slug]
 
     # Step 2 — baseline surprisal
     print("Step 2 — surprisal")
@@ -118,12 +119,16 @@ def run_model(slug: str, name: str, words, rm) -> dict:
     cmp.insert(0, "model_lm", slug)
     cmp.to_csv(PROJECT_ROOT / f"results_slim_{slug}.csv", index=False)
 
+    # Wide surprisal columns for this model (build_wide keeps only schema prompt
+    # columns, so the ck scratch cols merged into prompt_surp above are dropped).
+    wide = su.build_wide(prefix, surp_versions, prompt_surp)
     return {
         "summary": {
             "model": slug,
             "slope_ms_per_bit": float(fit.params["surprisal"]),
             "r2": float(fit.rsquared),
         },
+        "wide": wide,
     }
 
 
@@ -140,9 +145,13 @@ def main() -> None:
     )
 
     summaries = []
+    cache = su.load_cache()
     for slug, name in config.MODELS.items():
         out = run_model(slug, name, words, rm)
         summaries.append(out["summary"])
+        cache = su.merge_model(cache, out["wide"])
+        su.save_cache(cache)
+        print(f"  wrote surprisal cache -> {config.SURPRISAL_CACHE_PATH}")
 
     summary_df = pd.DataFrame(summaries)
     print("\n=== slim summary ===")

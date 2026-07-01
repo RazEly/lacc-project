@@ -24,7 +24,6 @@ from src.features import data
 from src.analysis import model_comparison as mc
 from src.features import reading_time as rt
 from src.features import surprisal as su
-from src.features import surprisal_cache as sc
 from src.analysis import viz
 
 MEASURE = "TFT"  # total fixation time == TRT
@@ -57,13 +56,13 @@ def run_model(slug: str, name: str, words, rm, cache=None) -> dict:
     """
     print(f"\n=== model: {slug} ({name}) ===")
     prefix = config.MODEL_PREFIX[slug]
-    cached = sc.has_model(cache, prefix)
+    cached = su.has_model(cache, prefix)
 
     # ── Step 2 — model surprisal (baseline) ──────────────────────────────────
     print("Step 2 — surprisal" + (" (cache hit)" if cached else ""))
     if cached:
-        surp = sc.baseline_surp(cache, prefix)
-        prompt_surp = sc.prompt_surp(cache, prefix)
+        surp = su.baseline_surp(cache, prefix)
+        prompt_surp = su.prompt_surp(cache, prefix)
     else:
         model, tok = su.load_causal_lm(name)
         surp = su.compute_surprisal(words, model, tok)  # prompt=None
@@ -139,7 +138,7 @@ def run_model(slug: str, name: str, words, rm, cache=None) -> dict:
     save_fig(ax, f"{slug}_perplexity_curve")
 
     if cached:
-        surp_versions = sc.surp_versions(cache, prefix, manifest)
+        surp_versions = su.surp_versions(cache, prefix, manifest)
     else:
         surp_versions = ft.recompute_surprisal_over_checkpoints(words, manifest)
 
@@ -166,7 +165,7 @@ def run_model(slug: str, name: str, words, rm, cache=None) -> dict:
     # Cross-model summary row: regression slope, best reader-aligned ΔLL.
     aligned_cov = cmp_all[(cmp_all["spec"] == "paper_full") & (cmp_all["model"] == "aligned")]
     # Newly computed surprisal -> wide columns for the caller to persist (None on hit).
-    wide = None if cached else sc.build_wide(prefix, surp_versions, prompt_surp)
+    wide = None if cached else su.build_wide(prefix, surp_versions, prompt_surp)
     return {
         "summary": {
             "model": slug,
@@ -199,7 +198,7 @@ def main() -> None:
     # ── Steps 2-6 — run the whole workflow per model ─────────────────────────
     # Reuse cached surprisal (artifacts/surprisal.csv) when present; compute + merge
     # in any model still missing, then persist the combined wide table.
-    cache = sc.load_cache()
+    cache = su.load_cache()
     if cache is not None:
         print(f"  surprisal cache: {config.SURPRISAL_CACHE_PATH} "
               f"({len(cache)} words, cols={len(cache.columns)})")
@@ -208,8 +207,8 @@ def main() -> None:
         out = run_model(slug, name, words, rm, cache=cache)
         summaries.append(out["summary"])
         if out["wide"] is not None:
-            cache = sc.merge_model(cache, out["wide"])
-            sc.save_cache(cache)
+            cache = su.merge_model(cache, out["wide"])
+            su.save_cache(cache)
             print(f"  wrote surprisal cache -> {config.SURPRISAL_CACHE_PATH}")
 
     summary_df = pd.DataFrame(summaries)
