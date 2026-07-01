@@ -10,7 +10,6 @@ checkpoints by training step with validation perplexity, for a progress curve.
 
 from __future__ import annotations
 
-import json
 import math
 from pathlib import Path
 
@@ -230,28 +229,10 @@ class _StepProgress(TrainerCallback):
         self.bar.close()
 
 
-def _run_signature(**kwargs) -> dict:
-    """Serialise the args that determine a run's checkpoints (the cache key).
-
-    A cached run is reused only when its stored signature matches exactly. Lists
-    are JSON-normalised so ``lora_target_modules`` compares by value.
-    """
-    return {k: (list(v) if isinstance(v, (list, tuple)) else v)
-            for k, v in sorted(kwargs.items())}
-
-
-def _load_cached_manifest(out_dir: Path, signature: dict) -> pd.DataFrame | None:
-    """Return the saved manifest iff its signature matches and every checkpoint exists."""
+def _load_cached_manifest(out_dir: Path) -> pd.DataFrame | None:
+    """Return the saved manifest if the run dir has one — trusts its contents."""
     manifest_path = out_dir / "manifest.csv"
-    sig_path = out_dir / "run_signature.json"
-    if not (manifest_path.exists() and sig_path.exists()):
-        return None
-    if json.loads(sig_path.read_text()) != json.loads(json.dumps(signature)):
-        return None
-    df = pd.read_csv(manifest_path)
-    if not all(Path(c).exists() for c in df["checkpoint"]):
-        return None
-    return df
+    return pd.read_csv(manifest_path) if manifest_path.exists() else None
 
 
 def finetune_dapt(
@@ -288,8 +269,8 @@ def finetune_dapt(
     (``n_checkpoints`` evenly spaced, or exactly ``checkpoint_steps``).
     ``max_docs`` truncates the corpus (smoke testing).
 
-    Resumable: a matching cached run (local or Hub) is reused instead of retraining
-    (see ``_run_signature``). Columns: ``domain``, ``checkpoint``, ``index``,
+    Resumable: an existing cached run (local or Hub) is reused instead of
+    retraining. Columns: ``domain``, ``checkpoint``, ``index``,
     ``epoch``, ``step``, ``tokens_seen``, ``words_seen``, ``perplexity``.
     """
     out_dir = Path(
@@ -297,25 +278,8 @@ def finetune_dapt(
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Resume from a matching cached run. max_steps / checkpoint_steps enter the
-    # signature only when set, so older cached runs (predating them) still match.
-    _sched = {}
-    if max_steps is not None:
-        _sched["max_steps"] = max_steps
-    if checkpoint_steps is not None:
-        _sched["checkpoint_steps"] = list(checkpoint_steps)
-    signature = _run_signature(
-        base_model=base_model, domain=domain, max_tokens=max_tokens, **_sched,
-        n_checkpoints=n_checkpoints, include_baseline=include_baseline,
-        block_size=block_size, batch_size=batch_size, grad_accum=grad_accum,
-        val_frac=val_frac, learning_rate=learning_rate, warmup_ratio=warmup_ratio,
-        seed=seed, max_docs=max_docs, lora_r=lora_r,
-        lora_alpha=lora_alpha, lora_dropout=lora_dropout,
-        lora_target_modules=lora_target_modules,
-        # kept so runs cached under the old objective/lora-flag args still match.
-        objective="causal", lora=True,
-    )
-    cached = _load_cached_manifest(out_dir, signature)
+    # Resume from a cached run if the dir already holds one (trusted as-is).
+    cached = _load_cached_manifest(out_dir)
     if cached is not None:
         print(f"  [{domain}] reusing {len(cached)} saved checkpoints in {out_dir} "
               "(skipping training)")
@@ -324,7 +288,7 @@ def finetune_dapt(
     # Local miss: try the Hub before paying for a GPU run.
     from src.modeling import hub
 
-    remote = hub.try_download_run(out_dir, signature)
+    remote = hub.try_download_run(out_dir)
     if remote is not None:
         print(f"  [{domain}] reusing {len(remote)} checkpoints pulled from the Hub "
               "(skipping training)")
@@ -412,9 +376,8 @@ def finetune_dapt(
 
     df = pd.DataFrame(manifest)
     df.insert(0, "domain", domain)
-    # Persist manifest + signature for reuse (see _load_cached_manifest).
+    # Persist manifest for reuse (see _load_cached_manifest).
     df.to_csv(out_dir / "manifest.csv", index=False)
-    (out_dir / "run_signature.json").write_text(json.dumps(signature))
     # Mirror to the Hub for future runs. Best effort — never fails the run.
     hub.upload_run(out_dir)
     return df

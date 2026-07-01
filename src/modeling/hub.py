@@ -1,10 +1,9 @@
 """Hugging Face Hub mirror for DAPT checkpoint runs.
 
-Mirrors a whole ``finetune_dapt`` run dir (checkpoint_NN/ + manifest.csv +
-run_signature.json) to/from one public Hub repo, so a GPU run is reused across
-machines. Resolution: local cache -> Hub -> train; a downloaded run passes the
-same signature check as a local one. Best-effort — offline / missing repo returns
-``None`` (download) or skips (upload), never raising.
+Mirrors a whole ``finetune_dapt`` run dir (checkpoint_NN/ + manifest.csv) to/from
+one public Hub repo, so a GPU run is reused across machines. Resolution: local
+cache -> Hub -> train; an existing run dir is trusted as-is. Best-effort — offline
+/ missing repo returns ``None`` (download) or skips (upload), never raising.
 
 Repos live under a fixed namespace (anyone downloads tokenless); upload needs a
 write token, so only the owner pushes. Env vars:
@@ -14,7 +13,6 @@ write token, so only the owner pushes. Env vars:
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
@@ -50,11 +48,11 @@ def repo_id_for(out_dir: Path) -> str:
     return f"{HF_NAMESPACE}/{REPO_PREFIX}{Path(out_dir).name}"
 
 
-def try_download_run(out_dir: Path, signature: dict) -> pd.DataFrame | None:
-    """Pull a matching run from the Hub into ``out_dir``; return its manifest.
+def try_download_run(out_dir: Path) -> pd.DataFrame | None:
+    """Pull the run for ``out_dir`` from the Hub; return its manifest (trusted).
 
-    ``None`` when disabled, repo absent, or signature/checkpoints mismatch (caller
-    trains locally). On a match the manifest paths are rewritten to ``out_dir``.
+    ``None`` when disabled or the repo is absent (caller trains locally). A
+    downloaded run is trusted as-is; its manifest paths are rewritten to ``out_dir``.
     """
     info = _api()
     if info is None:
@@ -77,22 +75,12 @@ def try_download_run(out_dir: Path, signature: dict) -> pd.DataFrame | None:
         except RepositoryNotFoundError:
             return None  # never trained+uploaded yet -> train locally
 
-        # Signature gate: only reuse weights produced by this exact config.
-        sig_path = out_dir / "run_signature.json"
-        if not sig_path.exists() or json.loads(sig_path.read_text()) != json.loads(
-            json.dumps(signature)
-        ):
-            print(f"  [hub] {repo_id} exists but signature differs — retraining")
-            return None
-
         manifest_path = out_dir / "manifest.csv"
         if not manifest_path.exists():
             return None
         df = pd.read_csv(manifest_path)
         # repoint stored paths (producer's cwd) at the local out_dir.
         df["checkpoint"] = [str(out_dir / Path(c).name) for c in df["checkpoint"]]
-        if not all(Path(c).exists() for c in df["checkpoint"]):
-            return None
         df.to_csv(manifest_path, index=False)
         print(f"  [hub] reusing {len(df)} checkpoints from {repo_id}")
         return df

@@ -68,14 +68,3 @@ GRAD_STUDENT_PROMPTS = {
     "physics": "Du bist Doktorand der Physik. ",
     "biology": "Du bist Doktorand der Biologie. ",
 }
-
-# Richer variant: prompt matches discipline AND study level. Keyed
-# (level_of_studies_numeric, reader_discipline_numeric): level 0 undergrad / 1
-# graduate; discipline 1 physics / 0 biology. "fortgeschritten" since PoTeC
-# graduate spans Master/Diplom/PhD.
-FIELD_LEVEL_PROMPTS = {
-    (0, 1): "Du bist Physikstudent im Grundstudium. ",
-    (1, 1): "Du bist fortgeschrittener Physikstudent. ",
-    (0, 0): "Du bist Biologiestudent im Grundstudium. ",
-    (1, 0): "Du bist fortgeschrittener Biologiestudent. ",
-}

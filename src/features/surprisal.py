@@ -147,13 +147,12 @@ def compute_surprisal(
 #     <p>_0                            baseline (un-adapted, checkpoint index 0)
 #     <p>_<i>_phys / <p>_<i>_bio       domain-adapted checkpoint i>=1 (physics/biology)
 #     <p>_prompt_phys / _bio           discipline-matched prompted baseline
-#     <p>_prompt_<phys|bio>_<ug|grad>  field x level prompted baseline
 #
 # Each model fills its own columns; a model already present is reused while
 # missing ones are computed and merged in.
 _DOMAIN_SHORT = {"physics": "phys", "biology": "bio"}
 # prompt_surp column (``s_prompt_*``) suffixes -> cache column ``<prefix>_prompt_*``.
-_PROMPT_SUFFIXES = ["phys", "bio", "phys_ug", "phys_grad", "bio_ug", "bio_grad"]
+_PROMPT_SUFFIXES = ["phys", "bio"]
 
 
 def _prompt_map(prefix: str) -> dict[str, str]:
@@ -170,19 +169,6 @@ def save_cache(cache: pd.DataFrame, path: Path = SURPRISAL_CACHE_PATH) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     cache.to_csv(path, index=False)
-
-
-def has_model(cache: pd.DataFrame | None, prefix: str) -> bool:
-    """True when ``cache`` fully holds this model — baseline + every prompt column.
-
-    Requires the full prompt schema, not just the baseline, so a partial cache (e.g.
-    one written by the slim driver, which skips the field×level prompts) forces a
-    clean recompute in the full pipeline instead of a broken reload.
-    """
-    if cache is None:
-        return False
-    needed = [f"{prefix}_0", *_prompt_map(prefix).values()]
-    return all(c in cache.columns for c in needed)
 
 
 def build_wide(
@@ -203,7 +189,9 @@ def build_wide(
             sel = surp_versions[
                 (surp_versions["index"] == idx) & (surp_versions["domain"] == domain)
             ]
-            wide = wide.merge(_col(sel, f"{prefix}_{idx}_{short}"), on=WORD_KEY, how="outer")
+            wide = wide.merge(
+                _col(sel, f"{prefix}_{idx}_{short}"), on=WORD_KEY, how="outer"
+            )
 
     # keep only mapped prompt columns (drops any extra scratch columns callers merged in)
     prompts = prompt_surp.rename(columns=_prompt_map(prefix))
@@ -218,45 +206,3 @@ def merge_model(cache: pd.DataFrame | None, wide: pd.DataFrame) -> pd.DataFrame:
     new_cols = [c for c in wide.columns if c not in WORD_KEY]
     cache = cache.drop(columns=[c for c in new_cols if c in cache.columns])
     return cache.merge(wide, on=WORD_KEY, how="outer")
-
-
-# ── reload: reconstruct the pieces the pipeline consumes ─────────────────────
-def _reload(cache: pd.DataFrame, cols, rename) -> pd.DataFrame:
-    """Slice ``cols`` from the cache, drop rows missing any, apply ``rename``."""
-    return (
-        cache[WORD_KEY + list(cols)]
-        .dropna(subset=list(cols))
-        .rename(columns=rename)
-        .reset_index(drop=True)
-    )
-
-
-def baseline_surp(cache: pd.DataFrame, prefix: str) -> pd.DataFrame:
-    """The baseline (prompt=None, un-adapted) surprisal table for step 5."""
-    col = f"{prefix}_0"
-    return _reload(cache, [col], {col: "surprisal"})
-
-
-def prompt_surp(cache: pd.DataFrame, prefix: str) -> pd.DataFrame:
-    """The checkpoint-independent prompted columns (``s_prompt_*``)."""
-    rev = {v: k for k, v in _prompt_map(prefix).items()}
-    return _reload(cache, list(rev), rev)
-
-
-def surp_versions(
-    cache: pd.DataFrame, prefix: str, manifest: pd.DataFrame
-) -> pd.DataFrame:
-    """Rebuild the long per-checkpoint table (``recompute_surprisal_over_checkpoints``).
-
-    ``manifest`` supplies ``checkpoint`` / ``index`` / ``epoch`` / ``domain`` per row;
-    surprisal is read from the matching cache column (baseline shared across domains).
-    """
-    frames = []
-    for _, row in manifest.iterrows():
-        idx = int(row["index"])
-        col = f"{prefix}_0" if idx == 0 else f"{prefix}_{idx}_{_DOMAIN_SHORT[row.domain]}"
-        sup = _reload(cache, [col], {col: "surprisal"})
-        sup["checkpoint"], sup["index"] = row.checkpoint, idx
-        sup["epoch"], sup["domain"] = row.epoch, row.domain
-        frames.append(sup)
-    return pd.concat(frames, ignore_index=True)

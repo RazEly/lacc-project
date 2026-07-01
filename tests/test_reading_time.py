@@ -1,5 +1,4 @@
-"""Reading-time cleaning + aggregation (step 1)."""
-import numpy as np
+"""Reading-time cleaning (step 1)."""
 import pandas as pd
 
 from src.features import reading_time as rt
@@ -50,27 +49,3 @@ def test_clean_does_not_mutate_input(rm):
     before = rm.copy()
     rt.clean_reading_times(rm, measure="TFT")
     pd.testing.assert_frame_equal(rm, before)
-
-
-def test_aggregate_rt_groups_and_columns(rm):
-    from src.features.data import add_expertise
-
-    cleaned = add_expertise(rt.clean_reading_times(rm, measure="TFT"))
-    groups = rt.aggregate_rt(cleaned, measure="TFT")
-    assert "all" in groups and "experts" in groups
-    cols = set(groups["all"].columns)
-    assert {"text_id", "word_index_in_text", "mean_TFT", "std_TFT", "median_TFT", "n"} <= cols
-    # one row per surviving word.
-    assert len(groups["all"]) == cleaned[rt.WORD_KEY].drop_duplicates().shape[0]
-
-
-def test_aggregate_experts_subset_of_all(rm):
-    cleaned = rt.clean_reading_times(rm, measure="TFT")
-    # add_expertise flag needed by aggregate_rt.
-    from src.features.data import add_expertise
-
-    cleaned = add_expertise(cleaned)
-    groups = rt.aggregate_rt(cleaned, measure="TFT")
-    # mean over a reader subset can't exceed the global max count.
-    assert groups["experts"]["n"].max() <= groups["all"]["n"].max()
-    assert np.isfinite(groups["all"]["mean_TFT"]).all()

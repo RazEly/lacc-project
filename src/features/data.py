@@ -68,11 +68,7 @@ READING_COLS = WORD_COLS + [
     "lemma_frequency_normalized",
     "reader_discipline_numeric",
     "text_domain_numeric",
-    "level_of_studies_numeric",
-    "discipline_level_of_studies_numeric",
     "expert_reading_label_numeric",
-    "mean_acc_tq",
-    "mean_acc_bq",
 ]
 
 

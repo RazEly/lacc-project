@@ -6,7 +6,6 @@
 #
 # Usage:
 #   ./init.sh                 # full setup incl. PoTeC eye-tracking data
-#   ./init.sh --no-eyetracking  # skip the large OSF eye-tracking download
 #
 set -euo pipefail
 
@@ -14,11 +13,6 @@ cd "$(dirname "$0")"
 
 POTEC_REPO_URL="https://github.com/DiLi-Lab/PoTeC"
 POTEC_DIR="data/potec"
-
-EYETRACKING=1
-if [[ "${1:-}" == "--no-eyetracking" ]]; then
-    EYETRACKING=0
-fi
 
 if ! command -v pixi >/dev/null 2>&1; then
     echo "pixi not found. Install it: https://pixi.sh/latest/#installation"
@@ -53,12 +47,8 @@ else
     git clone --depth 1 "$POTEC_REPO_URL" "$POTEC_DIR"
 fi
 
-if [[ "$EYETRACKING" -eq 1 ]]; then
-    echo "==> Downloading PoTeC eye-tracking data ..."
-    $PY -m src.acquire.download_potec
-else
-    echo "==> Skipping PoTeC eye-tracking download (--no-eyetracking)."
-fi
+echo "==> Downloading PoTeC eye-tracking data ..."
+$PY -m src.acquire.download_potec
 
 echo "==> Downloading german-commons (scientific) ..."
 $PY -m src.acquire.download_commons

@@ -20,10 +20,10 @@ TEXTS = [
     ("b1", "biology", 0),
 ]
 READERS = [
-    ("rp1", 1, 1),  # reader_id, reader_discipline_numeric, level_of_studies_numeric
-    ("rp2", 1, 0),
-    ("rb1", 0, 1),
-    ("rb2", 0, 0),
+    ("rp1", 1),  # reader_id, reader_discipline_numeric
+    ("rp2", 1),
+    ("rb1", 0),
+    ("rb2", 0),
 ]
 N_WORDS = 5
 
@@ -38,7 +38,7 @@ def rm() -> pd.DataFrame:
             is_beg = int(wi == 0)
             is_end = int(wi == N_WORDS - 1)
             word_length = 3 + wi
-            for reader_id, disc, level in READERS:
+            for reader_id, disc in READERS:
                 # base reading time grows with word index + reader noise; a couple
                 # of zeros injected to exercise the skip filter.
                 base = 100 + 40 * wi + rng.integers(-10, 10)
@@ -60,7 +60,6 @@ def rm() -> pd.DataFrame:
                         "is_general_technical_term": int(wi == 3),
                         "reader_id": reader_id,
                         "reader_discipline_numeric": disc,
-                        "level_of_studies_numeric": level,
                         "lemma_frequency_normalized": float(wi),
                         # eye-tracking measures (FFD<=SFD<=FPRT<=TFT typically);
                         # keep them positive & varying so means/PCA are defined.
@@ -182,11 +181,6 @@ def mc_inputs():
     bio = {w: base[w] + rng.normal(0, 0.5) for w in words}
     pphys = {w: base[w] + rng.normal(0, 0.5) for w in words}
     pbio = {w: base[w] + rng.normal(0, 0.5) for w in words}
-    # field×level prompted surprisal: physics/biology prompt × ug/grad reader level.
-    pphys_ug = {w: base[w] + rng.normal(0, 0.5) for w in words}
-    pphys_grad = {w: base[w] + rng.normal(0, 0.5) for w in words}
-    pbio_ug = {w: base[w] + rng.normal(0, 0.5) for w in words}
-    pbio_grad = {w: base[w] + rng.normal(0, 0.5) for w in words}
     wlen = {w: int(rng.integers(3, 11)) for w in words}
     freq = {w: float(rng.uniform(0, 50)) for w in words}
 
@@ -219,24 +213,17 @@ def mc_inputs():
                 "word_index_in_text": wi,
                 "s_prompt_phys": pphys[(tid, dom, wi)],
                 "s_prompt_bio": pbio[(tid, dom, wi)],
-                "s_prompt_phys_ug": pphys_ug[(tid, dom, wi)],
-                "s_prompt_phys_grad": pphys_grad[(tid, dom, wi)],
-                "s_prompt_bio_ug": pbio_ug[(tid, dom, wi)],
-                "s_prompt_bio_grad": pbio_grad[(tid, dom, wi)],
             }
             for (tid, dom, wi) in words
         ]
     )
 
     # reading measures: 6 physics + 6 biology readers over every word.
-    # (reader_id, discipline, level): level 0 = undergrad, 1 = graduate (alternating).
-    readers = [(f"rp{i}", 1, i % 2) for i in range(6)] + [
-        (f"rb{i}", 0, i % 2) for i in range(6)
-    ]
+    readers = [(f"rp{i}", 1) for i in range(6)] + [(f"rb{i}", 0) for i in range(6)]
     rt_rows = []
     for (tid, dom, wi) in words:
         dom_num = 1 if dom == "physics" else 0
-        for reader_id, disc, level in readers:
+        for reader_id, disc in readers:
             tft = (
                 120
                 + 25 * base[(tid, dom, wi)]
@@ -256,11 +243,6 @@ def mc_inputs():
                     "is_general_technical_term": int(wi % 7 == 0),
                     "reader_id": reader_id,
                     "reader_discipline_numeric": disc,
-                    "level_of_studies_numeric": level,
-                    # background-question accuracy per trial; >0.9 = demonstrated
-                    # expert, drives S_expertise_aligned routing in _prep_models.
-                    # tied to discipline-matches-text so DE lines up with is_expert.
-                    "mean_acc_bq": 0.95 if disc == dom_num else 0.6,
                     "TFT": float(max(tft, 1.0)),
                 }
             )

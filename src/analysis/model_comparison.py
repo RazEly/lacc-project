@@ -3,17 +3,15 @@
 On the whole corpus, fit each surprisal source S in the same lme4 mixed model
 (via pymer4) and compare ΔLL over the no-surprisal baseline. Following Škrjanec &
 Demberg the response is ``log(RT)`` and the random effects are crossed —
-``(1|reader_id) + (1 + is_expert|word_id)`` in the richer specs. S is one of:
+``(1|reader_id) + (1 + is_expert|word_id)``. S is one of:
   baseline          : un-adapted step-0 model (same for every reader)
   physics / biology : the domain fine-tuned model (every reader)
   aligned           : by READER discipline — physics surprisal for physicists,
                       biology for biologists (even on the other domain's texts)
-  expertise_aligned : routed by demonstrated expertise (mean_acc_bq > 0.9)
   prompted          : baseline weights + discipline-matched system prompt
-  prompted_level    : prompt matched to discipline AND study level
 
-The question: does ``aligned`` beat the single-model sources? Significance in
-``stats.py``.
+The question: does ``aligned`` beat the single-model sources? Significance is the
+nested likelihood-ratio p (``p_lrt``).
 """
 
 from __future__ import annotations
@@ -27,19 +25,9 @@ import pandas as pd
 from scipy.stats import chi2
 from tqdm import tqdm
 
-from src.analysis.correlation import WORD_KEY
+from src.config import WORD_KEY
 
-SURPRISAL_MODELS = (
-    "baseline", "physics", "biology", "aligned", "prompted", "prompted_level"
-)
-
-# (level_of_studies_numeric, reader_discipline_numeric) → field×level prompt column.
-_FIELD_LEVEL_COLS = {
-    (0, 1): "s_prompt_phys_ug",
-    (1, 1): "s_prompt_phys_grad",
-    (0, 0): "s_prompt_bio_ug",
-    (1, 0): "s_prompt_bio_grad",
-}
+SURPRISAL_MODELS = ("baseline", "physics", "biology", "aligned", "prompted")
 
 
 def _prep_models(df, measure):
@@ -49,18 +37,18 @@ def _prep_models(df, measure):
     prompted columns are optional; absent, the prompted models are not built.
     """
     basic_prompt_cols = ["s_prompt_phys", "s_prompt_bio"]
-    level_prompt_cols = list(_FIELD_LEVEL_COLS.values())
-    graded_cols = ["s_phys_ck1", "s_phys_ck2", "s_bio_ck1", "s_bio_ck2"]
     has_basic_prompt = all(c in df.columns for c in basic_prompt_cols)
-    has_level_prompt = has_basic_prompt and all(c in df.columns for c in level_prompt_cols)
-    has_graded = all(c in df.columns for c in graded_cols)
     d = df[df[measure] > 0].copy()
     d = d.dropna(
-        subset=[measure, "word_length", "lemma_frequency_normalized",
-                "s_base", "s_phys", "s_bio",
-                *(basic_prompt_cols if has_basic_prompt else []),
-                *(level_prompt_cols if has_level_prompt else []),
-                *(graded_cols if has_graded else [])]
+        subset=[
+            measure,
+            "word_length",
+            "lemma_frequency_normalized",
+            "s_base",
+            "s_phys",
+            "s_bio",
+            *(basic_prompt_cols if has_basic_prompt else []),
+        ]
     )
     d = d[d["word_length"] > 0]
     # dlexDB lemma freq is right-skewed; log1p keeps zero-freq words finite.
@@ -73,58 +61,23 @@ def _prep_models(df, measure):
     d["S_biology"] = d["s_bio"]
     # aligned: discipline-matched fine-tuned LM, mixed by reader discipline.
     d["S_aligned"] = physicist * d["s_phys"] + (1.0 - physicist) * d["s_bio"]
-    # expertise_aligned: route per trial by demonstrated expertise (mean_acc_bq
-    # > 0.9) on the TEXT's domain; non-experts keep baseline. Masks are disjoint.
-    de = (d["mean_acc_bq"] > 0.9).to_numpy(dtype=float)
-    phys_text = (d["text_domain_numeric"] == 1).to_numpy(dtype=float)
-    de_phys = de * phys_text
-    de_bio = de * (1.0 - phys_text)
-    d["S_expertise_aligned"] = (
-        de_phys * d["s_phys"] + de_bio * d["s_bio"]
-        + (1.0 - de_phys - de_bio) * d["s_base"]
-    )
-    if has_graded:
-        # graded_aligned: reader always matched to their own domain's model, but
-        # checkpoint depth varies by expertise — low scorers (mean_acc_bq <= 0.5)
-        # get the shallower checkpoint (ck1), high scorers (> 0.5) get ck2.
-        low_exp = (d["mean_acc_bq"] <= 0.5).to_numpy(dtype=float)
-        high_exp = 1.0 - low_exp
-        d["S_graded_aligned"] = (
-            physicist * (low_exp * d["s_phys_ck1"] + high_exp * d["s_phys_ck2"])
-            + (1.0 - physicist) * (low_exp * d["s_bio_ck1"] + high_exp * d["s_bio_ck2"])
-        )
     if has_basic_prompt:
         d["S_prompted"] = (
             physicist * d["s_prompt_phys"] + (1.0 - physicist) * d["s_prompt_bio"]
         )
-    if has_level_prompt:
-        # prompted_level: pick each reader's (level, discipline) prompt column.
-        graduate = (d["level_of_studies_numeric"] == 1).to_numpy(dtype=float)
-        pl_phys = (
-            graduate * d["s_prompt_phys_grad"]
-            + (1.0 - graduate) * d["s_prompt_phys_ug"]
-        )
-        pl_bio = (
-            graduate * d["s_prompt_bio_grad"]
-            + (1.0 - graduate) * d["s_prompt_bio_ug"]
-        )
-        d["S_prompted_level"] = physicist * pl_phys + (1.0 - physicist) * pl_bio
-    # extra predictors for the richer specs (see MODEL_SPECS). Position is
+    # extra predictors for the fixed-effects spec (see _BASE_TERMS). Position is
     # standardized WITHIN sentence (Škrjanec et al.'s WordIndexInSentence).
-    d["word_position"] = (
-        (d["word_index_in_sent"] - d["word_index_in_sent"].mean())
-        / d["word_index_in_sent"].std()
-    )
+    d["word_position"] = (d["word_index_in_sent"] - d["word_index_in_sent"].mean()) / d[
+        "word_index_in_sent"
+    ].std()
     d["is_technical"] = (
         (d["is_expert_technical_term"] == 1) | (d["is_general_technical_term"] == 1)
     ).astype(int)
-    d["is_domain_term"] = (d["is_expert_technical_term"] == 1).astype(int)
     # residual (split-signal) columns: what each adapted model ADDS over the base
     # LM. D_<name> = S_<name> - S_baseline. Fit as S_baseline + D_<name> when
     # model_comparison_over_epochs(residual=True) so p(D) tests the fine-tune's
     # own contribution. D_baseline == 0, so baseline stays the reference.
-    for _name in ("physics", "biology", "aligned", "expertise_aligned",
-                  "graded_aligned", "prompted", "prompted_level"):
+    for _name in ("physics", "biology", "aligned", "prompted"):
         _col = f"S_{_name}"
         if _col in d.columns:
             d[f"D_{_name}"] = d[_col] - d["S_baseline"]
@@ -135,41 +88,22 @@ def _prep_models(df, measure):
     d["is_expert"] = 2 * d["is_expert"] - 1
     d["is_technical"] = 2 * d["is_technical"] - 1
     # single grouping key for the by-word random effect (lme4 word_id).
-    d["word_id"] = (
-        d["text_id"].astype(str) + "_" + d["word_index_in_text"].astype(str)
-    )
+    d["word_id"] = d["text_id"].astype(str) + "_" + d["word_index_in_text"].astype(str)
     return d
 
 
-# Fixed-effects specs. Each = (fixed terms WITHOUT surprisal, terms ADDED with it,
-# random-effects string). ``{col}`` is the surprisal column. ΔLL is comparable
-# across models within a spec, not across specs.
-MODEL_SPECS = {
-    # freq/length covariates + plain surprisal slope. Crossed random intercepts.
-    "covariates": (
-        "log_word_freq + log_word_length",
-        "{col}",
-        "(1|reader_id) + (1|word_id)",
-    ),
-    # + position + expertise×terminology; surprisal interacts with both.
-    "full": (
-        "log_word_freq + log_word_length + word_position"
-        " + is_expert * is_technical + is_domain_term",
-        "{col} * is_expert + {col}:is_technical",
-        "(1|reader_id) + (1 + is_expert|word_id)",
-    ),
-    # Škrjanec, Broy & Demberg (2023) richest model (footnote 5): the three-way
-    # surprisal × expertise × terminology interaction. For checkpoints 0-1.
-    "paper_full": (
-        "word_length + word_position + is_expert * is_technical",
-        "{col} * is_expert * is_technical",
-        "(1|reader_id) + (1 + is_expert|word_id)",
-    ),
-}
+# The only fixed-effects spec we fit: Škrjanec, Broy & Demberg (2023) richest
+# model (footnote 5) — the three-way surprisal × expertise × terminology
+# interaction. ``_BASE_TERMS`` are the terms WITHOUT surprisal, ``_SURPRISAL_TERMS``
+# the terms ADDED with it (``{col}`` = the surprisal column), ``_RANDOM_EFFECTS``
+# the crossed random effects with a by-word expertise slope.
+_BASE_TERMS = "word_length + word_position + is_expert * is_technical"
+_SURPRISAL_TERMS = "{col} * is_expert * is_technical"
+_RANDOM_EFFECTS = "(1|reader_id) + (1 + is_expert|word_id)"
 
 
-def _fit_model(d, measure, surprisal_col=None, spec="covariates", extra_terms=None):
-    """lme4 mixed model ``log(measure) ~ <spec> [+ surprisal terms] + <re>``.
+def _fit_model(d, measure, surprisal_col=None, extra_terms=None):
+    """lme4 mixed model ``log(measure) ~ <base> [+ surprisal terms] + <re>``.
 
     Fit with ML (``REML=False``) via pymer4 (lme4) so the log-likelihoods drive
     a nested likelihood-ratio test (the split-signal exp model adds one term, the
@@ -181,10 +115,9 @@ def _fit_model(d, measure, surprisal_col=None, spec="covariates", extra_terms=No
     import polars as pl
     from pymer4.models import lmer  # lazy: importing loads R via rpy2
 
-    base, surp_tmpl, re = MODEL_SPECS[spec]
-    rhs = base
+    rhs = _BASE_TERMS
     if surprisal_col is not None:
-        rhs += " + " + surp_tmpl.format(col=surprisal_col)
+        rhs += " + " + _SURPRISAL_TERMS.format(col=surprisal_col)
     # raw extra terms (e.g. the split-signal residual D_<name> as a plain slope,
     # added on top of the base surprisal's full interaction block).
     if extra_terms:
@@ -193,7 +126,7 @@ def _fit_model(d, measure, surprisal_col=None, spec="covariates", extra_terms=No
     # the response so residuals/log-likelihood are on the log scale.
     dd = d.copy()
     dd["resp_log"] = np.log(dd[measure].to_numpy())  # valid R identifier (no leading _)
-    formula = f"resp_log ~ {rhs} + {re}"
+    formula = f"resp_log ~ {rhs} + {_RANDOM_EFFECTS}"
     m = lmer(formula, data=pl.from_pandas(dd))
     # pymer4 streams R convergence chatter to stdout; silence it for the sweep.
     with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
@@ -211,7 +144,9 @@ def _loglik(m) -> float:
     return float(np.asarray(ro.r("logLik")(m.r_model)).ravel()[0])
 
 
-def build_index_df(surp_versions, rt_df, prompt_surp, index, measure):  # prompt_surp may be None
+def build_index_df(
+    surp_versions, rt_df, prompt_surp, index, measure
+):  # prompt_surp may be None
     """Reader×word frame with all surprisal columns + covariates at one checkpoint.
 
     Physics/biology checkpoints are paired by ``index`` (0 = baseline), not
@@ -264,7 +199,6 @@ def model_comparison_over_epochs(
     rt_df: pd.DataFrame,
     prompt_surp: pd.DataFrame,
     measure="TFT",
-    spec="covariates",
     models=SURPRISAL_MODELS,
     indices=None,
     residual=True,
@@ -272,8 +206,8 @@ def model_comparison_over_epochs(
     """Per-checkpoint surprisal-model comparison on the whole corpus.
 
     ``surp_versions`` must hold both domains. ``prompt_surp=None`` skips the
-    prompted models. ``models`` defaults to ``SURPRISAL_MODELS`` (``expertise_aligned``
-    also available). ``indices`` restricts the checkpoint sweep.
+    prompted models. ``models`` defaults to ``SURPRISAL_MODELS``. ``indices``
+    restricts the checkpoint sweep.
 
     Two modes:
       residual=True (default, split-signal) — the base LM surprisal
@@ -289,7 +223,7 @@ def model_comparison_over_epochs(
         ``delta_ll`` = gain over no surprisal; ``p_lrt`` = LRT p for the whole
         surprisal block.
 
-    Long-form columns: ``index``, ``epoch``, ``spec``, ``ref``, ``model``, ``n``,
+    Long-form columns: ``index``, ``epoch``, ``ref``, ``model``, ``n``,
     ``ll``, ``delta_ll``, ``b_surprisal``, ``p_surprisal``, ``p_lrt``.
     """
     all_indices = sorted(surp_versions["index"].unique())
@@ -302,12 +236,12 @@ def model_comparison_over_epochs(
     ref_label = "base_surprisal" if residual else "no_surprisal"
     total_fits = len(all_indices) * (1 + len(fit_models))
     rows = []
-    with tqdm(total=total_fits, desc=f"lme4 fits ({spec})", unit="fit") as pbar:
+    with tqdm(total=total_fits, desc="lme4 fits", unit="fit") as pbar:
         for index in all_indices:
             d = build_index_df(surp_versions, rt_df, prompt_surp, index, measure)
             pbar.set_postfix(index=index, model=ref_label)
             # reference: no surprisal, or base surprisal only (split-signal mode).
-            ref = _fit_model(d, measure, "S_baseline" if residual else None, spec=spec)
+            ref = _fit_model(d, measure, "S_baseline" if residual else None)
             ll0 = _loglik(ref)
             n_ref = _n_fixed(ref)
             pbar.update(1)
@@ -315,11 +249,10 @@ def model_comparison_over_epochs(
                 pbar.set_postfix(index=index, model=name)
                 if residual:
                     report_col = f"D_{name}"
-                    res = _fit_model(d, measure, "S_baseline", spec=spec,
-                                     extra_terms=report_col)
+                    res = _fit_model(d, measure, "S_baseline", extra_terms=report_col)
                 else:
                     report_col = f"S_{name}"
-                    res = _fit_model(d, measure, report_col, spec=spec)
+                    res = _fit_model(d, measure, report_col)
                 ll = _loglik(res)
                 pbar.update(1)
                 dll = ll - ll0
@@ -328,13 +261,13 @@ def model_comparison_over_epochs(
                 df_lrt = (_n_fixed(res) or 0) - (n_ref or 0)
                 p_lrt = (
                     float(chi2.sf(2.0 * max(dll, 0.0), df_lrt))
-                    if df_lrt > 0 else np.nan
+                    if df_lrt > 0
+                    else np.nan
                 )
                 rows.append(
                     {
                         "index": index,
                         "epoch": epoch_of[index],
-                        "spec": spec,
                         "ref": ref_label,
                         "model": name,
                         "n": len(d),

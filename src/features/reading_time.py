@@ -1,4 +1,4 @@
-"""Clean and aggregate PoTeC reading times (step 1).
+"""Clean PoTeC reading times (step 1).
 
 Cleaning follows Škrjanec & Demberg (2026): drop the text's first/last word (no
 left/right context), skips (RT == 0), and per-reader ±3 SD outliers.
@@ -6,10 +6,6 @@ left/right context), skips (RT == 0), and per-reader ±3 SD outliers.
 from __future__ import annotations
 
 import pandas as pd
-
-from src.config import WORD_KEY
-
-LEVEL_LABELS = {0: "undergraduate", 1: "graduate"}
 
 
 def clean_reading_times(
@@ -39,34 +35,3 @@ def clean_reading_times(
     lo, hi = mean - sd_k * sd, mean + sd_k * sd
     keep = sd.isna() | ((df[measure] >= lo) & (df[measure] <= hi))
     return df[keep].copy()
-
-
-def _agg(rm: pd.DataFrame, measure: str) -> pd.DataFrame:
-    """Per-word mean / std / median / n of ``measure`` across readers."""
-    out = (rm.groupby(WORD_KEY)[measure]
-             .agg(mean="mean", std="std", median="median", n="size")
-             .reset_index())
-    return out.rename(columns={
-        "mean": f"mean_{measure}",
-        "std": f"std_{measure}",
-        "median": f"median_{measure}",
-    })
-
-
-def aggregate_rt(rm: pd.DataFrame, measure: str = "TFT") -> dict[str, pd.DataFrame]:
-    """Per-word reading-time tables keyed by reader group.
-
-    Groups: ``all``, ``experts`` (is_expert == 1), ``experts_<level>`` (by study
-    level). Each table: WORD_KEY + ``mean_<m>`` / ``std_<m>`` / ``median_<m>`` / ``n``.
-    """
-    groups: dict[str, pd.DataFrame] = {"all": _agg(rm, measure)}
-
-    experts = rm[rm["is_expert"] == 1]
-    groups["experts"] = _agg(experts, measure)
-
-    for lvl, label in LEVEL_LABELS.items():
-        sub = experts[experts["level_of_studies_numeric"] == lvl]
-        if len(sub):
-            groups[f"experts_{label}"] = _agg(sub, measure)
-
-    return groups

@@ -1,24 +1,25 @@
 # data + assets (downloaded / large)
 data/
 handout/*.pdf
-
+guidelines/
 # python
 __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
 
-# uv / virtualenv
+# virtualenv
 .venv/
-venv/
-.python-version
-
+.pixi/
+#
 # jupyter
 .ipynb_checkpoints/
 
 # fine-tuned model checkpoints (DAPT artifacts); keep the tracked label-id map
 artifacts/*
 !artifacts/domain_label_ids.json
+!artifacts/surprisal.csv
+
 
 # model / hub caches (if pointed at repo)
 .cache/
@@ -32,6 +33,5 @@ artifacts/*
 .idea/
 .vscode/
 
-# secrets
-.env
 vm.sh
+run.sh
