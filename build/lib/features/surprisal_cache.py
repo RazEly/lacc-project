@@ -39,24 +39,21 @@ def has_model(cache: pd.DataFrame | None, prefix: str) -> bool:
 def _prompt_map(prefix: str) -> dict[str, str]:
     """prompt_surp column (``s_prompt_*``) -> cache column (``<prefix>_prompt_*``)."""
     cols = [
-        "s_prompt_phys",
-        "s_prompt_bio",
-        "s_prompt_phys_ug",
-        "s_prompt_phys_grad",
-        "s_prompt_bio_ug",
-        "s_prompt_bio_grad",
+        "s_prompt_phys", "s_prompt_bio",
+        "s_prompt_phys_ug", "s_prompt_phys_grad",
+        "s_prompt_bio_ug", "s_prompt_bio_grad",
     ]
     return {c: f"{prefix}_{c[2:]}" for c in cols}  # drop the "s_" head
 
 
-def build_wide(
-    prefix: str, surp_versions: pd.DataFrame, prompt_surp: pd.DataFrame
-) -> pd.DataFrame:
+def build_wide(prefix: str, surp_versions: pd.DataFrame,
+               prompt_surp: pd.DataFrame) -> pd.DataFrame:
     """Fold one model's ``surp_versions`` + ``prompt_surp`` into wide columns."""
     base_index = surp_versions["index"].min()
     base = surp_versions[surp_versions["index"] == base_index]
-    wide = base.drop_duplicates(WORD_KEY)[WORD_KEY + ["surprisal"]].rename(
-        columns={"surprisal": f"{prefix}_0"}
+    wide = (
+        base.drop_duplicates(WORD_KEY)[WORD_KEY + ["surprisal"]]
+        .rename(columns={"surprisal": f"{prefix}_0"})
     )
     for idx in sorted(surp_versions["index"].unique()):
         if idx == base_index:
@@ -68,8 +65,7 @@ def build_wide(
             col = f"{prefix}_{idx}_{short}"
             wide = wide.merge(
                 sel[WORD_KEY + ["surprisal"]].rename(columns={"surprisal": col}),
-                on=WORD_KEY,
-                how="outer",
+                on=WORD_KEY, how="outer",
             )
     prompts = prompt_surp.rename(columns=_prompt_map(prefix))
     return wide.merge(prompts, on=WORD_KEY, how="outer")
@@ -95,10 +91,8 @@ def baseline_surp(cache: pd.DataFrame, prefix: str) -> pd.DataFrame:
     """The baseline (prompt=None, un-adapted) surprisal table for step 5."""
     col = f"{prefix}_0"
     return (
-        cache[WORD_KEY + [col]]
-        .dropna(subset=[col])
-        .rename(columns={col: "surprisal"})
-        .reset_index(drop=True)
+        cache[WORD_KEY + [col]].dropna(subset=[col])
+        .rename(columns={col: "surprisal"}).reset_index(drop=True)
     )
 
 
@@ -107,16 +101,13 @@ def prompt_surp(cache: pd.DataFrame, prefix: str) -> pd.DataFrame:
     rev = {v: k for k, v in _prompt_map(prefix).items()}
     cols = list(rev)
     return (
-        cache[WORD_KEY + cols]
-        .dropna(subset=cols)
-        .rename(columns=rev)
-        .reset_index(drop=True)
+        cache[WORD_KEY + cols].dropna(subset=cols)
+        .rename(columns=rev).reset_index(drop=True)
     )
 
 
-def surp_versions(
-    cache: pd.DataFrame, prefix: str, manifest: pd.DataFrame
-) -> pd.DataFrame:
+def surp_versions(cache: pd.DataFrame, prefix: str,
+                  manifest: pd.DataFrame) -> pd.DataFrame:
     """Rebuild the long per-checkpoint table (``recompute_surprisal_over_checkpoints``).
 
     ``manifest`` supplies ``checkpoint`` / ``index`` / ``epoch`` / ``domain`` per row;
@@ -125,13 +116,9 @@ def surp_versions(
     frames = []
     for _, row in manifest.iterrows():
         idx = int(row["index"])
-        col = (
-            f"{prefix}_0" if idx == 0 else f"{prefix}_{idx}_{_DOMAIN_SHORT[row.domain]}"
-        )
-        sup = (
-            cache[WORD_KEY + [col]]
-            .dropna(subset=[col])
-            .rename(columns={col: "surprisal"})
+        col = f"{prefix}_0" if idx == 0 else f"{prefix}_{idx}_{_DOMAIN_SHORT[row.domain]}"
+        sup = cache[WORD_KEY + [col]].dropna(subset=[col]).rename(
+            columns={col: "surprisal"}
         )
         sup["checkpoint"] = row.checkpoint
         sup["index"] = idx
