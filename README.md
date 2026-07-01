@@ -4,10 +4,22 @@ Domain labelling of german-commons + PoTeC reading-time analysis.
 
 ## Setup
 
-Python deps are managed by [uv](https://docs.astral.sh/uv/):
+The whole environment — Python deps **and** the R backend — is managed by a
+single tool, [pixi](https://pixi.sh). One lockfile (`pixi.lock`) pins everything
+for `linux-64` and `osx-arm64`, so a fresh machine is reproducible with no conda,
+no `uv`, and no hand-set `R_HOME`.
 
 ```bash
-uv sync
+# 1. install pixi (no root)
+curl -fsSL https://pixi.sh/install.sh | bash   # then restart your shell
+
+# 2. build the env from the lockfile (Python + R + lme4/lmerTest + easystats)
+pixi install
+
+# 3. fetch data + run
+./init.sh                 # clone PoTeC, download corpora (add --no-eyetracking to skip the large OSF pull)
+pixi run main             # = python -m src.main
+pixi run test             # = pytest
 ```
 
 ### R backend for the mixed-effects models
@@ -19,25 +31,9 @@ mirrors Škrjanec & Demberg — the exact `(1|reader_id) + (1 + is_expert|word_i
 structure and Satterthwaite p-values are not available in pure-Python mixed-model
 libraries.
 
-`uv` installs the Python side (`pymer4`, `rpy2`); the R side is provided by a
-self-contained **conda** environment (precompiled, no system R / Fortran / root):
-
-```bash
-conda create -n renv -c conda-forge -y r-base=4.4 r-lme4 r-lmertest
-```
-
-`rpy2` must load *this* R (it is built against it), not any system R. Point it
-there with a `.env` (copy `.env.example`, fix the path to your conda env) and run
-the pipeline with `--env-file`:
-
-```bash
-cp .env.example .env            # then edit R_HOME / LD_LIBRARY_PATH if needed
-uv run --env-file .env python -m src.main
-uv run --env-file .env pytest
-```
-
-Version pins that must hold (tied to the classic pymer4 API):
-`pymer4 < 0.9` (0.9 is a polars/easystats rewrite with a different API and a large
-R-package chain), `rpy2 < 3.6` (3.6 dropped `NULL.rx2`, which pymer4 0.8.x needs —
-hence R 4.4, the newest R that rpy2 3.5 supports), and `pandas < 3` (pymer4 0.8.x
-still calls the removed `DataFrame.applymap`).
+pixi supplies R and the full package chain pymer4 0.9 imports (`lme4`, `lmerTest`,
+plus the easystats stack: `broom`, `broom.mixed`, `emmeans`, `insight`,
+`parameters`, `performance`, `report`, `tibble`) from conda-forge — precompiled,
+no system R / Fortran / root. `rpy2` comes from conda-forge too (its PyPI sdist
+won't link against the conda R); inside the pixi env that R is first on `PATH`, so
+`rpy2` auto-resolves `R_HOME` — no `.env` needed.
