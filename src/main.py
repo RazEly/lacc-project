@@ -106,7 +106,6 @@ def fit_model(bundle: dict, rm) -> pd.DataFrame:
         measure=MEASURE,
         models=SLIM_MODELS,
         indices=SLIM_INDICES,
-        residual=True,
     )
     cmp.insert(0, "model_lm", slug)
     print(cmp.to_string(index=False))

@@ -35,3 +35,4 @@ artifacts/*
 
 vm.sh
 run.sh
+build/

@@ -160,23 +160,19 @@ class _CheckpointSchedule(TrainerCallback):
     def on_train_begin(self, args, state, control, **kwargs):
         if self.checkpoint_steps is not None:
             # explicit step targets (indices 1..), clamped onto the final step.
-            steps = {min(int(s), state.max_steps): i
-                     for i, s in enumerate(self.checkpoint_steps, start=1)}
-            self._targets = steps
+            self._targets = {min(int(s), state.max_steps): i
+                             for i, s in enumerate(self.checkpoint_steps, start=1)}
         else:
             # evenly spaced; include_baseline puts the first at step 0.
             lo = 0 if self.include_baseline else 1
-            steps = {
-                round(i / (self.n_checkpoints - 1) * state.max_steps): i
-                for i in range(lo, self.n_checkpoints)
-            }
-            self._targets = steps
-            wanted = self.n_checkpoints - lo
-            if len(steps) < wanted:
+            self._targets = {round(i / (self.n_checkpoints - 1) * state.max_steps): i
+                             for i in range(lo, self.n_checkpoints)}
+            collided = (self.n_checkpoints - lo) - len(self._targets)
+            if collided:
                 print(
-                    f"  [warn] {wanted} checkpoints requested but only {len(steps)} "
-                    f"distinct steps fit in max_steps={state.max_steps}; some "
-                    "collided (raise max_steps / lower n_checkpoints)."
+                    f"  [warn] {collided} checkpoint step(s) collided in "
+                    f"max_steps={state.max_steps}; some indices dropped "
+                    "(raise max_steps / lower n_checkpoints)."
                 )
         if self.include_baseline:
             self._save(state, 0)  # baseline: weights still un-fine-tuned
@@ -229,12 +225,6 @@ class _StepProgress(TrainerCallback):
         self.bar.close()
 
 
-def _load_cached_manifest(out_dir: Path) -> pd.DataFrame | None:
-    """Return the saved manifest if the run dir has one — trusts its contents."""
-    manifest_path = out_dir / "manifest.csv"
-    return pd.read_csv(manifest_path) if manifest_path.exists() else None
-
-
 def finetune_dapt(
     domain: str,
     base_model: str = DEFAULT_MODEL,
@@ -279,8 +269,9 @@ def finetune_dapt(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Resume from a cached run if the dir already holds one (trusted as-is).
-    cached = _load_cached_manifest(out_dir)
-    if cached is not None:
+    manifest_csv = out_dir / "manifest.csv"
+    if manifest_csv.exists():
+        cached = pd.read_csv(manifest_csv)
         print(f"  [{domain}] reusing {len(cached)} saved checkpoints in {out_dir} "
               "(skipping training)")
         return cached
@@ -325,11 +316,11 @@ def finetune_dapt(
         domain, tokenizer, block_size, val_frac, seed, max_docs
     )
 
-    # Optimiser steps: from max_steps if set, else derived from the token budget.
+    # Optimiser steps: from max_steps if set, else derived from the token budget
+    # (max_tokens, or one full pass over the packed train blocks).
     tokens_per_step = block_size * batch_size * grad_accum
-    available_tokens = len(split["train"]) * block_size
     if max_steps is None:
-        budget = max_tokens if max_tokens is not None else available_tokens
+        budget = max_tokens if max_tokens is not None else len(split["train"]) * block_size
         max_steps = max(1, math.ceil(budget / tokens_per_step))
 
     # bf16 on Ampere+, else fp16; tf32 matmuls free on Ampere+.
@@ -376,7 +367,7 @@ def finetune_dapt(
 
     df = pd.DataFrame(manifest)
     df.insert(0, "domain", domain)
-    # Persist manifest for reuse (see _load_cached_manifest).
+    # Persist manifest so the next run resumes from cache instead of retraining.
     df.to_csv(out_dir / "manifest.csv", index=False)
     # Mirror to the Hub for future runs. Best effort — never fails the run.
     hub.upload_run(out_dir)

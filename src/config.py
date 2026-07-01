@@ -7,7 +7,6 @@ DATA_DIR = PROJECT_ROOT / "data"
 
 # PoTeC (eye-tracking corpus)
 POTEC_DIR = DATA_DIR / "potec"
-POTEC_REPO_URL = "https://github.com/DiLi-Lab/PoTeC"
 POTEC_EYETRACKING_DIR = POTEC_DIR / "eyetracking_data"
 
 # german-commons (fine-tuning corpus)
@@ -22,7 +21,6 @@ DOMAIN_BIO_DIR = DATA_DIR / "domain_bio"
 # PoTeC sub-paths used by the analysis pipeline
 POTEC_WORD_FEATURES_DIR = POTEC_DIR / "stimuli" / "word_features"
 POTEC_READING_MEASURES_DIR = POTEC_EYETRACKING_DIR / "reading_measures_merged"
-POTEC_PARTICIPANTS = POTEC_DIR / "participants" / "participant_data.tsv"
 
 # Default decoder LM; loaders are model-agnostic within the decoder family.
 DEFAULT_MODEL = "dbmdz/german-gpt2"
@@ -51,7 +49,6 @@ DAPT_GRAD_ACCUM = {
     "llammlein-1b": 3,  # 2 × 3 = 6 effective
 }
 
-OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 # Run artifacts (relative -> resolved against cwd at run time).
 ARTIFACTS_DIR = Path("artifacts")
 CHECKPOINTS_DIR = ARTIFACTS_DIR
