@@ -1,17 +1,34 @@
-"""Surprisal comparison: reader-aligned vs single model (step 5).
+"""Surprisal comparison — EXACTLY Škrjanec & Demberg (2026), J. Mem. Lang. 146.
 
-On the whole corpus, fit each surprisal source S in the same lme4 mixed model
-(via pymer4) and compare ΔLL over the base-surprisal reference. Following Škrjanec &
-Demberg the response is ``log(RT)`` and the random effects are crossed —
-``(1|reader_id) + (1 + is_expert|word_id)``. S is one of:
+For each surprisal source S we fit the paper's two nested lme4 models (via pymer4)
+and report ΔLL = LL_experimental − LL_baseline (Eq. 5), the paper's measure of a
+source's predictive power.
+
+Baseline model (Eq. 2), NO surprisal:
+    log(RT) ~ Length + LogFreq + Position + Expertise*Terminology
+              + (1|SubjectID) + (1 + Expertise|WordID)
+Experimental model (Eq. 4): baseline + Surprisal, a SINGLE PLAIN MAIN EFFECT
+(no interaction, no residualization).
+
+Exactly as the paper:
+  * all continuous predictors (Length, LogFreq, Position, Surprisal) are scaled
+    and centered;
+  * Expertise and Terminology are sum-coded (−1 / +1); the two technical levels
+    (general + expert) are merged into one "technical" level;
+  * Position is the word's position IN TEXT;
+  * ML fit (REML=False) so the log-likelihoods are comparable;
+  * the shared no-surprisal baseline is the reference for EVERY source.
+
+Surprisal source S is one of:
   baseline          : un-adapted step-0 model (same for every reader)
   physics / biology : the domain fine-tuned model (every reader)
   aligned           : by READER discipline — physics surprisal for physicists,
-                      biology for biologists (even on the other domain's texts)
-  prompted          : baseline weights + discipline-matched system prompt
+                      biology for biologists (reader-aligned surprisal, Study 2)
+  prompted          : baseline weights + discipline-matched prior passage
+  prompt_neutral    : length-matched non-domain prior control
 
-The question: does ``aligned`` beat the single-model sources? Significance is the
-nested likelihood-ratio p (``p_lrt``).
+Significance of adding a source's surprisal is the nested likelihood-ratio test
+(1 df, the single surprisal term); ``p_lrt`` is its p-value.
 """
 
 from __future__ import annotations
@@ -31,29 +48,42 @@ SURPRISAL_MODELS = (
     "baseline", "physics", "biology", "aligned", "prompted", "prompt_neutral"
 )
 
+# Surprisal source -> its scaled column built in ``_prep_models``.
+_SOURCE_COL = {
+    "baseline": "z_S_baseline",
+    "physics": "z_S_physics",
+    "biology": "z_S_biology",
+    "aligned": "z_S_aligned",
+    "prompted": "z_S_prompted",
+    "prompt_neutral": "z_S_prompt_neutral",
+}
+# sources whose surprisal doesn't depend on the DAPT checkpoint: fit once.
+_CKPT_INDEP = {"baseline", "prompted", "prompt_neutral"}
+
 
 def _prep_models(df, measure):
-    """One row per reader×word with every surprisal column + covariates.
+    """One row per reader×word with every scaled surprisal column + covariates.
 
     ``df`` must carry ``s_base`` / ``s_phys`` / ``s_bio`` / ``s_prompt_*`` plus the
-    reading measures.
+    reading measures. The neutral-prior column is optional (older caches predate it).
     """
+    has_neutral = "s_prompt_neutral" in df.columns
     d = df[df[measure] > 0].copy()
-    d = d.dropna(
-        subset=[
-            measure,
-            "word_length",
-            "lemma_frequency_normalized",
-            "s_base",
-            "s_phys",
-            "s_bio",
-            "s_prompt_phys",
-            "s_prompt_bio",
-            "s_prompt_neutral",
-        ]
-    )
+    subset = [
+        measure,
+        "word_length",
+        "lemma_frequency_normalized",
+        "s_base",
+        "s_phys",
+        "s_bio",
+        "s_prompt_phys",
+        "s_prompt_bio",
+    ]
+    if has_neutral:
+        subset.append("s_prompt_neutral")
+    d = d.dropna(subset=subset)
     d = d[d["word_length"] > 0]
-    # dlexDB lemma freq: +1 smoothing then log (paper), z-scored below.
+    # dlexDB lemma freq: +1 smoothing then log (paper).
     d["log_word_freq"] = np.log1p(d["lemma_frequency_normalized"])
 
     # per-reader surprisal sources. aligned / prompted pick the discipline-matched
@@ -63,102 +93,71 @@ def _prep_models(df, measure):
     d["S_physics"] = d["s_phys"]
     d["S_biology"] = d["s_bio"]
     d["S_aligned"] = np.where(is_physicist, d["s_phys"], d["s_bio"])
-    # prompted = reader-aligned domain PRIOR (physics prior for physicists, applied
-    # to any text); prompt_neutral = the length-matched non-domain prior control.
     d["S_prompted"] = np.where(is_physicist, d["s_prompt_phys"], d["s_prompt_bio"])
-    d["S_prompt_neutral"] = d["s_prompt_neutral"]
+    if has_neutral:
+        d["S_prompt_neutral"] = d["s_prompt_neutral"]
 
-    # position standardized WITHIN sentence (Škrjanec et al.'s WordIndexInSentence).
-    pos = d["word_index_in_sent"]
-    d["word_position"] = (pos - pos.mean()) / pos.std()
-    # scale + center the remaining continuous covariates (paper scales all).
-    # Surprisal columns stay in raw bits: the residual D = S_model - S_base needs
-    # every S on one common scale, and slopes stay comparable across sources.
-    for col in ("word_length", "log_word_freq"):
-        d[col] = (d[col] - d[col].mean()) / d[col].std()
+    # Position IN TEXT (paper: "Word position in text").
+    d["word_position"] = d["word_index_in_text"].astype(float)
+
+    # terminology: merge general + expert technical into one "technical" level.
     d["is_technical"] = (
         (d["is_expert_technical_term"] == 1) | (d["is_general_technical_term"] == 1)
     ).astype(int)
-    # residual (split-signal) columns: what each adapted model ADDS over the base LM.
-    # Fit as S_baseline + D_<name> so p(D) tests the fine-tune's own contribution.
-    # D_baseline == 0, so baseline stays the reference.
-    for name in ("physics", "biology", "aligned", "prompted", "prompt_neutral"):
-        d[f"D_{name}"] = d[f"S_{name}"] - d["S_baseline"]
-    # deviation (sum) coding for the two factors that interact with surprisal: -1
-    # novice / +1 expert, -1 common / +1 technical. Makes the surprisal (and D) main
-    # effect the GRAND-MEAN slope over the 2x2 cells, not the novice-common corner
-    # that 0/1 treatment coding would report. Fit / ΔLL unchanged.
+    # SUM (deviation) coding for the two factors (paper): −1 novice/common,
+    # +1 expert/technical.
     d["is_expert"] = 2 * d["is_expert"] - 1
     d["is_technical"] = 2 * d["is_technical"] - 1
+
+    # scale + center every continuous predictor (paper: "All continuous predictors
+    # were scaled and centered"): length, log frequency, position, and each
+    # surprisal source. Scaling is affine — it leaves ΔLL / the LRT unchanged.
+    def _z(s):
+        return (s - s.mean()) / s.std()
+
+    d["z_length"] = _z(d["word_length"])
+    d["z_logfreq"] = _z(d["log_word_freq"])
+    d["z_position"] = _z(d["word_position"])
+    sources = ["baseline", "physics", "biology", "aligned", "prompted"]
+    if has_neutral:
+        sources.append("prompt_neutral")
+    for name in sources:
+        d[f"z_S_{name}"] = _z(d[f"S_{name}"])
+
     # single grouping key for the by-word random effect (lme4 word_id).
     d["word_id"] = d["text_id"].astype(str) + "_" + d["word_index_in_text"].astype(str)
     return d
 
 
-# The only fixed-effects spec we fit: Škrjanec, Broy & Demberg (2023) richest
-# model (footnote 5) — the three-way surprisal × expertise × terminology
-# interaction — plus the paper's Eq. (2) covariates (length, log frequency,
-# position). ``_BASE_TERMS`` are the terms WITHOUT surprisal, ``_SURPRISAL_TERMS``
-# the terms ADDED with it (``{col}`` = the surprisal column), ``_RANDOM_EFFECTS``
-# the crossed random effects with a by-word expertise slope.
-_BASE_TERMS = "word_length + log_word_freq + word_position + is_expert * is_technical"
-_SURPRISAL_TERMS = "{col} * is_expert * is_technical"
+# Paper Eq. (2) baseline fixed effects (WITHOUT surprisal) + Eq. (4) adds a single
+# ``Surprisal`` main effect. Random effects: by-subject intercept, by-word intercept
+# and by-word expertise slope (richer structures did not converge in the paper).
+_BASE_TERMS = "z_length + z_logfreq + z_position + is_expert * is_technical"
 _RANDOM_EFFECTS = "(1|reader_id) + (1 + is_expert|word_id)"
-# surprisal × expert × technical expands to 4 fixed terms (main + 3 interactions);
-# that is the df of the standard baseline-vs-null LRT. The residual D gets the
-# SAME interaction structure (adaptation gains may live in the expertise
-# interaction), so the residual LRT has the same 4 df.
-_SURPRISAL_DF = 4
-_RESID_DF = 4
-# models whose surprisal doesn't depend on the DAPT checkpoint: fit once, not per
-# checkpoint. baseline is handled by name; these are the residual-split models.
-# The prompted arms (prior-conditioned base LM) never touch a DAPT checkpoint.
-_CKPT_INDEP = {"prompted", "prompt_neutral"}
+# the experimental model adds exactly ONE fixed term (the surprisal main effect),
+# so the nested LRT has 1 degree of freedom.
+_LRT_DF = 1
 
 
-def _fit_model(d, measure, surprisal_col, extra_terms=None):
-    """lme4 mixed model ``log(measure) ~ <base> + <surprisal> [+ extra] + <re>``.
+def _fit(d, measure, surprisal_col=None):
+    """lme4 mixed model ``log(measure) ~ <base> [+ surprisal] + <re>`` (paper Eq. 2/4).
 
-    ML fit (``REML=False``) via pymer4 (lme4) so the log-likelihoods drive the nested
-    likelihood-ratio test — the split-signal experimental model adds the residual
-    ``D_<name>`` block (main effect + expertise/terminology interactions) to the
-    base-surprisal reference. Coefficient p-values are Wald z; the Satterthwaite
-    Hessian is skipped since significance is the LRT.
+    ML fit (``REML=False``) via pymer4 (lme4) so log-likelihoods are comparable for
+    the nested LRT / ΔLL. Without ``surprisal_col`` this is the no-surprisal baseline
+    (Eq. 2). Coefficient p-values are Wald z; the Satterthwaite Hessian is skipped.
     Returns the fitted ``pymer4.models.lmer``.
     """
     import polars as pl
     from pymer4.models import lmer  # lazy: importing loads R via rpy2
 
-    rhs = _BASE_TERMS + " + " + _SURPRISAL_TERMS.format(col=surprisal_col)
-    # raw extra terms (e.g. the split-signal residual D_<name> interaction block).
-    if extra_terms:
-        rhs += " + " + extra_terms
-    # paper always models log RT; measure is filtered > 0 in _prep_models.
+    rhs = _BASE_TERMS
+    if surprisal_col is not None:
+        rhs += " + " + surprisal_col  # single plain main effect (no interaction)
     dd = d.copy()
-    dd["resp_log"] = np.log(dd[measure].to_numpy())  # valid R identifier (no leading _)
+    dd["resp_log"] = np.log(dd[measure].to_numpy())  # valid R identifier
     formula = f"resp_log ~ {rhs} + {_RANDOM_EFFECTS}"
     m = lmer(formula, data=pl.from_pandas(dd))
     # pymer4 streams R convergence chatter to stdout; silence it for the sweep.
-    with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        # conf_method="wald" skips the Satterthwaite Hessian (unused: significance is
-        # the nested LRT); a large win on the random-slope specs.
-        m.fit(summary=False, REML=False, conf_method="wald")
-    return m
-
-
-def _fit_null(d, measure):
-    """Null mixed model: base terms only, NO surprisal. Reference for the standard
-    baseline LRT — does the base-LM surprisal (with its expert/terminology
-    interactions) help at all. ML fit to match ``_fit_model``.
-    """
-    import polars as pl
-    from pymer4.models import lmer  # lazy: importing loads R via rpy2
-
-    dd = d.copy()
-    dd["resp_log"] = np.log(dd[measure].to_numpy())
-    formula = f"resp_log ~ {_BASE_TERMS} + {_RANDOM_EFFECTS}"
-    m = lmer(formula, data=pl.from_pandas(dd))
     with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
         warnings.simplefilter("ignore")
         m.fit(summary=False, REML=False, conf_method="wald")
@@ -219,7 +218,7 @@ def build_index_df(surp_versions, rt_df, prompt_surp, index, measure):
 
 
 def _coef(m, name, field):
-    """Fixed-effect ``field`` ('estimate'/'p_value') for term ``name``.
+    """Fixed-effect ``field`` ('estimate'/'std_error'/'p_value') for term ``name``.
 
     Reads pymer4 0.9's ``result_fit`` (a polars frame keyed by ``term``).
     """
@@ -231,31 +230,25 @@ def _coef(m, name, field):
         return np.nan
 
 
-def _row(index, epoch, ref, model, d, ll, dll, fit, resid_col, p_lrt) -> dict:
-    """One result row. EVERY model reports both slopes from its own fit:
+def _row(index, epoch, model, d, ll, dll, fit, scol, p_lrt) -> dict:
+    """One result row for a surprisal source.
 
-      ``b_surprisal`` / ``se_surprisal`` / ``p_surprisal``: the base LM surprisal
-        (``S_baseline``) main effect — present in every fit.
-      ``b_resid`` / ``se_resid`` / ``p_resid``: the residual
-        ``D_<name> = S_<name> - S_baseline`` main-effect slope (``resid_col``).
-        NA for baseline, which has no residual.
-
-    ``index`` / ``epoch`` may be NA for a checkpoint-independent model (fit once).
+    ``b_surprisal`` / ``se_surprisal`` / ``p_surprisal`` are the source's surprisal
+    main-effect slope (Wald z); ``delta_ll`` = LL_experimental − LL_baseline (Eq. 5);
+    ``p_lrt`` = nested LRT p (1 df). ``index`` / ``epoch`` are NA for a
+    checkpoint-independent source (fit once).
     """
     return {
         "index": index,
         "epoch": epoch,
-        "ref": ref,
+        "ref": "no_surprisal",
         "model": model,
         "n": len(d),
         "ll": ll,
         "delta_ll": dll,
-        "b_surprisal": _coef(fit, "S_baseline", "estimate"),
-        "se_surprisal": _coef(fit, "S_baseline", "std_error"),
-        "p_surprisal": _coef(fit, "S_baseline", "p_value"),
-        "b_resid": _coef(fit, resid_col, "estimate") if resid_col else pd.NA,
-        "se_resid": _coef(fit, resid_col, "std_error") if resid_col else pd.NA,
-        "p_resid": _coef(fit, resid_col, "p_value") if resid_col else pd.NA,
+        "b_surprisal": _coef(fit, scol, "estimate"),
+        "se_surprisal": _coef(fit, scol, "std_error"),
+        "p_surprisal": _coef(fit, scol, "p_value"),
         "p_lrt": p_lrt,
     }
 
@@ -268,56 +261,35 @@ def model_comparison_over_epochs(
     models=SURPRISAL_MODELS,
     indices=None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Per-checkpoint split-signal surprisal-model comparison on the whole corpus.
+    """Per-checkpoint surprisal-source comparison on the whole corpus (paper Eq. 2/4/5).
 
-    ``surp_versions`` must hold both domains. ``models`` defaults to
-    ``SURPRISAL_MODELS``; ``indices`` restricts the checkpoint sweep.
+    Every source is compared to the SAME shared no-surprisal baseline (Eq. 2). For
+    each source S: ``delta_ll`` = LL(baseline + S) − LL(baseline), and ``p_lrt`` is
+    the nested LRT (1 df). ``surp_versions`` must hold both domains; ``indices``
+    restricts the checkpoint sweep.
 
-    Two kinds of row, distinguished by ``ref``:
-      ``baseline`` (ref = ``null``): the STANDARD LRT — base-LM surprisal (full
-        interaction) vs the null model with no surprisal at all. ``delta_ll`` is the
-        gain over null; ``p_lrt`` is the nested LRT p (``_SURPRISAL_DF`` df).
-      every other model (ref = ``base_surprisal``): split-signal — the base LM
-        surprisal (``S_baseline``, full interaction) is in BOTH the reference and the
-        experimental model; each adapted model adds its residual
-        ``D_<name> = S_<name> - S_baseline`` with the SAME expertise × terminology
-        interaction block. ``delta_ll`` = gain of the residual block OVER base
-        surprisal; ``p_lrt`` = nested LRT p (``_RESID_DF`` df).
-    Every row reports both slopes from its own fit (Wald z): ``b_surprisal`` /
-    ``se_surprisal`` / ``p_surprisal`` for the base LM surprisal (``S_baseline``),
-    and ``b_resid`` / ``se_resid`` / ``p_resid`` for the residual ``D_<name>`` main
-    effect (NA for baseline, which has none).
-
-    baseline and prompted (``_CKPT_INDEP``) don't depend on the checkpoint, so each
-    is fit ONCE and emitted as a single row with ``index`` / ``epoch`` = NA (not one
-    identical copy per checkpoint). The base-surprisal reference LL is likewise
-    computed once and reused — valid because the row set is checkpoint-independent
-    (asserted per index).
+    baseline and the prompted arms (``_CKPT_INDEP``) don't depend on the checkpoint,
+    so each is fit ONCE (``index`` / ``epoch`` = NA). The no-surprisal baseline LL is
+    also computed once and reused (valid: the row set is checkpoint-independent,
+    asserted per index).
 
     Returns ``(results, reader_ll)``:
-      results — long-form columns ``index``, ``epoch``, ``ref``, ``model``, ``n``,
-        ``ll``, ``delta_ll``, ``b_surprisal``, ``se_surprisal``, ``p_surprisal``,
-        ``b_resid``, ``se_resid``, ``p_resid``, ``p_lrt``.
+      results — columns ``index``, ``epoch``, ``ref``, ``model``, ``n``, ``ll``,
+        ``delta_ll``, ``b_surprisal``, ``se_surprisal``, ``p_surprisal``, ``p_lrt``.
       reader_ll — per-reader conditional log-lik sums (``_reader_loglik``) for the
-        base-surprisal reference (``model`` = ``base_ref``) and every experimental
-        fit; columns ``model``, ``index``, ``reader_id``, ``ll_reader``. Feeds the
-        paired cross-LM tests in ``analysis.claim_tests``.
+        no-surprisal baseline (``model`` = ``base_ref``) and every source; columns
+        ``model``, ``index``, ``reader_id``, ``ll_reader``. Feeds ``claim_tests``.
     """
     all_indices = sorted(surp_versions["index"].unique())
     if indices is not None:
         all_indices = [i for i in all_indices if i in set(indices)]
     epoch_of = surp_versions.groupby("index")["epoch"].first().to_dict()
 
-    want_baseline = "baseline" in models
-    fit_models = [m for m in models if m != "baseline"]
-    # baseline and prompted don't use the checkpoint: S_baseline / S_prompted (and so
-    # their fits, the base-surprisal reference, and the null) are identical across the
-    # whole sweep. Fit them ONCE; only these vary per checkpoint.
-    dep_models = [m for m in fit_models if m not in _CKPT_INDEP]
-    indep_models = [m for m in fit_models if m in _CKPT_INDEP]
+    dep_models = [m for m in models if m not in _CKPT_INDEP]
+    indep_models = [m for m in models if m in _CKPT_INDEP]
 
-    # once: base reference + (null if baseline) + prompted; per index: dependent models.
-    total_fits = 1 + want_baseline + len(indep_models) + len(all_indices) * len(dep_models)
+    # once: no-surprisal baseline + each indep source; per index: dependent sources.
+    total_fits = 1 + len(indep_models) + len(all_indices) * len(dep_models)
     rows = []
     rll_rows: list[pd.DataFrame] = []
 
@@ -328,69 +300,48 @@ def model_comparison_over_epochs(
         rll.insert(1, "index", index)
         rll_rows.append(rll)
 
-    d0 = None  # first index' frame; base reference / indep fits are reused off it.
-    ll0 = None
+    d0 = None  # first index' frame; the baseline / indep fits are reused off it.
+    ll_null = None
     with tqdm(total=total_fits, desc="lme4 fits", unit="fit") as pbar:
         for index in all_indices:
             d = build_index_df(surp_versions, rt_df, prompt_surp, index, measure)
             if d0 is None:
                 d0 = d
-                pbar.set_postfix(index=index, model="base_surprisal")
-                # reference: base surprisal only, no residual. Reused for every
-                # checkpoint's nested LRT (below) — valid because the row set is
-                # checkpoint-independent (asserted per index).
-                base_fit = _fit_model(d, measure, "S_baseline")
-                ll0 = _loglik(base_fit)
-                _collect_rll(base_fit, d, "base_ref", pd.NA)
+                pbar.set_postfix(model="no_surprisal_baseline")
+                null_fit = _fit(d, measure, None)
+                ll_null = _loglik(null_fit)
+                _collect_rll(null_fit, d, "base_ref", pd.NA)
                 pbar.update(1)
-                if want_baseline:
-                    pbar.set_postfix(model="baseline")
-                    # standard LRT: base surprisal (+interactions) vs no-surprisal null.
-                    dll_base = ll0 - _loglik(_fit_null(d, measure))
-                    pbar.update(1)
-                    p_lrt_base = float(chi2.sf(2.0 * max(dll_base, 0.0), _SURPRISAL_DF))
-                    # baseline: no residual (resid_col=None) — reports S_baseline only.
-                    rows.append(_row(
-                        pd.NA, pd.NA, "null", "baseline", d, ll0, dll_base, base_fit,
-                        None, p_lrt_base,
-                    ))
                 for name in indep_models:
+                    col = _SOURCE_COL[name]
+                    if col not in d.columns:  # e.g. neutral absent from an old cache
+                        pbar.update(1)
+                        continue
                     pbar.set_postfix(model=name)
-                    report_col = f"D_{name}"
-                    res = _fit_model(
-                        d, measure, "S_baseline",
-                        extra_terms=_SURPRISAL_TERMS.format(col=report_col),
-                    )
-                    dll = _loglik(res) - ll0
-                    _collect_rll(res, d, name, pd.NA)
+                    fit = _fit(d, measure, col)
+                    dll = _loglik(fit) - ll_null
+                    _collect_rll(fit, d, name, pd.NA)
                     pbar.update(1)
-                    p_lrt = float(chi2.sf(2.0 * max(dll, 0.0), _RESID_DF))
-                    rows.append(_row(
-                        pd.NA, pd.NA, "base_surprisal", name, d, ll0 + dll, dll, res,
-                        report_col, p_lrt,
-                    ))
+                    p_lrt = float(chi2.sf(2.0 * max(dll, 0.0), _LRT_DF))
+                    rows.append(_row(pd.NA, pd.NA, name, d, ll_null + dll, dll, fit,
+                                     col, p_lrt))
             else:
-                # reusing d0's ll0 for this index' LRTs requires the same rows.
+                # reusing d0's ll_null for this index requires the same rows.
                 assert d[WORD_KEY].equals(d0[WORD_KEY]), (
-                    "checkpoint row sets differ; base reference not reusable"
+                    "checkpoint row sets differ; baseline reference not reusable"
                 )
             for name in dep_models:
+                col = _SOURCE_COL[name]
                 pbar.set_postfix(index=index, model=name)
-                report_col = f"D_{name}"
-                res = _fit_model(
-                    d, measure, "S_baseline",
-                    extra_terms=_SURPRISAL_TERMS.format(col=report_col),
-                )
-                dll = _loglik(res) - ll0
-                _collect_rll(res, d, name, index)
+                fit = _fit(d, measure, col)
+                dll = _loglik(fit) - ll_null
+                _collect_rll(fit, d, name, index)
                 pbar.update(1)
-                # nested LRT: 2*ΔLL ~ chi2(_RESID_DF) (the added D interaction
-                # block). Negative ΔLL (exp no better) -> p = 1.
-                p_lrt = float(chi2.sf(2.0 * max(dll, 0.0), _RESID_DF))
-                rows.append(_row(
-                    index, epoch_of[index], "base_surprisal", name, d, ll0 + dll, dll,
-                    res, report_col, p_lrt,
-                ))
+                # nested LRT: 2*ΔLL ~ chi2(1) (the added surprisal term). Negative
+                # ΔLL (surprisal no better) -> p = 1.
+                p_lrt = float(chi2.sf(2.0 * max(dll, 0.0), _LRT_DF))
+                rows.append(_row(index, epoch_of[index], name, d, ll_null + dll, dll,
+                                 fit, col, p_lrt))
     results = pd.DataFrame(rows).sort_values(["model", "index"])
     reader_ll = pd.concat(rll_rows, ignore_index=True)
     return results, reader_ll

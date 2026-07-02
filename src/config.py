@@ -56,8 +56,10 @@ DAPT_LEARNING_RATE = {
     "llammlein-1b": 1e-4,
 }
 # Training seeds; per-word surprisal is averaged over the seeds' checkpoints
-# (Škrjanec & Demberg average 3 random seeds per method × domain × step).
-DAPT_SEEDS = (0, 1, 2)
+# (Škrjanec & Demberg average 3 random seeds per method × domain × step). Each
+# extra seed is a FULL extra DAPT run per domain — (0, 1, 2) = 3× training. Use a
+# single seed while iterating; widen to (0, 1, 2) for the final seed-averaged run.
+DAPT_SEEDS = (0,)
 
 # Run artifacts (relative -> resolved against cwd at run time).
 ARTIFACTS_DIR = Path("artifacts")

@@ -18,8 +18,8 @@ def _fake_results():
                     "epoch": 4**idx,
                     "delta_ll": dll,
                     "p_lrt": 0.01 if dll > 2 else 0.5,
-                    "b_resid": dll / 100,
-                    "se_resid": 0.01,
+                    "b_surprisal": dll / 100,
+                    "se_surprisal": 0.01,
                 }
             )
     return pd.DataFrame(rows)
@@ -46,8 +46,8 @@ def test_best_checkpoints_picks_max_delta_ll():
     b = best.set_index("model_lm")
     assert b.loc["gpt", "index"] == 2
     assert b.loc["llama", "index"] == 2
-    # Wald CI around the residual slope.
-    assert b.loc["gpt", "ci_low"] < b.loc["gpt", "b_resid"] < b.loc["gpt", "ci_high"]
+    # Wald CI around the surprisal slope.
+    assert b.loc["gpt", "ci_low"] < b.loc["gpt", "b_surprisal"] < b.loc["gpt", "ci_high"]
 
 
 def test_run_claim_tests_cross_lm():

@@ -1,9 +1,10 @@
 """Pipeline driver — full end-to-end run.
 
 Per LM: DAPT over ``config.DAPT_SEEDS`` (per-word surprisal averaged across
-seeds, as in Škrjanec & Demberg), then the mixed-model sweep per reading
-measure (early FPRT + late GP/TFT). baseline reports the standard LRT vs the
-no-surprisal null; the rest are residual-split relative to base surprisal.
+seeds, as in Škrjanec & Demberg), then the mixed-model sweep for the reading-time
+measure (TFT). Every surprisal source (baseline, aligned, prompted, …) is scored
+by ΔLL over the SAME shared no-surprisal baseline (paper Eq. 2/4/5); ``p_lrt`` is
+the nested 1-df LRT for adding that source's surprisal.
 Afterwards: adaptation diagnostics (perplexity + terminology-surprisal
 trajectories) and the claim-level tests (best-checkpoint single LRT + direct
 cross-LM comparisons).
@@ -28,9 +29,8 @@ from src.features import reading_time as rt
 from src.features import surprisal as su
 from src.modeling import finetune as ft
 
-# early / late reading measures (paper: FPRT early; GP == PoTeC's RPD_inc and
-# TFT late — the effect is expected on the late ones).
-MEASURES = ("FPRT", "RPD_inc", "TFT")
+# reading-time measure (TFT); the effect is expected on the late measure.
+MEASURES = ("TFT",)
 # delete the artifacts/ run dirs + surprisal cache by hand to force a retrain
 DAPT_MAX_STEPS = 4_096
 DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4096]
@@ -115,15 +115,19 @@ def fit_model(bundle: dict, rm, measure: str) -> tuple[pd.DataFrame, pd.DataFram
     slug = bundle["slug"]
     print(f"\n=== fit: {slug} / {measure} ===")
 
-    # Model comparison — baseline: standard LRT vs null; others: split signal,
-    # base LM surprisal + each model's residual block (D = S_model - S_base,
-    # with expertise × terminology interactions). All checkpoints.
+    # drop the neutral-prompt arm when the cache lacks it (older surprisal.csv).
+    has_neutral = "s_prompt_neutral" in bundle["prompt_surp"].columns
+    models = tuple(m for m in SLIM_MODELS if has_neutral or m != "prompt_neutral")
+
+    # Model comparison — every source scored by ΔLL over the shared no-surprisal
+    # baseline (paper Eq. 2/4/5): surprisal enters as a single plain main effect,
+    # nested 1-df LRT. All checkpoints.
     cmp, reader_ll = mc.model_comparison_over_epochs(
         bundle["surp_versions"],
         rm,
         bundle["prompt_surp"],
         measure=measure,
-        models=SLIM_MODELS,
+        models=models,
         indices=SLIM_INDICES,
     )
     for df in (cmp, reader_ll):
@@ -155,7 +159,12 @@ def bundle_from_cache(cache: pd.DataFrame, slug: str) -> dict:
     prompt_surp = _col(f"{prefix}_prompt_phys", "s_prompt_phys")
     prompt_surp = prompt_surp.merge(
         _col(f"{prefix}_prompt_bio", "s_prompt_bio"), on=WORD_KEY
-    ).merge(_col(f"{prefix}_prompt_neutral", "s_prompt_neutral"), on=WORD_KEY)
+    )
+    # neutral prior is optional: older caches predate it. Merge only if present.
+    if f"{prefix}_prompt_neutral" in cache.columns:
+        prompt_surp = prompt_surp.merge(
+            _col(f"{prefix}_prompt_neutral", "s_prompt_neutral"), on=WORD_KEY
+        )
 
     # Long per-checkpoint table for model_comparison: index 0 (baseline, shared by
     # both domains) + the slim checkpoint(s), each domain.

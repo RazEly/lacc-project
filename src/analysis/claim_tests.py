@@ -34,14 +34,14 @@ def best_checkpoints(results: pd.DataFrame, model: str = "aligned") -> pd.DataFr
 
     ``results`` is the concatenated sweep output with ``model_lm`` and
     ``measure`` columns. Returns one row per (model_lm, measure) with the
-    selected checkpoint's stats + a 95% Wald CI on the residual main-effect
+    selected checkpoint's stats + a 95% Wald CI on the surprisal main-effect
     slope. ``p_lrt`` at the selected point is the single claim test.
     """
     sel = results[(results["model"] == model) & results["index"].notna()]
     rows = []
     for (lm, measure), g in sel.groupby(["model_lm", "measure"]):
         r = g.loc[g["delta_ll"].idxmax()]
-        b, se = float(r["b_resid"]), float(r["se_resid"])
+        b, se = float(r["b_surprisal"]), float(r["se_surprisal"])
         rows.append(
             {
                 "model_lm": lm,
@@ -50,8 +50,8 @@ def best_checkpoints(results: pd.DataFrame, model: str = "aligned") -> pd.DataFr
                 "epoch": r["epoch"],
                 "delta_ll": r["delta_ll"],
                 "p_lrt": r["p_lrt"],
-                "b_resid": b,
-                "se_resid": se,
+                "b_surprisal": b,
+                "se_surprisal": se,
                 "ci_low": b - 1.96 * se,
                 "ci_high": b + 1.96 * se,
             }
@@ -60,7 +60,7 @@ def best_checkpoints(results: pd.DataFrame, model: str = "aligned") -> pd.DataFr
 
 
 def slope_difference(best: pd.DataFrame) -> pd.DataFrame:
-    """Wald z-test on the difference of residual slopes between LM pairs.
+    """Wald z-test on the difference of surprisal slopes between LM pairs.
 
     Per measure and LM pair: z = (b1 - b2) / sqrt(se1² + se2²). The two fits
     share readers/items, so their estimates are positively correlated and the
@@ -70,8 +70,8 @@ def slope_difference(best: pd.DataFrame) -> pd.DataFrame:
     for measure, g in best.groupby("measure"):
         g = g.set_index("model_lm")
         for lm1, lm2 in combinations(g.index, 2):
-            b1, se1 = g.loc[lm1, "b_resid"], g.loc[lm1, "se_resid"]
-            b2, se2 = g.loc[lm2, "b_resid"], g.loc[lm2, "se_resid"]
+            b1, se1 = g.loc[lm1, "b_surprisal"], g.loc[lm1, "se_surprisal"]
+            b2, se2 = g.loc[lm2, "b_surprisal"], g.loc[lm2, "se_surprisal"]
             z = (b1 - b2) / np.sqrt(se1**2 + se2**2)
             rows.append(
                 {
