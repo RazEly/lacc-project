@@ -44,17 +44,32 @@ DAPT_BATCH_SIZE = {
     "german-gpt2": 8,
     "llammlein-1b": 2,
 }
-# Effective batch = batch_size × grad_accum (recovers batch after VRAM cuts).
+# Effective batch = batch_size × grad_accum. Both models MUST land on the same
+# effective batch (8 -> 4096 tokens/step at block_size=512) so a checkpoint step
+# means the same number of training tokens for every model.
 DAPT_GRAD_ACCUM = {
-    "llammlein-1b": 3,  # 2 × 3 = 6 effective
+    "llammlein-1b": 4,  # 2 × 4 = 8 effective — matches german-gpt2's 8 × 1
 }
+# Per-model DAPT learning rate: the 1B model gets a smaller LR than the 124M one.
+DAPT_LEARNING_RATE = {
+    "german-gpt2": 2e-4,
+    "llammlein-1b": 1e-4,
+}
+# Training seeds; per-word surprisal is averaged over the seeds' checkpoints
+# (Škrjanec & Demberg average 3 random seeds per method × domain × step).
+DAPT_SEEDS = (0, 1, 2)
+# Bump to invalidate cached DAPT runs when the training recipe changes (folded
+# into run dir + Hub repo names). v2: LoRA-only (frozen embeddings for every
+# arch), matched tokens/step, per-model LR, per-seed runs.
+DAPT_RUN_VERSION = "v2"
 
 # Run artifacts (relative -> resolved against cwd at run time).
 ARTIFACTS_DIR = Path("artifacts")
 CHECKPOINTS_DIR = ARTIFACTS_DIR
 LABEL_IDS_PATH = ARTIFACTS_DIR / "domain_label_ids.json"
 # Wide per-word surprisal cache: computed once, reloaded to skip model forwards.
-SURPRISAL_CACHE_PATH = ARTIFACTS_DIR / "surprisal.csv"
+# Versioned with the DAPT recipe — old caches hold surprisal from old checkpoints.
+SURPRISAL_CACHE_PATH = ARTIFACTS_DIR / f"surprisal_{DAPT_RUN_VERSION}.csv"
 
 # Per-word join key for every word-level table.
 WORD_KEY = ["text_id", "word_index_in_text"]

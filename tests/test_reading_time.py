@@ -13,36 +13,36 @@ def test_clean_drops_sentence_edges_and_skips(rm):
     assert (out["TFT"] > 0).all()
 
 
-def test_clean_iqr_removes_outlier():
-    # one interior word, many readers, one gross outlier; min_count default 4.
-    n = 20
+def test_clean_sd_fence_removes_outlier():
+    # one reader, many interior words, one gross outlier; ±3 SD fence drops it.
+    n = 42
+    tft = [200 + i for i in range(n)]
+    tft[20] = 100000  # interior outlier (text-edge words are dropped anyway)
     df = pd.DataFrame(
         {
             "text_id": ["t"] * n,
-            "word_index_in_text": [1] * n,
-            "is_sent_beginning": [0] * n,
-            "is_sent_end": [0] * n,
-            "TFT": [200] * (n - 1) + [100000],  # last = outlier
+            "word_index_in_text": list(range(n)),
+            "reader_id": ["r1"] * n,
+            "TFT": tft,
         }
     )
     out = rt.clean_reading_times(df, measure="TFT")
     assert 100000 not in out["TFT"].values
-    assert len(out) == n - 1
+    assert len(out) == n - 3  # first + last text word + the outlier
 
 
-def test_clean_iqr_skipped_when_below_min_count():
-    # only 3 obs (< min_count=4) -> fence not applied, outlier survives.
+def test_clean_sd_fence_keeps_single_observation():
+    # one interior word for the reader -> SD is NaN -> fence not applied.
     df = pd.DataFrame(
         {
             "text_id": ["t"] * 3,
-            "word_index_in_text": [1] * 3,
-            "is_sent_beginning": [0] * 3,
-            "is_sent_end": [0] * 3,
-            "TFT": [200, 210, 99999],
+            "word_index_in_text": [0, 1, 2],
+            "reader_id": ["r1"] * 3,
+            "TFT": [200, 99999, 210],
         }
     )
     out = rt.clean_reading_times(df, measure="TFT")
-    assert len(out) == 3
+    assert out["TFT"].tolist() == [99999]
 
 
 def test_clean_does_not_mutate_input(rm):

@@ -32,7 +32,11 @@ from src.config import (
     DOMAIN_BIO_DIR,
     DOMAIN_PHY_DIR,
 )
-from src.features.surprisal import compute_surprisal, load_causal_lm
+from src.features.surprisal import (
+    compute_surprisal,
+    load_causal_lm,
+    resize_with_mean_init,
+)
 
 DOMAIN_DIRS = {"physics": DOMAIN_PHY_DIR, "biology": DOMAIN_BIO_DIR}
 
@@ -67,23 +71,22 @@ def _slim_adapter(ckpt: Path) -> None:
 
 
 def _lora_targets(model, override):
-    """Per-architecture LoRA target + embedding modules for DAPT.
+    """Per-architecture LoRA target modules for DAPT.
 
-    Targets MLP as well as attention (PEFT's attention-only default is too thin for
-    domain adaptation). Embeddings returned separately for ``modules_to_save`` when
-    grown. ``override`` short-circuits the targets (embeddings stay per-arch).
+    Targets MLP as well as attention (PEFT's attention-only default is too thin
+    for domain adaptation). Embeddings are NEVER trained — every arch adapts
+    through LoRA weights only, so models of different sizes get the same
+    adaptation paradigm. ``override`` short-circuits the targets.
     """
     mt = model.config.model_type
     if mt == "gpt2":
         targets = ["c_attn", "c_fc", "c_proj"]  # attn qkv/out + mlp in/out
-        embed = ["wte"]                          # lm_head is tied to wte
     elif mt == "llama":
         targets = ["q_proj", "k_proj", "v_proj", "o_proj",
                    "gate_proj", "up_proj", "down_proj"]
-        embed = ["embed_tokens", "lm_head"]
     else:  # unknown arch: fall back to PEFT's per-arch defaults
-        targets, embed = None, None
-    return (override or targets), embed
+        targets = None
+    return override or targets
 
 
 def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text"):
@@ -249,7 +252,9 @@ def finetune_dapt(
 ) -> pd.DataFrame:
     """DAPT-fine-tune ``base_model`` on one domain; return a checkpoint manifest.
 
-    LoRA continued causal pre-training (the only method). Checkpoints store the
+    LoRA continued causal pre-training (the only method). Embeddings stay frozen
+    for every arch (LoRA paradigm only — no ``modules_to_save``), so differently
+    sized models get identical adaptation capacity classes. Checkpoints store the
     adapter only; ``surprisal.load_causal_lm`` reattaches it. ``lora_target_modules``
     defaults per-arch via ``_lora_targets`` (attention + MLP).
 
@@ -263,8 +268,14 @@ def finetune_dapt(
     retraining. Columns: ``domain``, ``checkpoint``, ``index``,
     ``epoch``, ``step``, ``tokens_seen``, ``words_seen``, ``perplexity``.
     """
+    # Run dir carries the recipe version + seed: changing either must miss the
+    # local/Hub cache instead of silently reusing checkpoints from another recipe.
+    from src.config import DAPT_RUN_VERSION
+
     out_dir = Path(
-        out_dir or CHECKPOINTS_DIR / f"{Path(base_model).name}_{domain}_lora"
+        out_dir
+        or CHECKPOINTS_DIR
+        / f"{Path(base_model).name}_{domain}_lora_{DAPT_RUN_VERSION}_s{seed}"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -272,6 +283,8 @@ def finetune_dapt(
     manifest_csv = out_dir / "manifest.csv"
     if manifest_csv.exists():
         cached = pd.read_csv(manifest_csv)
+        if "seed" not in cached.columns:
+            cached.insert(1, "seed", seed)
         print(f"  [{domain}] reusing {len(cached)} saved checkpoints in {out_dir} "
               "(skipping training)")
         return cached
@@ -281,6 +294,8 @@ def finetune_dapt(
 
     remote = hub.try_download_run(out_dir)
     if remote is not None:
+        if "seed" not in remote.columns:
+            remote.insert(1, "seed", seed)
         print(f"  [{domain}] reusing {len(remote)} checkpoints pulled from the Hub "
               "(skipping training)")
         return remote
@@ -289,24 +304,20 @@ def finetune_dapt(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token or tokenizer.sep_token
     model = AutoModelForCausalLM.from_pretrained(base_model)
-    # german-gpt2's eos/pad id sits one past its embedding rows; grow embeddings to
-    # cover every tokenizer id (the new rows train during DAPT) to avoid OOB indexing.
-    resized = len(tokenizer) > model.config.vocab_size
-    if resized:
-        model.resize_token_embeddings(len(tokenizer))
+    # german-gpt2's eos/pad id sits one past its embedding rows; grow embeddings
+    # (deterministic mean-init, frozen under LoRA) to avoid OOB indexing. The
+    # surprisal loader applies the same resize, so train and load weights match.
+    resize_with_mean_init(model, tokenizer)
 
     from peft import LoraConfig, TaskType, get_peft_model
 
-    targets, embed_modules = _lora_targets(model, lora_target_modules)
+    targets = _lora_targets(model, lora_target_modules)
     peft_cfg = LoraConfig(
         task_type=TaskType.CAUSAL_LM,
         r=lora_r,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         target_modules=targets,  # attn + MLP (None -> PEFT per-arch default)
-        # save grown embeddings: LoRA freezes the base, so the new rows would be
-        # re-randomised at load time otherwise.
-        modules_to_save=embed_modules if resized else None,
         bias="none",
     )
     model = get_peft_model(model, peft_cfg)
@@ -367,6 +378,7 @@ def finetune_dapt(
 
     df = pd.DataFrame(manifest)
     df.insert(0, "domain", domain)
+    df.insert(1, "seed", seed)
     # Persist manifest so the next run resumes from cache instead of retraining.
     df.to_csv(out_dir / "manifest.csv", index=False)
     # Mirror to the Hub for future runs. Best effort — never fails the run.

@@ -30,6 +30,28 @@ def _load_tokenizer(name_or_path: str):
         return AutoTokenizer.from_pretrained(name_or_path)
 
 
+def resize_with_mean_init(model, tokenizer) -> bool:
+    """Grow embeddings to cover every tokenizer id; new rows = mean embedding.
+
+    german-gpt2's eos/pad id sits one past its embedding rows, so training (which
+    appends eos as a document separator) needs the resize. The default resize
+    initialises new rows randomly — nondeterministic across loads and never
+    trained under LoRA (embeddings stay frozen); mean-init is deterministic and a
+    sane prior. Returns whether a resize happened.
+    """
+    if len(tokenizer) <= model.config.vocab_size:
+        return False
+    old_n = model.get_input_embeddings().weight.shape[0]
+    model.resize_token_embeddings(len(tokenizer))
+    with torch.no_grad():
+        emb = model.get_input_embeddings().weight
+        emb[old_n:] = emb[:old_n].mean(dim=0)
+        out = model.get_output_embeddings()
+        if out is not None and out.weight.data_ptr() != emb.data_ptr():
+            out.weight[old_n:] = out.weight[:old_n].mean(dim=0)
+    return True
+
+
 def load_causal_lm(name_or_path: str = DEFAULT_MODEL):
     """Load a causal LM + tokenizer for surprisal.
 
@@ -50,8 +72,7 @@ def load_causal_lm(name_or_path: str = DEFAULT_MODEL):
         base = PeftConfig.from_pretrained(name_or_path).base_model_name_or_path
         tokenizer = _load_tokenizer(base)
         model = AutoModelForCausalLM.from_pretrained(base, **kwargs)
-        if len(tokenizer) > model.config.vocab_size:
-            model.resize_token_embeddings(len(tokenizer))
+        resize_with_mean_init(model, tokenizer)
         model = PeftModel.from_pretrained(model, name_or_path).merge_and_unload()
     else:
         tokenizer = _load_tokenizer(name_or_path)
@@ -86,6 +107,13 @@ def score_words(word_list, model, tokenizer, prompt=None, domain=None):
     prompt_text = _resolve_prompt(prompt, domain)
     if prompt_text:
         prompt_ids = tokenizer(prompt_text, return_tensors="pt").input_ids[0]
+        # drop the sentence encoding's leading specials (e.g. Llama's BOS) —
+        # concatenation would otherwise put them mid-sequence after the prompt.
+        n_lead = 0
+        while n_lead < len(word_ids) and word_ids[n_lead] is None:
+            n_lead += 1
+        sent_ids = sent_ids[n_lead:]
+        word_ids = word_ids[n_lead:]
         input_ids = torch.cat([prompt_ids, sent_ids])
         offset = len(prompt_ids)
     else:

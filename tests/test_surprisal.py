@@ -22,18 +22,18 @@ def test_resolve_prompt_variants():
     assert su._resolve_prompt(d, "unknown") is None
 
 
-def test_sentence_surprisal_first_word_none_and_subtoken_sum(fake_causal_lm, fake_tokenizer):
+def test_score_words_first_word_none_and_subtoken_sum(fake_causal_lm, fake_tokenizer):
     bits = math.log2(fake_causal_lm.vocab)
     # "b_c" is a two-subtoken word.
-    out = su.sentence_surprisal(["a", "b_c", "d"], fake_causal_lm, fake_tokenizer)
+    out = su.score_words(["a", "b_c", "d"], fake_causal_lm, fake_tokenizer)
     assert out[0] is None  # first word, single subtoken, no left context
     assert abs(out[1] - 2 * bits) < 1e-4  # "b_c": two subtokens
     assert abs(out[2] - 1 * bits) < 1e-4
 
 
-def test_sentence_surprisal_prompt_gives_first_word_context(fake_causal_lm, fake_tokenizer):
+def test_score_words_prompt_gives_first_word_context(fake_causal_lm, fake_tokenizer):
     bits = math.log2(fake_causal_lm.vocab)
-    out = su.sentence_surprisal(
+    out = su.score_words(
         ["a", "b", "c"], fake_causal_lm, fake_tokenizer, prompt="P"
     )
     # with a prompt prepended the first word now has left context.
