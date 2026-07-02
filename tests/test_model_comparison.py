@@ -51,7 +51,8 @@ def test_fit_returns_loglik(mc_inputs):
 
 
 def test_model_comparison_over_epochs_paper(mc_inputs):
-    # every source scored by ΔLL over the SAME shared no-surprisal baseline.
+    # most sources scored by ΔLL over the no-surprisal baseline; the reader-
+    # conditioned arms (aligned/prompted) over the surprisal baseline.
     out, reader_ll = mc.model_comparison_over_epochs(
         mc_inputs["surp_versions"], mc_inputs["rt_df"], mc_inputs["prompt_surp"],
         measure="TFT",
@@ -60,8 +61,11 @@ def test_model_comparison_over_epochs_paper(mc_inputs):
                 "b_surprisal", "se_surprisal", "p_surprisal", "p_lrt"}
     assert expected <= set(out.columns)
     assert set(out["model"].unique()) == set(mc.SURPRISAL_MODELS)
-    # single shared reference (no residualization) for every source.
-    assert (out["ref"] == "no_surprisal").all()
+    # aligned/prompted referenced to the surprisal baseline; the rest to no-surprisal.
+    ref_by_model = out.set_index("model")["ref"].to_dict()
+    for m in mc.SURPRISAL_MODELS:
+        want = "surprisal_baseline" if m in mc._VS_SURP_BASELINE else "no_surprisal"
+        assert ref_by_model[m] == want, m
     assert np.isfinite(out["delta_ll"]).all()
     # 1-df nested LRT: p in [0, 1].
     assert out["p_lrt"].between(0, 1).all()
