@@ -115,6 +115,11 @@ class FakeTokenizer:
     Otherwise the input string is whitespace-split (used for the prompt path).
     """
 
+    # native document-boundary token (surprisal._doc_separator_id reads this).
+    # id 0 is unused by _id() (which starts at 1), so it collides with nothing.
+    eos_token_id = 0
+    sep_token_id = None
+
     def __init__(self):
         self._vocab: dict[str, int] = {}
 
@@ -213,6 +218,7 @@ def mc_inputs():
                 "word_index_in_text": wi,
                 "s_prompt_phys": pphys[(tid, dom, wi)],
                 "s_prompt_bio": pbio[(tid, dom, wi)],
+                "s_prompt_neutral": base[(tid, dom, wi)] + rng.normal(0, 0.5),
             }
             for (tid, dom, wi) in words
         ]

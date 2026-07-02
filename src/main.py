@@ -23,6 +23,7 @@ from src.analysis import claim_tests as ct
 from src.analysis import model_comparison as mc
 from src.config import WORD_KEY
 from src.features import data
+from src.features import priors as pr
 from src.features import reading_time as rt
 from src.features import surprisal as su
 from src.modeling import finetune as ft
@@ -30,16 +31,16 @@ from src.modeling import finetune as ft
 # early / late reading measures (paper: FPRT early; GP == PoTeC's RPD_inc and
 # TFT late — the effect is expected on the late ones).
 MEASURES = ("FPRT", "RPD_inc", "TFT")
-# changing the schedule invalidates cached runs — bump config.DAPT_RUN_VERSION
+# delete the artifacts/ run dirs + surprisal cache by hand to force a retrain
 DAPT_MAX_STEPS = 4_096
 DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4096]
-SLIM_MODELS = ("baseline", "prompted", "aligned")
+SLIM_MODELS = ("baseline", "prompted", "prompt_neutral", "aligned")
 # every checkpoint: indices 1..N pair to DAPT_CHECKPOINT_STEPS (0 = baseline).
 SLIM_INDICES = list(range(1, len(DAPT_CHECKPOINT_STEPS) + 1))
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def compute_model_surprisal(slug: str, name: str, words) -> dict:
+def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
     """Phase 1 — all surprisal for one model. No linear-model fitting here."""
     print(f"\n=== surprisal: {slug} ({name}) ===")
     prefix = config.MODEL_PREFIX[slug]
@@ -47,14 +48,20 @@ def compute_model_surprisal(slug: str, name: str, words) -> dict:
     print("Step 2 — load LM")
     model, tok = su.load_causal_lm(name)
 
-    # Discipline-matched prompted baseline (physics / biology)
-    s_pp = su.compute_surprisal(
-        words, model, tok, prompt=config.GRAD_STUDENT_PROMPTS["physics"]
-    ).rename(columns={"surprisal": "s_prompt_phys"})
-    s_pb = su.compute_surprisal(
-        words, model, tok, prompt=config.GRAD_STUDENT_PROMPTS["biology"]
-    ).rename(columns={"surprisal": "s_prompt_bio"})
-    prompt_surp = s_pp.merge(s_pb, on=["text_id", "word_index_in_text"])
+    # Prompted arm: prior-reading passage + native document boundary, truncated to
+    # a shared context budget. physics/biology = domain priors (reader-aligned per
+    # reader downstream); neutral = length-matched non-domain control.
+    def _prior_surp(prior_text: str, col: str) -> pd.DataFrame:
+        return su.compute_surprisal(
+            words, model, tok,
+            prompt=prior_text, max_prompt_tokens=config.PRIOR_MAX_TOKENS,
+        ).rename(columns={"surprisal": col})
+
+    prompt_surp = (
+        _prior_surp(priors["physics"], "s_prompt_phys")
+        .merge(_prior_surp(priors["biology"], "s_prompt_bio"), on=WORD_KEY)
+        .merge(_prior_surp(priors["neutral"], "s_prompt_neutral"), on=WORD_KEY)
+    )
 
     # Step 4 — DAPT checkpoints, one run per domain × seed (cached / Hub-mirrored)
     print(f"Step 4 — DAPT checkpoints (seeds {config.DAPT_SEEDS})")
@@ -148,7 +155,7 @@ def bundle_from_cache(cache: pd.DataFrame, slug: str) -> dict:
     prompt_surp = _col(f"{prefix}_prompt_phys", "s_prompt_phys")
     prompt_surp = prompt_surp.merge(
         _col(f"{prefix}_prompt_bio", "s_prompt_bio"), on=WORD_KEY
-    )
+    ).merge(_col(f"{prefix}_prompt_neutral", "s_prompt_neutral"), on=WORD_KEY)
 
     # Long per-checkpoint table for model_comparison: index 0 (baseline, shared by
     # both domains) + the slim checkpoint(s), each domain.
@@ -184,9 +191,12 @@ def main() -> None:
         print(f"Surprisal cache hit ({config.SURPRISAL_CACHE_PATH}) — skipping compute")
         bundles = [bundle_from_cache(cache, slug) for slug in config.MODELS]
     else:
+        priors = pr.load_prior_passages()
+        print(f"  priors: physics/biology from held-out german-commons + neutral "
+              f"(budget {config.PRIOR_MAX_TOKENS} tokens)")
         bundles = []
         for slug, name in config.MODELS.items():
-            b = compute_model_surprisal(slug, name, words)
+            b = compute_model_surprisal(slug, name, words, priors)
             bundles.append(b)
             cache = su.merge_model(cache, b["wide"])
             su.save_cache(cache)

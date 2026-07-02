@@ -36,9 +36,52 @@ def test_score_words_prompt_gives_first_word_context(fake_causal_lm, fake_tokeni
     out = su.score_words(
         ["a", "b", "c"], fake_causal_lm, fake_tokenizer, prompt="P"
     )
-    # with a prompt prepended the first word now has left context.
+    # with a prior + document boundary prepended, the first word now has context.
     assert out[0] is not None
     assert abs(out[0] - bits) < 1e-4
+
+
+def test_score_words_inserts_native_document_boundary(monkeypatch, fake_causal_lm,
+                                                      fake_tokenizer):
+    # the prior and the stimulus must be joined by the tokenizer's eos id, not a
+    # newline: capture what the model actually receives.
+    seen = {}
+    orig = fake_causal_lm.forward
+
+    def spy(input_ids):
+        seen["ids"] = input_ids[0].tolist()
+        return orig(input_ids)
+
+    monkeypatch.setattr(fake_causal_lm, "forward", spy)
+    su.score_words(["a", "b"], fake_causal_lm, fake_tokenizer, prompt="P")
+    ids = seen["ids"]
+    eos = fake_tokenizer.eos_token_id
+    # sequence = [prior "P"] + [eos boundary] + [stimulus a, b]; exactly one eos,
+    # sitting between the prior and the first stimulus token.
+    assert ids.count(eos) == 1
+    assert ids[1] == eos
+    assert len(ids) == 4
+
+
+def test_score_words_truncates_prior_to_budget(fake_causal_lm, fake_tokenizer):
+    # a long prior is capped to max_prompt_tokens before the boundary.
+    long_prior = " ".join(f"w{i}" for i in range(20))
+    out = su.score_words(
+        ["a", "b"], fake_causal_lm, fake_tokenizer,
+        prompt=long_prior, max_prompt_tokens=5,
+    )
+    assert len(out) == 2 and out[0] is not None
+
+
+def test_doc_separator_id_requires_special_token(fake_tokenizer):
+    fake_tokenizer.eos_token_id = None
+    try:
+        su._doc_separator_id(fake_tokenizer)
+        assert False, "expected ValueError when no eos/sep token exists"
+    except ValueError:
+        pass
+    finally:
+        fake_tokenizer.eos_token_id = 0
 
 
 def test_compute_surprisal_drops_edges_and_columns(fake_causal_lm, fake_tokenizer, words_df):

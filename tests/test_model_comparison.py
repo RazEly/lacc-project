@@ -9,7 +9,8 @@ def test_prep_models_builds_surprisal_columns(mc_inputs):
         mc_inputs["surp_versions"], mc_inputs["rt_df"], mc_inputs["prompt_surp"],
         index=1, measure="TFT",
     )
-    for col in ("S_baseline", "S_physics", "S_biology", "S_aligned", "S_prompted"):
+    for col in ("S_baseline", "S_physics", "S_biology", "S_aligned", "S_prompted",
+                "S_prompt_neutral"):
         assert col in d.columns
     # reader-aligned = discipline-matched surprisal.
     physicist = d["reader_discipline_numeric"] == 1

@@ -40,6 +40,11 @@ from src.features.surprisal import (
 
 DOMAIN_DIRS = {"physics": DOMAIN_PHY_DIR, "biology": DOMAIN_BIO_DIR}
 
+# Blocks used for the checkpoint perplexity readout. The held-out split is huge
+# (val_frac of a multi-M-token corpus); a fixed subset gives a stable perplexity
+# at a fraction of the eval cost. Set to None to eval on the whole test split.
+EVAL_SUBSET_SIZE = 256
+
 
 def _slim_adapter(ckpt: Path) -> None:
     """Drop the redundant embedding copies PEFT writes for ``modules_to_save``.
@@ -149,7 +154,7 @@ class _CheckpointSchedule(TrainerCallback):
 
     def __init__(self, trainer, out_dir, n_checkpoints, words_per_epoch,
                  tokens_per_step, manifest, include_baseline=True,
-                 checkpoint_steps=None):
+                 checkpoint_steps=None, eval_samples=EVAL_SUBSET_SIZE):
         self.trainer = trainer
         self.out_dir = Path(out_dir)
         self.n_checkpoints = n_checkpoints
@@ -159,6 +164,11 @@ class _CheckpointSchedule(TrainerCallback):
         self.include_baseline = include_baseline
         self.checkpoint_steps = checkpoint_steps
         self._targets: dict[int, int] = {}  # global_step -> checkpoint index
+        # fixed eval subset for the perplexity readout (cheaper than the full split).
+        ds = trainer.eval_dataset
+        self._eval_subset = (
+            ds.select(range(min(eval_samples, len(ds)))) if eval_samples else ds
+        )
 
     def on_train_begin(self, args, state, control, **kwargs):
         if self.checkpoint_steps is not None:
@@ -189,7 +199,8 @@ class _CheckpointSchedule(TrainerCallback):
         ckpt = self.out_dir / f"checkpoint_{idx:02d}"
         self.trainer.save_model(str(ckpt))
         _slim_adapter(ckpt)  # strip PEFT's redundant fp32 embedding copies
-        metrics = self.trainer.evaluate()
+        # perplexity on the fixed eval subset (not the full held-out split).
+        metrics = self.trainer.evaluate(eval_dataset=self._eval_subset)
         ppl = math.exp(metrics["eval_loss"])
         # tokens_seen: cross-domain-comparable x-axis (depends only on global_step).
         tokens_seen = state.global_step * self.tokens_per_step
@@ -268,14 +279,11 @@ def finetune_dapt(
     retraining. Columns: ``domain``, ``checkpoint``, ``index``,
     ``epoch``, ``step``, ``tokens_seen``, ``words_seen``, ``perplexity``.
     """
-    # Run dir carries the recipe version + seed: changing either must miss the
-    # local/Hub cache instead of silently reusing checkpoints from another recipe.
-    from src.config import DAPT_RUN_VERSION
-
+    # Run dir carries the seed so per-seed runs don't collide. Delete the dir by
+    # hand to force a retrain (there is no recipe-version cache invalidation).
     out_dir = Path(
         out_dir
-        or CHECKPOINTS_DIR
-        / f"{Path(base_model).name}_{domain}_lora_{DAPT_RUN_VERSION}_s{seed}"
+        or CHECKPOINTS_DIR / f"{Path(base_model).name}_{domain}_lora_s{seed}"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -351,7 +359,9 @@ def finetune_dapt(
         fp16=use_cuda and not use_bf16,
         tf32=use_cuda,
         dataloader_num_workers=4,
-        eval_strategy="epoch",
+        # no automatic epoch evals — the checkpoint callback does the only eval we
+        # need (perplexity on a fixed subset), avoiding redundant full-split passes.
+        eval_strategy="no",
         save_strategy="no",  # checkpointing handled by the callback
         logging_steps=50,
         report_to=[],

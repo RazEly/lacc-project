@@ -58,25 +58,36 @@ DAPT_LEARNING_RATE = {
 # Training seeds; per-word surprisal is averaged over the seeds' checkpoints
 # (Škrjanec & Demberg average 3 random seeds per method × domain × step).
 DAPT_SEEDS = (0, 1, 2)
-# Bump to invalidate cached DAPT runs when the training recipe changes (folded
-# into run dir + Hub repo names). v2: LoRA-only (frozen embeddings for every
-# arch), matched tokens/step, per-model LR, per-seed runs.
-DAPT_RUN_VERSION = "v2"
 
 # Run artifacts (relative -> resolved against cwd at run time).
 ARTIFACTS_DIR = Path("artifacts")
 CHECKPOINTS_DIR = ARTIFACTS_DIR
 LABEL_IDS_PATH = ARTIFACTS_DIR / "domain_label_ids.json"
 # Wide per-word surprisal cache: computed once, reloaded to skip model forwards.
-# Versioned with the DAPT recipe — old caches hold surprisal from old checkpoints.
-SURPRISAL_CACHE_PATH = ARTIFACTS_DIR / f"surprisal_{DAPT_RUN_VERSION}.csv"
+# Delete the file (and the DAPT run dirs) by hand to force a recompute.
+SURPRISAL_CACHE_PATH = ARTIFACTS_DIR / "surprisal.csv"
 
 # Per-word join key for every word-level table.
 WORD_KEY = ["text_id", "word_index_in_text"]
 
-# Prompted-surprisal baseline: discipline-matched system prompt, mixed per reader
-# by discipline in model_comparison._prep_models. German (matches german-gpt2).
-GRAD_STUDENT_PROMPTS = {
-    "physics": "Du bist Doktorand der Physik. ",
-    "biology": "Du bist Doktorand der Biologie. ",
-}
+# Prompted-surprisal arm: a PRIOR-READING passage (not a persona instruction —
+# base LMs don't obey personas) joined to the stimulus by the native document
+# boundary in surprisal.score_words. The reader's domain lives in the context the
+# same way it lives in the DAPT weights: physics prior for physicists, applied to
+# any text (mixed per reader in model_comparison._prep_models). Domain priors are
+# pulled from the held-out german-commons split (features.priors); the neutral
+# prior is a length-matched non-domain control.
+PRIOR_MAX_TOKENS = 64  # context budget shared by every prompt condition
+# how many leading sentences of a held-out domain doc to use as the domain prior
+# (token-truncated to PRIOR_MAX_TOKENS at scoring time).
+PRIOR_PASSAGE_SENTENCES = 4
+# Non-domain control prior: generic German prose, no physics/biology content.
+# Long enough to exceed PRIOR_MAX_TOKENS so the neutral condition matches length.
+NEUTRAL_PRIOR = (
+    "Am Wochenende gehen viele Menschen gern spazieren oder treffen sich mit "
+    "Freunden. Manche kochen zusammen, andere sehen einen Film oder hören Musik. "
+    "In der Stadt gibt es Cafés, Parks und Märkte, auf denen man den Nachmittag "
+    "verbringen kann. Das Wetter spielt dabei oft eine große Rolle, denn bei "
+    "Sonnenschein zieht es die Leute nach draußen. Am Abend kehren die meisten "
+    "wieder nach Hause zurück und lassen den Tag ruhig ausklingen."
+)

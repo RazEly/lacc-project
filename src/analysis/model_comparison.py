@@ -27,7 +27,9 @@ from tqdm import tqdm
 
 from src.config import WORD_KEY
 
-SURPRISAL_MODELS = ("baseline", "physics", "biology", "aligned", "prompted")
+SURPRISAL_MODELS = (
+    "baseline", "physics", "biology", "aligned", "prompted", "prompt_neutral"
+)
 
 
 def _prep_models(df, measure):
@@ -47,6 +49,7 @@ def _prep_models(df, measure):
             "s_bio",
             "s_prompt_phys",
             "s_prompt_bio",
+            "s_prompt_neutral",
         ]
     )
     d = d[d["word_length"] > 0]
@@ -60,7 +63,10 @@ def _prep_models(df, measure):
     d["S_physics"] = d["s_phys"]
     d["S_biology"] = d["s_bio"]
     d["S_aligned"] = np.where(is_physicist, d["s_phys"], d["s_bio"])
+    # prompted = reader-aligned domain PRIOR (physics prior for physicists, applied
+    # to any text); prompt_neutral = the length-matched non-domain prior control.
     d["S_prompted"] = np.where(is_physicist, d["s_prompt_phys"], d["s_prompt_bio"])
+    d["S_prompt_neutral"] = d["s_prompt_neutral"]
 
     # position standardized WITHIN sentence (Škrjanec et al.'s WordIndexInSentence).
     pos = d["word_index_in_sent"]
@@ -76,7 +82,7 @@ def _prep_models(df, measure):
     # residual (split-signal) columns: what each adapted model ADDS over the base LM.
     # Fit as S_baseline + D_<name> so p(D) tests the fine-tune's own contribution.
     # D_baseline == 0, so baseline stays the reference.
-    for name in ("physics", "biology", "aligned", "prompted"):
+    for name in ("physics", "biology", "aligned", "prompted", "prompt_neutral"):
         d[f"D_{name}"] = d[f"S_{name}"] - d["S_baseline"]
     # deviation (sum) coding for the two factors that interact with surprisal: -1
     # novice / +1 expert, -1 common / +1 technical. Makes the surprisal (and D) main
@@ -106,7 +112,8 @@ _SURPRISAL_DF = 4
 _RESID_DF = 4
 # models whose surprisal doesn't depend on the DAPT checkpoint: fit once, not per
 # checkpoint. baseline is handled by name; these are the residual-split models.
-_CKPT_INDEP = {"prompted"}
+# The prompted arms (prior-conditioned base LM) never touch a DAPT checkpoint.
+_CKPT_INDEP = {"prompted", "prompt_neutral"}
 
 
 def _fit_model(d, measure, surprisal_col, extra_terms=None):

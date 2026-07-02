@@ -77,6 +77,11 @@ def load_causal_lm(name_or_path: str = DEFAULT_MODEL):
     else:
         tokenizer = _load_tokenizer(name_or_path)
         model = AutoModelForCausalLM.from_pretrained(name_or_path, **kwargs)
+        # Same resize as the adapter branch: german-gpt2's eos id sits one past its
+        # embedding rows, and the document-boundary separator (below, in
+        # score_words) feeds that id in as CONTEXT — an un-resized base model would
+        # index out of bounds. No-op for Llama (eos already in vocab).
+        resize_with_mean_init(model, tokenizer)
     model.eval()
     # from_pretrained leaves the model on CPU; move to GPU once here.
     if torch.cuda.is_available():
@@ -93,9 +98,39 @@ def _resolve_prompt(prompt, domain: str | None) -> str | None:
     return prompt
 
 
+def _doc_separator_id(tokenizer) -> int:
+    """The tokenizer's NATIVE end-of-document token id (eos, else sep).
+
+    This is the real special token both base LMs were pretrained to read as a
+    document break — NOT a newline. german-gpt2 exposes ``eos_token_id`` (the id
+    just past its original embedding rows, which is why the model is resized on
+    load); Llama/TinyLlama exposes ``eos_token_id`` == 2. Raises if neither
+    exists, rather than silently degrading the boundary to whitespace.
+    """
+    sep_id = tokenizer.eos_token_id
+    if sep_id is None:
+        sep_id = tokenizer.sep_token_id
+    if sep_id is None:
+        raise ValueError(
+            "tokenizer exposes no eos/sep token for the document boundary; "
+            "cannot separate the prior passage from the stimulus natively"
+        )
+    return int(sep_id)
+
+
 @torch.no_grad()
-def score_words(word_list, model, tokenizer, prompt=None, domain=None):
+def score_words(
+    word_list, model, tokenizer, prompt=None, domain=None, max_prompt_tokens=None
+):
     """Per-word surprisal (bits) for an ordered word sequence (a full text).
+
+    With a ``prompt`` (a prior-reading passage), the sequence is
+    ``[prior tokens] <eos> [stimulus tokens]`` — the prior and the stimulus are
+    two documents joined by the tokenizer's NATIVE end-of-document token
+    (``_doc_separator_id``), so the model treats the stimulus as a fresh document
+    that merely follows domain-primed context (never as a continuation mislabelled
+    with the prior's domain). ``max_prompt_tokens`` truncates the prior to a fixed
+    budget so every prompt condition shares one context length.
 
     Returns a list the same length as ``word_list``; the first word is ``None``
     when it has no left context (no prompt prepended).
@@ -106,16 +141,20 @@ def score_words(word_list, model, tokenizer, prompt=None, domain=None):
 
     prompt_text = _resolve_prompt(prompt, domain)
     if prompt_text:
-        prompt_ids = tokenizer(prompt_text, return_tensors="pt").input_ids[0]
-        # drop the sentence encoding's leading specials (e.g. Llama's BOS) —
-        # concatenation would otherwise put them mid-sequence after the prompt.
+        prior_ids = tokenizer(prompt_text, return_tensors="pt").input_ids[0]
+        if max_prompt_tokens is not None and len(prior_ids) > max_prompt_tokens:
+            prior_ids = prior_ids[:max_prompt_tokens]
+        # native document boundary between the prior passage and the stimulus.
+        sep = torch.tensor([_doc_separator_id(tokenizer)], dtype=prior_ids.dtype)
+        # drop the stimulus encoding's leading specials (e.g. Llama's BOS) — they
+        # would otherwise land mid-sequence, after the boundary.
         n_lead = 0
         while n_lead < len(word_ids) and word_ids[n_lead] is None:
             n_lead += 1
         sent_ids = sent_ids[n_lead:]
         word_ids = word_ids[n_lead:]
-        input_ids = torch.cat([prompt_ids, sent_ids])
-        offset = len(prompt_ids)
+        input_ids = torch.cat([prior_ids, sep, sent_ids])
+        offset = len(prior_ids) + 1  # prior + the boundary token
     else:
         input_ids = sent_ids
         offset = 0
@@ -139,14 +178,16 @@ def score_words(word_list, model, tokenizer, prompt=None, domain=None):
 
 
 def compute_surprisal(
-    words_df: pd.DataFrame, model, tokenizer, prompt=None
+    words_df: pd.DataFrame, model, tokenizer, prompt=None, max_prompt_tokens=None
 ) -> pd.DataFrame:
     """Per-word surprisal for every PoTeC text.
 
     Each text is rebuilt as one sequence (ordered by ``word_index_in_text``) so
     context carries across sentences (Eq. 1). The text's first/last word is
     dropped to match the reading-time cleaning. ``prompt`` may be None, a string,
-    or a ``{text_domain: str}`` dict.
+    or a ``{text_domain: str}`` dict; when set it is a prior-reading passage
+    joined to the stimulus by the native document boundary (see ``score_words``).
+    ``max_prompt_tokens`` fixes the prior's context length across conditions.
 
     Returns columns: ``text_id``, ``word_index_in_text``, ``surprisal``.
     """
@@ -156,7 +197,10 @@ def compute_surprisal(
     ).groupby("text_id", sort=False):
         domain = text["text_domain"].iloc[0]
         words = text["word"].fillna("").astype(str).tolist()
-        bits = score_words(words, model, tokenizer, prompt=prompt, domain=domain)
+        bits = score_words(
+            words, model, tokenizer, prompt=prompt, domain=domain,
+            max_prompt_tokens=max_prompt_tokens,
+        )
         idx = text["word_index_in_text"].tolist()
         last = len(words) - 1
         for k, (wi, b) in enumerate(zip(idx, bits)):
@@ -180,7 +224,8 @@ def compute_surprisal(
 # missing ones are computed and merged in.
 _DOMAIN_SHORT = {"physics": "phys", "biology": "bio"}
 # prompt_surp column (``s_prompt_*``) suffixes -> cache column ``<prefix>_prompt_*``.
-_PROMPT_SUFFIXES = ["phys", "bio"]
+# phys/bio = reader-aligned domain prior; neutral = length-matched non-domain prior.
+_PROMPT_SUFFIXES = ["phys", "bio", "neutral"]
 
 
 def _prompt_map(prefix: str) -> dict[str, str]:
