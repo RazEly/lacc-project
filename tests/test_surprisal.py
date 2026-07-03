@@ -20,6 +20,25 @@ def test_resolve_prompt_variants():
     assert su._resolve_prompt(d, "physics") == "P"
     assert su._resolve_prompt(d, "biology") == "B"
     assert su._resolve_prompt(d, "unknown") is None
+    # a list of priors passes through unchanged (shared across domains).
+    assert su._resolve_prompt(["P1", "P2"], "physics") == ["P1", "P2"]
+    assert su._resolve_prompt({"physics": ["P1", "P2"]}, "physics") == ["P1", "P2"]
+
+
+def test_as_prompt_list_normalises():
+    assert su._as_prompt_list(None) == []
+    assert su._as_prompt_list("") == []
+    assert su._as_prompt_list("P") == ["P"]
+    assert su._as_prompt_list(["P1", "P2"]) == ["P1", "P2"]
+
+
+def test_mean_bits_ignores_none_elementwise():
+    out = su._mean_bits([[1.0, None, 4.0], [3.0, 2.0, None]])
+    assert out[0] == 2.0  # (1+3)/2
+    assert out[1] == 2.0  # only second prior present
+    assert out[2] == 4.0  # only first prior present
+    # a word None under every prior stays None.
+    assert su._mean_bits([[None], [None]]) == [None]
 
 
 def test_score_words_first_word_none_and_subtoken_sum(fake_causal_lm, fake_tokenizer):
@@ -92,6 +111,17 @@ def test_compute_surprisal_drops_edges_and_columns(fake_causal_lm, fake_tokenize
     assert kept == {1, 2, 3}
     assert np.isfinite(out["surprisal"]).all()
     assert (out["surprisal"] > 0).all()
+
+
+def test_compute_surprisal_averages_over_prior_list(fake_causal_lm, fake_tokenizer, words_df):
+    # uniform LM ignores prior content, so every prior yields the same surprisal;
+    # averaging a list of priors must reproduce the single-prior column exactly.
+    single = su.compute_surprisal(words_df, fake_causal_lm, fake_tokenizer, prompt="P")
+    averaged = su.compute_surprisal(
+        words_df, fake_causal_lm, fake_tokenizer, prompt=["P1", "P2", "P3"]
+    )
+    merged = single.merge(averaged, on=su.WORD_KEY, suffixes=("_1", "_avg"))
+    assert np.allclose(merged["surprisal_1"], merged["surprisal_avg"])
 
 
 def test_compute_surprisal_handles_empty_words(fake_causal_lm, fake_tokenizer, words_df):

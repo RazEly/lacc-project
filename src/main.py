@@ -47,11 +47,13 @@ def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
 
     # Prompted arm: prior-reading passage + native document boundary, truncated to
     # a shared context budget. physics/biology = domain priors (reader-aligned per
-    # reader downstream); neutral = length-matched non-domain control.
-    def _prior_surp(prior_text: str, col: str) -> pd.DataFrame:
+    # reader downstream); neutral = length-matched non-domain control. Each arg is
+    # a LIST of N_PRIOR_PASSAGES priors — compute_surprisal averages per-word
+    # surprisal across them, so the stored column is the mean over priors.
+    def _prior_surp(prior_texts: list[str], col: str) -> pd.DataFrame:
         return su.compute_surprisal(
             words, model, tok,
-            prompt=prior_text, max_prompt_tokens=config.PRIOR_MAX_TOKENS,
+            prompt=prior_texts, max_prompt_tokens=config.PRIOR_MAX_TOKENS,
         ).rename(columns={"surprisal": col})
 
     prompt_surp = (
@@ -198,8 +200,9 @@ def main() -> None:
         bundles = [bundle_from_cache(cache, slug) for slug in config.MODELS]
     else:
         priors = pr.load_prior_passages()
-        print(f"  priors: physics/biology from held-out german-commons + neutral "
-              f"(budget {config.PRIOR_MAX_TOKENS} tokens)")
+        print(f"  priors: {config.N_PRIOR_PASSAGES}× physics/biology from held-out "
+              f"german-commons + {config.N_PRIOR_PASSAGES}× neutral, averaged "
+              f"per word (budget {config.PRIOR_MAX_TOKENS} tokens)")
         bundles = []
         for slug, name in config.MODELS.items():
             b = compute_model_surprisal(slug, name, words, priors)

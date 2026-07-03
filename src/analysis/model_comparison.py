@@ -9,10 +9,11 @@ Baseline model (Eq. 2), NO surprisal:
 Experimental model (Eq. 4): baseline + Surprisal, a SINGLE PLAIN MAIN EFFECT
 (no interaction, no residualization).
 
-Exactly as the paper: continuous predictors scaled and centered; Expertise and
-Terminology sum-coded (−1/+1), with the two technical levels merged into one
-"technical" level; Position is the word's position IN TEXT; ML fits
-(REML=False) so log-likelihoods are comparable.
+As the paper: Expertise and Terminology sum-coded (−1/+1), with the two
+technical levels merged into one "technical" level; Position is the word's
+position IN TEXT; ML fits (REML=False) so log-likelihoods are comparable.
+Predictors enter on their natural scale — the paper z-scales them, but scaling
+is affine and leaves ΔLL / the LRT unchanged.
 
 Surprisal sources:
   baseline          : un-adapted step-0 model (same for every reader).
@@ -24,17 +25,14 @@ Surprisal sources:
 
 Each source is tested with a nested 1-df LRT (``p_lrt``) against its reference
 model (``ref``). Most sources are referenced to the no-surprisal baseline
-(Eq. 2); the reader-conditioned arms (``aligned`` / ``prompted``) instead enter
+(Eq. 2); the ``aligned`` / ``prompted`` / ``prompt_neutral`` arms instead enter
 ON TOP of plain baseline surprisal and are referenced to the SURPRISAL baseline
-(Eq. 2 + baseline surprisal) — i.e. they test whether reader-matched surprisal
-helps BEYOND plain surprisal.
+(Eq. 2 + baseline surprisal) — i.e. they test whether the added surprisal helps
+BEYOND plain surprisal. ``prompt_neutral`` shares the prompted reference so the
+domain-prompt lift and its non-domain control are on one scale.
 """
 
 from __future__ import annotations
-
-import contextlib
-import io
-import warnings
 
 import numpy as np
 import pandas as pd
@@ -46,83 +44,78 @@ from tqdm import tqdm
 
 from src.config import WORD_KEY
 
-SURPRISAL_MODELS = (
-    "baseline",
-    "physics",
-    "biology",
-    "aligned",
-    "prompted",
-    "prompt_neutral",
-)
+# surprisal column per source; aligned / prompted are built in _prep_models.
+_SURP_COL = {
+    "baseline": "s_base",
+    "physics": "s_phys",
+    "biology": "s_bio",
+    "aligned": "s_aligned",
+    "prompted": "s_prompted",
+    "prompt_neutral": "s_prompt_neutral",
+}
+SURPRISAL_MODELS = tuple(_SURP_COL)
 # sources whose surprisal doesn't depend on the DAPT checkpoint: fit once.
 _CKPT_INDEP = {"baseline", "prompted", "prompt_neutral"}
-# reader-conditioned arms, referenced to the surprisal baseline (module doc).
-_VS_SURP_BASELINE = {"aligned", "prompted"}
+# arms referenced to the surprisal baseline — tested for lift BEYOND plain
+# baseline surprisal (module doc). prompt_neutral shares prompted's reference so
+# the two prompted arms are read on the SAME scale (neutral = matched control).
+_VS_SURP_BASELINE = {"aligned", "prompted", "prompt_neutral"}
 
 # Paper Eq. (2) fixed effects; Eq. (4) adds the surprisal main effect(s).
 # Random effects: by-subject intercept, by-word intercept + expertise slope
 # (richer structures did not converge in the paper).
-_BASE_TERMS = "z_length + z_logfreq + z_position + is_expert * is_technical"
+_BASE_TERMS = "word_length + log_word_freq + word_position + is_expert * is_technical"
 _RANDOM_EFFECTS = "(1|reader_id) + (1 + is_expert|word_id)"
 
 
+def _sum_code(flag):
+    """0/1 flag -> −1/+1."""
+    return 2 * flag.astype(int) - 1
+
+
 def _prep_models(df, measure):
-    """One row per reader×word with every scaled surprisal column + covariates.
+    """One row per reader×word with every surprisal column + covariates.
 
     ``df`` must carry ``s_base`` / ``s_phys`` / ``s_bio`` / ``s_prompt_*`` plus
     the reading measures; ``s_prompt_neutral`` is optional (older caches
     predate it).
     """
-    sources = ["baseline", "physics", "biology", "aligned", "prompted"]
     raw_cols = ["s_base", "s_phys", "s_bio", "s_prompt_phys", "s_prompt_bio"]
     if "s_prompt_neutral" in df.columns:
-        sources.append("prompt_neutral")
         raw_cols.append("s_prompt_neutral")
 
-    d = df[df[measure] > 0].copy()
-    d = d.dropna(
-        subset=[measure, "word_length", "lemma_frequency_normalized", *raw_cols]
+    # reader_discipline_numeric: 1 = physicist, 0 = biologist.
+    def is_physicist(x):
+        return x["reader_discipline_numeric"] == 1
+
+    return (
+        df.loc[lambda x: x[measure] > 0]
+        .dropna(
+            subset=[measure, "word_length", "lemma_frequency_normalized", *raw_cols]
+        )
+        .loc[lambda x: x["word_length"] > 0]
+        .assign(
+            # dlexDB lemma freq: +1 smoothing then log (paper).
+            log_word_freq=lambda x: np.log1p(x["lemma_frequency_normalized"]),
+            # Position IN TEXT (paper: "Word position in text").
+            word_position=lambda x: x["word_index_in_text"].astype(float),
+            # reader-conditioned sources: pick the discipline-matched column.
+            s_aligned=lambda x: x["s_phys"].where(is_physicist(x), x["s_bio"]),
+            s_prompted=lambda x: x["s_prompt_phys"].where(
+                is_physicist(x), x["s_prompt_bio"]
+            ),
+            # terminology merges general + expert technical (paper).
+            is_technical=lambda x: _sum_code(
+                (x["is_expert_technical_term"] == 1)
+                | (x["is_general_technical_term"] == 1)
+            ),
+            is_expert=lambda x: _sum_code(x["is_expert"]),
+            # single grouping key for the by-word random effect (lme4 word_id).
+            word_id=lambda x: (
+                x["text_id"].astype(str) + "_" + x["word_index_in_text"].astype(str)
+            ),
+        )
     )
-    d = d[d["word_length"] > 0]
-
-    # dlexDB lemma freq: +1 smoothing then log (paper).
-    d["log_word_freq"] = np.log1p(d["lemma_frequency_normalized"])
-    # Position IN TEXT (paper: "Word position in text").
-    d["word_position"] = d["word_index_in_text"].astype(float)
-
-    # per-reader sources: aligned / prompted pick the discipline-matched column
-    # (reader_discipline_numeric: 1 = physicist, 0 = biologist).
-    is_physicist = d["reader_discipline_numeric"] == 1
-    d["S_baseline"] = d["s_base"]
-    d["S_physics"] = d["s_phys"]
-    d["S_biology"] = d["s_bio"]
-    d["S_aligned"] = np.where(is_physicist, d["s_phys"], d["s_bio"])
-    d["S_prompted"] = np.where(is_physicist, d["s_prompt_phys"], d["s_prompt_bio"])
-    if "prompt_neutral" in sources:
-        d["S_prompt_neutral"] = d["s_prompt_neutral"]
-
-    # terminology merges general + expert technical; both factors sum
-    # (deviation) coded (paper): −1 novice/common, +1 expert/technical.
-    d["is_technical"] = (
-        (d["is_expert_technical_term"] == 1) | (d["is_general_technical_term"] == 1)
-    ).astype(int)
-    d["is_expert"] = 2 * d["is_expert"] - 1
-    d["is_technical"] = 2 * d["is_technical"] - 1
-
-    # scale + center every continuous predictor (paper). Scaling is affine —
-    # it leaves ΔLL / the LRT unchanged.
-    def _z(s):
-        return (s - s.mean()) / s.std()
-
-    d["z_length"] = _z(d["word_length"])
-    d["z_logfreq"] = _z(d["log_word_freq"])
-    d["z_position"] = _z(d["word_position"])
-    for name in sources:
-        d[f"z_S_{name}"] = _z(d[f"S_{name}"])
-
-    # single grouping key for the by-word random effect (lme4 word_id).
-    d["word_id"] = d["text_id"].astype(str) + "_" + d["word_index_in_text"].astype(str)
-    return d
 
 
 def _fit(d, measure, surprisal_cols=None):
@@ -133,28 +126,23 @@ def _fit(d, measure, surprisal_cols=None):
     feed the nested LRT / ΔLL. Coefficient p-values are Wald z.
     """
 
-    rhs = _BASE_TERMS
-    if surprisal_cols:
-        cols = (
-            [surprisal_cols]
-            if isinstance(surprisal_cols, str)
-            else list(surprisal_cols)
-        )
-        rhs += " + " + " + ".join(cols)
-    dd = d.copy()
-    dd["resp_log"] = np.log(dd[measure].to_numpy())  # valid R identifier
+    if isinstance(surprisal_cols, str):
+        surprisal_cols = [surprisal_cols]
+    rhs = " + ".join([_BASE_TERMS, *(surprisal_cols or [])])
+    dd = d.assign(resp_log=np.log(d[measure].to_numpy()))  # valid R identifier
     m = lmer(f"resp_log ~ {rhs} + {_RANDOM_EFFECTS}", data=pl.from_pandas(dd))
-    # pymer4 streams R convergence chatter to stdout; silence it for the sweep.
-    with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        m.fit(summary=False, REML=False, conf_method="wald")
+    m.fit(summary=False, REML=False, conf_method="wald")
     return m
 
 
-def _loglik(m) -> float:
-    """ML log-likelihood of a fitted pymer4 0.9 ``lmer`` (via the R model)."""
+def _r(m, fn) -> np.ndarray:
+    """R ``fn(<fitted lmer>)`` on a pymer4 0.9 model, as a flat float array."""
+    return np.asarray(ro.r(fn)(m.r_model), dtype=float).ravel()
 
-    return float(np.asarray(ro.r("logLik")(m.r_model)).ravel()[0])
+
+def _loglik(m) -> float:
+    """ML log-likelihood of a fitted lmer."""
+    return float(_r(m, "logLik")[0])
 
 
 def _reader_loglik(m, d, measure) -> pd.Series:
@@ -168,8 +156,8 @@ def _reader_loglik(m, d, measure) -> pd.Series:
     terms cancel in the pairing. Indexed by ``reader_id``.
     """
 
-    fitted = np.asarray(ro.r("fitted")(m.r_model), dtype=float).ravel()
-    sigma = float(np.asarray(ro.r("sigma")(m.r_model)).ravel()[0])
+    fitted = _r(m, "fitted")
+    sigma = float(_r(m, "sigma")[0])
     if len(fitted) != len(d):
         raise ValueError(f"fitted() length {len(fitted)} != data rows {len(d)}")
     resp = np.log(d[measure].to_numpy(dtype=float))
@@ -247,16 +235,12 @@ def model_comparison_over_epochs(
     rll_frames: list[pd.DataFrame] = []
 
     def _collect_rll(fit, d, model, index):
-        ll = _reader_loglik(fit, d, measure)
         rll_frames.append(
-            pd.DataFrame(
-                {
-                    "model": model,
-                    "index": index,
-                    "reader_id": ll.index,
-                    "ll_reader": ll.values,
-                }
-            )
+            _reader_loglik(fit, d, measure)
+            .rename("ll_reader")
+            .rename_axis("reader_id")
+            .reset_index()
+            .assign(model=model, index=index)
         )
 
     d0 = build_index_df(surp_versions, rt_df, prompt_surp, all_indices[0], measure)
@@ -271,18 +255,19 @@ def model_comparison_over_epochs(
 
         # surprisal baseline (Eq. 2 + plain baseline surprisal): the ``baseline``
         # source's own fit AND the reference for aligned / prompted. Fit once.
-        base_fit = _fit(d0, measure, "z_S_baseline")
+        base_fit = _fit(d0, measure, "s_base")
         ll_base = _loglik(base_fit)
 
         def _score(name, d, index, epoch):
             """Fit source ``name`` on ``d``; record its result row + reader LLs."""
+            col = _SURP_COL[name]
             if name == "baseline":
                 fit, ref_ll, ref = base_fit, ll_null, "no_surprisal"
             elif name in _VS_SURP_BASELINE:
-                fit = _fit(d, measure, ["z_S_baseline", f"z_S_{name}"])
+                fit = _fit(d, measure, ["s_base", col])
                 ref_ll, ref = ll_base, "surprisal_baseline"
             else:
-                fit = _fit(d, measure, f"z_S_{name}")
+                fit = _fit(d, measure, col)
                 ref_ll, ref = ll_null, "no_surprisal"
             dll = _loglik(fit) - ref_ll
             _collect_rll(fit, d, name, index)
@@ -296,9 +281,9 @@ def model_comparison_over_epochs(
                     "n": len(d),
                     "ll": ref_ll + dll,
                     "delta_ll": dll,
-                    "b_surprisal": _coef(fit, f"z_S_{name}", "estimate"),
-                    "se_surprisal": _coef(fit, f"z_S_{name}", "std_error"),
-                    "p_surprisal": _coef(fit, f"z_S_{name}", "p_value"),
+                    "b_surprisal": _coef(fit, col, "estimate"),
+                    "se_surprisal": _coef(fit, col, "std_error"),
+                    "p_surprisal": _coef(fit, col, "p_value"),
                     # nested LRT: 2·ΔLL ~ chi2(1), the single added surprisal term.
                     # Negative ΔLL (no better than the reference) -> p = 1.
                     "p_lrt": float(chi2.sf(2.0 * max(dll, 0.0), 1)),
@@ -306,7 +291,7 @@ def model_comparison_over_epochs(
             )
 
         for name in indep:
-            if f"z_S_{name}" not in d0.columns:  # neutral absent from an old cache
+            if _SURP_COL[name] not in d0.columns:  # neutral absent from old cache
                 pbar.update(1)
                 continue
             pbar.set_postfix(model=name)
