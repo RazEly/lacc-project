@@ -20,6 +20,11 @@ OPENALEX_MIN_OCR = 90.0
 # domain_preprocessing outputs
 DOMAIN_PHY_DIR = DATA_DIR / "domain_phy"
 DOMAIN_BIO_DIR = DATA_DIR / "domain_bio"
+# Neutral control pool: german-commons docs OUTSIDE the pass-1 candidate set
+# (both domain TF-IDF sims below threshold) — same corpus and register as the
+# domain pools, no physics/biology content. See
+# acquire.domain_preprocessing.select_other.
+DOMAIN_OTHER_DIR = DATA_DIR / "domain_other"
 
 # PoTeC sub-paths used by the analysis pipeline
 POTEC_WORD_FEATURES_DIR = POTEC_DIR / "stimuli" / "word_features"
@@ -79,9 +84,12 @@ WORD_KEY = ["text_id", "word_index_in_text"]
 # base LMs don't obey personas) joined to the stimulus by the native document
 # boundary in surprisal.score_words. The reader's domain lives in the context the
 # same way it lives in the DAPT weights: physics prior for physicists, applied to
-# any text (mixed per reader in model_comparison._prep_models). Domain priors are
-# pulled from the held-out german-commons split (features.priors); the neutral
-# prior is a length-matched non-domain control.
+# any text (mixed per reader in model_comparison._prep_models). All three prior
+# conditions are sampled from german-commons by the SAME code path
+# (features.priors): physics/biology from the held-out DAPT split, neutral from
+# the off-domain pool (DOMAIN_OTHER_DIR) — scientific register, no physics or
+# biology content. Register-matched, so the domain-vs-neutral contrast isolates
+# domain content rather than "sounds like science".
 PRIOR_MAX_TOKENS = 64  # context budget shared by every prompt condition
 # how many leading sentences of a held-out domain doc to use as one domain prior
 # (token-truncated to PRIOR_MAX_TOKENS at scoring time).
@@ -91,39 +99,5 @@ PRIOR_PASSAGE_SENTENCES = 4
 # K distinct neutral passages) so no single idiosyncratic passage drives the
 # estimate. 5 sits at the variance-reduction elbow (1/sqrt(K) shrinks fast to
 # K≈5, then flattens); raise for the final run if a K-sensitivity check still
-# drifts. Neutral needs >= this many entries in NEUTRAL_PRIORS.
+# drifts. The off-domain pool (DOMAIN_OTHER_DIR) needs >= this many docs.
 N_PRIOR_PASSAGES = 5
-# Non-domain control priors: generic German prose, no physics/biology content.
-# Averaged like the domain priors (N_PRIOR_PASSAGES of them). Each is long enough
-# to exceed PRIOR_MAX_TOKENS so every neutral prompt matches the domain length.
-NEUTRAL_PRIORS = (
-    "Am Wochenende gehen viele Menschen gern spazieren oder treffen sich mit "
-    "Freunden. Manche kochen zusammen, andere sehen einen Film oder hören Musik. "
-    "In der Stadt gibt es Cafés, Parks und Märkte, auf denen man den Nachmittag "
-    "verbringen kann. Das Wetter spielt dabei oft eine große Rolle, denn bei "
-    "Sonnenschein zieht es die Leute nach draußen. Am Abend kehren die meisten "
-    "wieder nach Hause zurück und lassen den Tag ruhig ausklingen.",
-    "Der Bahnhof war an diesem Morgen ungewöhnlich ruhig. Ein paar Reisende "
-    "warteten auf dem Bahnsteig, tranken Kaffee und blätterten in der Zeitung. "
-    "Die Anzeigetafel zeigte kleine Verspätungen, doch niemand schien sich daran "
-    "zu stören. Als der Zug einfuhr, stiegen die Menschen gelassen ein und suchten "
-    "ihre Plätze. Bald setzte sich der Zug in Bewegung und die Häuser der Stadt "
-    "zogen langsam am Fenster vorbei.",
-    "Meine Großmutter hat früher einen kleinen Garten hinter dem Haus gepflegt. "
-    "Dort wuchsen Tomaten, Bohnen und allerlei Kräuter, die sie zum Kochen "
-    "benutzte. Jeden Sommer half die ganze Familie bei der Ernte und saß danach "
-    "gemeinsam auf der Terrasse. Es gab selbstgebackenen Kuchen und Limonade, und "
-    "die Kinder spielten bis zum Abend im Gras. An solche Nachmittage erinnere ich "
-    "mich noch heute sehr gern.",
-    "Die Stadtbücherei ist einer meiner liebsten Orte an einem regnerischen Tag. "
-    "Zwischen den hohen Regalen ist es angenehm still, und man hört nur das leise "
-    "Umblättern von Seiten. Manche Leute lesen in bequemen Sesseln, andere machen "
-    "sich Notizen an großen Tischen. An der Theke berät eine freundliche "
-    "Mitarbeiterin bei der Suche nach Büchern. Wenn man wieder hinaustritt, hat man "
-    "oft das Gefühl, ein Stück in eine andere Welt gereist zu sein.",
-    "Am frühen Abend wird der Marktplatz langsam leerer. Die Händler räumen ihre "
-    "Stände zusammen und packen unverkaufte Waren in Kisten. Einige Passanten "
-    "bleiben noch stehen, um ein letztes Schwätzchen zu halten. Über den Dächern "
-    "färbt sich der Himmel orange, und die Straßenlaternen gehen nacheinander an. "
-    "Bald kehrt Ruhe ein, und nur das Plätschern des Brunnens ist noch zu hören.",
-)

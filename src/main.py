@@ -2,9 +2,11 @@
 
 Per LM: DAPT over ``config.DAPT_SEEDS`` (per-word surprisal averaged across
 seeds, as in Škrjanec & Demberg), then the mixed-model sweep for the reading-time
-measure (TFT). Every surprisal source (baseline, aligned, prompted, …) is scored
-by ΔLL over the SAME shared no-surprisal baseline (paper Eq. 2/4/5); ``p_lrt`` is
-the nested 1-df LRT for adding that source's surprisal.
+measure (TFT). Every surprisal source (baseline, aligned, prompted, …) enters as
+a single plain main effect and is scored against the SAME shared no-surprisal
+baseline (paper Eq. 2/4/5): LL, ΔLL, χ², LRT p, AIC. A second per-LM table
+reports Vuong tests of the baseline-surprisal model against each
+reader-conditioned arm (aligned per checkpoint, prompted, neutral prompt).
 Afterwards: adaptation diagnostics (perplexity + terminology-surprisal
 trajectories) and the claim-level tests (best-checkpoint single LRT + direct
 cross-LM comparisons).
@@ -47,9 +49,10 @@ def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
 
     # Prompted arm: prior-reading passage + native document boundary, truncated to
     # a shared context budget. physics/biology = domain priors (reader-aligned per
-    # reader downstream); neutral = length-matched non-domain control. Each arg is
-    # a LIST of N_PRIOR_PASSAGES priors — compute_surprisal averages per-word
-    # surprisal across them, so the stored column is the mean over priors.
+    # reader downstream); neutral = off-domain scientific control (same corpus,
+    # same register, no domain content). Each arg is a LIST of N_PRIOR_PASSAGES
+    # priors — compute_surprisal averages per-word surprisal across them, so the
+    # stored column is the mean over priors.
     def _prior_surp(prior_texts: list[str], col: str) -> pd.DataFrame:
         return su.compute_surprisal(
             words, model, tok,
@@ -106,10 +109,13 @@ def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
     }
 
 
-def fit_model(bundle: dict, rm, measure: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+def fit_model(
+    bundle: dict, rm, measure: str
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Phase 2 — mixed-model comparison for one model × measure.
 
-    Returns ``(results, reader_ll)``, both tagged with ``model_lm`` / ``measure``.
+    Returns ``(results, vuong, reader_ll)``, all tagged with ``model_lm`` /
+    ``measure``.
     """
     slug = bundle["slug"]
     print(f"\n=== fit: {slug} / {measure} ===")
@@ -118,10 +124,10 @@ def fit_model(bundle: dict, rm, measure: str) -> tuple[pd.DataFrame, pd.DataFram
     has_neutral = "s_prompt_neutral" in bundle["prompt_surp"].columns
     models = tuple(m for m in SLIM_MODELS if has_neutral or m != "prompt_neutral")
 
-    # Model comparison — every source scored by ΔLL over the shared no-surprisal
-    # baseline (paper Eq. 2/4/5): surprisal enters as a single plain main effect,
-    # nested 1-df LRT. All checkpoints.
-    cmp, reader_ll = mc.model_comparison_over_epochs(
+    # Model comparison — every source scored against the shared no-surprisal
+    # baseline (LRT + AIC), plus Vuong tests of the baseline-surprisal model
+    # vs the reader-conditioned arms. All checkpoints.
+    cmp, vuong, reader_ll = mc.model_comparison_over_epochs(
         bundle["surp_versions"],
         rm,
         bundle["prompt_surp"],
@@ -129,11 +135,13 @@ def fit_model(bundle: dict, rm, measure: str) -> tuple[pd.DataFrame, pd.DataFram
         models=models,
         indices=SLIM_INDICES,
     )
-    for df in (cmp, reader_ll):
+    for df in (cmp, vuong, reader_ll):
         df.insert(0, "model_lm", slug)
         df.insert(1, "measure", measure)
     print(cmp.to_string(index=False))
-    return cmp, reader_ll
+    print("\nVuong — baseline+surprisal vs reader-conditioned arms:")
+    print(vuong.to_string(index=False))
+    return cmp, vuong, reader_ll
 
 
 def bundle_from_cache(cache: pd.DataFrame, slug: str) -> dict:
@@ -201,8 +209,8 @@ def main() -> None:
     else:
         priors = pr.load_prior_passages()
         print(f"  priors: {config.N_PRIOR_PASSAGES}× physics/biology from held-out "
-              f"german-commons + {config.N_PRIOR_PASSAGES}× neutral, averaged "
-              f"per word (budget {config.PRIOR_MAX_TOKENS} tokens)")
+              f"german-commons + {config.N_PRIOR_PASSAGES}× neutral (off-domain "
+              f"pool), averaged per word (budget {config.PRIOR_MAX_TOKENS} tokens)")
         bundles = []
         for slug, name in config.MODELS.items():
             b = compute_model_surprisal(slug, name, words, priors)
@@ -220,19 +228,23 @@ def main() -> None:
             diag.perplexity_curves(b["manifest"], b["slug"])
 
     # Phase 2 — mixed models per measure (early + late) per LM.
-    all_cmp, all_rll = [], []
+    all_cmp, all_vuong, all_rll = [], [], []
     for measure in MEASURES:
         rm = rt.clean_reading_times(rm_raw, measure)
         print(f"\nStep 5 — {measure}: cleaned={len(rm)} ({len(rm) / len(rm_raw):.1%})")
         for b in bundles:
-            cmp, reader_ll = fit_model(b, rm, measure)
+            cmp, vuong, reader_ll = fit_model(b, rm, measure)
             all_cmp.append(cmp)
+            all_vuong.append(vuong)
             all_rll.append(reader_ll)
 
     results = pd.concat(all_cmp, ignore_index=True)
     results_path = config.PROJECT_ROOT / "results_slim.csv"
     results.to_csv(results_path, index=False)
-    print(f"\n  wrote {results_path.name}")
+    vuong = pd.concat(all_vuong, ignore_index=True)
+    vuong_path = config.PROJECT_ROOT / "results_vuong.csv"
+    vuong.to_csv(vuong_path, index=False)
+    print(f"\n  wrote {results_path.name}, {vuong_path.name}")
 
     # Step 6 — claim tests: single LRT at the ΔLL-selected checkpoint per LM ×
     # measure, plus direct cross-LM comparisons (slope-difference z + paired

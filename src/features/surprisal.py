@@ -266,7 +266,8 @@ def compute_surprisal(
 # missing ones are computed and merged in.
 _DOMAIN_SHORT = {"physics": "phys", "biology": "bio"}
 # prompt_surp column (``s_prompt_*``) suffixes -> cache column ``<prefix>_prompt_*``.
-# phys/bio = reader-aligned domain prior; neutral = length-matched non-domain prior.
+# phys/bio = reader-aligned domain prior; neutral = off-domain scientific prior
+# (register-matched control from the german-commons off-domain pool).
 _PROMPT_SUFFIXES = ["phys", "bio", "neutral"]
 
 

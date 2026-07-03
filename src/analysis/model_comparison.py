@@ -21,15 +21,23 @@ Surprisal sources:
   aligned           : by READER discipline — physics surprisal for physicists,
                       biology for biologists (Study 2).
   prompted          : baseline weights + discipline-matched prior passage.
-  prompt_neutral    : length-matched non-domain prior control.
+  prompt_neutral    : off-domain scientific prior control (same corpus and
+                      register as the domain priors, no domain content).
 
-Each source is tested with a nested 1-df LRT (``p_lrt``) against its reference
-model (``ref``). Most sources are referenced to the no-surprisal baseline
-(Eq. 2); the ``aligned`` / ``prompted`` / ``prompt_neutral`` arms instead enter
-ON TOP of plain baseline surprisal and are referenced to the SURPRISAL baseline
-(Eq. 2 + baseline surprisal) — i.e. they test whether the added surprisal helps
-BEYOND plain surprisal. ``prompt_neutral`` shares the prompted reference so the
-domain-prompt lift and its non-domain control are on one scale.
+Two comparison tables per LM × measure:
+
+1. LRT vs the shared no-surprisal baseline — EVERY source is fit as Eq. 2 +
+   its own single surprisal column and compared to the no-surprisal model
+   (Eq. 2). Reported: ``ll``, ``delta_ll``, ``chisq`` (= 2·ΔLL), ``p_lrt``
+   (the models are nested, differing by the one surprisal term), ``aic``.
+2. Vuong tests (Vuong 1989, non-nested) — the baseline-surprisal model
+   (Eq. 2 + ``s_base``) against each reader-conditioned arm (``aligned`` at
+   every checkpoint, ``prompted``, ``prompt_neutral``), each fit with its own
+   column only. Both models have the same number of parameters, so no AIC/BIC
+   correction. Observations are clustered within reader, so the z-statistic is
+   computed over PER-READER sums of conditional pointwise log-densities
+   (``_reader_loglik``): z = mean(d_r) / (sd(d_r)/√R). Positive z favours the
+   baseline-surprisal model; negative favours the arm.
 """
 
 from __future__ import annotations
@@ -39,7 +47,7 @@ import pandas as pd
 import polars as pl
 import rpy2.robjects as ro
 from pymer4.models import lmer  # lazy: importing loads R via rpy2
-from scipy.stats import chi2
+from scipy.stats import chi2, norm
 from tqdm import tqdm
 
 from src.config import WORD_KEY
@@ -56,10 +64,8 @@ _SURP_COL = {
 SURPRISAL_MODELS = tuple(_SURP_COL)
 # sources whose surprisal doesn't depend on the DAPT checkpoint: fit once.
 _CKPT_INDEP = {"baseline", "prompted", "prompt_neutral"}
-# arms referenced to the surprisal baseline — tested for lift BEYOND plain
-# baseline surprisal (module doc). prompt_neutral shares prompted's reference so
-# the two prompted arms are read on the SAME scale (neutral = matched control).
-_VS_SURP_BASELINE = {"aligned", "prompted", "prompt_neutral"}
+# reader-conditioned arms compared to the baseline-surprisal model by Vuong test.
+_VUONG_ARMS = {"aligned", "prompted", "prompt_neutral"}
 
 # Paper Eq. (2) fixed effects; Eq. (4) adds the surprisal main effect(s).
 # Random effects: by-subject intercept, by-word intercept + expertise slope
@@ -205,20 +211,23 @@ def model_comparison_over_epochs(
     measure="TFT",
     models=SURPRISAL_MODELS,
     indices=None,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Per-checkpoint surprisal-source comparison on the whole corpus (Eq. 2/4/5).
 
     ``surp_versions`` must hold both domains; ``indices`` restricts the sweep.
     Checkpoint-independent sources (``_CKPT_INDEP``) are fit once (``index`` /
-    ``epoch`` = NA). The two reference LLs are computed once, on the first
-    index's frame, and reused for every checkpoint (valid: the row set is
+    ``epoch`` = NA). The no-surprisal reference LL is computed once, on the
+    first index's frame, and reused for every checkpoint (valid: the row set is
     checkpoint-independent, asserted per index).
 
-    Returns ``(results, reader_ll)``:
-      results — one row per source × checkpoint: ``index``, ``epoch``, ``ref``,
-        ``model``, ``n``, ``ll``, ``delta_ll``, ``b_surprisal``,
-        ``se_surprisal``, ``p_surprisal`` (Wald z on the source's slope),
-        ``p_lrt`` (nested 1-df LRT vs ``ref``).
+    Returns ``(results, vuong, reader_ll)``:
+      results — one row per source × checkpoint, every source vs the shared
+        no-surprisal baseline: ``index``, ``epoch``, ``model``, ``n``, ``ll``,
+        ``delta_ll``, ``chisq`` (= 2·ΔLL), ``p_lrt``, ``aic``, plus
+        ``b_surprisal`` / ``se_surprisal`` (slope estimate, feeds claim_tests).
+      vuong — one row per reader-conditioned arm (``_VUONG_ARMS``; aligned per
+        checkpoint): baseline-surprisal model vs the arm; ``model``, ``index``,
+        ``epoch``, ``n_readers``, ``vuong_z``, ``p_vuong``.
       reader_ll — per-reader conditional log-lik sums (``_reader_loglik``) for
         the no-surprisal baseline (``model`` = ``base_ref``) and every source;
         columns ``model``, ``index``, ``reader_id``, ``ll_reader``. Feeds
@@ -233,11 +242,12 @@ def model_comparison_over_epochs(
 
     rows: list[dict] = []
     rll_frames: list[pd.DataFrame] = []
+    # per-reader conditional LL sums per (source, index) — feeds the Vuong table.
+    reader_sums: dict[tuple, pd.Series] = {}
 
-    def _collect_rll(fit, d, model, index):
+    def _collect_rll(rll, model, index):
         rll_frames.append(
-            _reader_loglik(fit, d, measure)
-            .rename("ll_reader")
+            rll.rename("ll_reader")
             .rename_axis("reader_id")
             .reset_index()
             .assign(model=model, index=index)
@@ -250,43 +260,34 @@ def model_comparison_over_epochs(
         pbar.set_postfix(model="no_surprisal_baseline")
         null_fit = _fit(d0, measure)
         ll_null = _loglik(null_fit)
-        _collect_rll(null_fit, d0, "base_ref", pd.NA)
+        _collect_rll(_reader_loglik(null_fit, d0, measure), "base_ref", pd.NA)
         pbar.update(1)
 
-        # surprisal baseline (Eq. 2 + plain baseline surprisal): the ``baseline``
-        # source's own fit AND the reference for aligned / prompted. Fit once.
-        base_fit = _fit(d0, measure, "s_base")
-        ll_base = _loglik(base_fit)
-
         def _score(name, d, index, epoch):
-            """Fit source ``name`` on ``d``; record its result row + reader LLs."""
+            """Fit Eq. 2 + the source's own column; LRT vs the no-surprisal null."""
             col = _SURP_COL[name]
-            if name == "baseline":
-                fit, ref_ll, ref = base_fit, ll_null, "no_surprisal"
-            elif name in _VS_SURP_BASELINE:
-                fit = _fit(d, measure, ["s_base", col])
-                ref_ll, ref = ll_base, "surprisal_baseline"
-            else:
-                fit = _fit(d, measure, col)
-                ref_ll, ref = ll_null, "no_surprisal"
-            dll = _loglik(fit) - ref_ll
-            _collect_rll(fit, d, name, index)
+            fit = _fit(d, measure, col)
+            ll = _loglik(fit)
+            dll = ll - ll_null
+            rll = _reader_loglik(fit, d, measure)
+            reader_sums[(name, index, epoch)] = rll
+            _collect_rll(rll, name, index)
             pbar.update(1)
             rows.append(
                 {
                     "index": index,
                     "epoch": epoch,
-                    "ref": ref,
                     "model": name,
                     "n": len(d),
-                    "ll": ref_ll + dll,
+                    "ll": ll,
                     "delta_ll": dll,
+                    # nested LRT: 2·ΔLL ~ chi2(1), the single added surprisal term.
+                    # Negative ΔLL (no better than the null) -> p = 1.
+                    "chisq": 2.0 * dll,
+                    "p_lrt": float(chi2.sf(max(2.0 * dll, 0.0), 1)),
+                    "aic": float(_r(fit, "AIC")[0]),
                     "b_surprisal": _coef(fit, col, "estimate"),
                     "se_surprisal": _coef(fit, col, "std_error"),
-                    "p_surprisal": _coef(fit, col, "p_value"),
-                    # nested LRT: 2·ΔLL ~ chi2(1), the single added surprisal term.
-                    # Negative ΔLL (no better than the reference) -> p = 1.
-                    "p_lrt": float(chi2.sf(2.0 * max(dll, 0.0), 1)),
                 }
             )
 
@@ -302,7 +303,7 @@ def model_comparison_over_epochs(
                 d = d0
             else:
                 d = build_index_df(surp_versions, rt_df, prompt_surp, index, measure)
-                # reusing d0's reference LLs at this index requires the same rows.
+                # reusing d0's reference LL at this index requires the same rows.
                 assert d[WORD_KEY].equals(d0[WORD_KEY]), (
                     "checkpoint row sets differ; baseline reference not reusable"
                 )
@@ -310,6 +311,39 @@ def model_comparison_over_epochs(
                 pbar.set_postfix(index=index, model=name)
                 _score(name, d, index, epoch_of[index])
 
+    # Vuong table: baseline-surprisal model vs each reader-conditioned arm
+    # (module doc §2). Per-reader LL sums cluster the repeated measures; the
+    # arms were fit on the same rows as the baseline (asserted above).
+    base_key = next((k for k in reader_sums if k[0] == "baseline"), None)
+    vuong_rows = []
+    for (name, index, epoch), rll in reader_sums.items():
+        if base_key is None or name not in _VUONG_ARMS:
+            continue
+        d1, d2 = reader_sums[base_key].align(rll, join="inner")
+        diff = d1 - d2
+        sd = float(diff.std(ddof=1))
+        if sd == 0.0:
+            # indistinguishable fits (e.g. aligned at checkpoint 0 duplicates
+            # the baseline model) — the Vuong statistic is undefined.
+            z, p = np.nan, np.nan
+        else:
+            z = float(diff.mean() / (sd / np.sqrt(len(diff))))
+            p = float(2.0 * norm.sf(abs(z)))
+        vuong_rows.append(
+            {
+                "index": index,
+                "epoch": epoch,
+                "model": name,
+                "n_readers": len(diff),
+                "vuong_z": z,
+                "p_vuong": p,
+            }
+        )
+
     results = pd.DataFrame(rows).sort_values(["model", "index"])
+    vuong = pd.DataFrame(
+        vuong_rows,
+        columns=["index", "epoch", "model", "n_readers", "vuong_z", "p_vuong"],
+    ).sort_values(["model", "index"])
     reader_ll = pd.concat(rll_frames, ignore_index=True)
-    return results, reader_ll
+    return results, vuong, reader_ll

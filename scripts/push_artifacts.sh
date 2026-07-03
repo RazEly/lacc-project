@@ -57,7 +57,7 @@ push() {
   local repo_id="$1" local_path="$2" path_in_repo="$3" msg="$4" try=1
   until "$HF" upload "$repo_id" "$local_path" "$path_in_repo" \
         --repo-type model \
-        --exclude "_hf/*" "**/__pycache__/*" \
+        --exclude "_hf/*" --exclude "**/__pycache__/*" \
         --commit-message "$msg"; do
     if [ "$try" -ge "$MAX_TRIES" ]; then
       echo "error: $repo_id <- $path_in_repo failed after $MAX_TRIES tries" >&2

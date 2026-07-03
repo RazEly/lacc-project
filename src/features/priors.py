@@ -7,13 +7,18 @@ trains on, so "prime via context" and "adapt via weights" draw domain signal fro
 one source — but from a document the model never trained on, and never the PoTeC
 stimulus (which would trigger in-context memorisation and collapse surprisal).
 
-Each condition supplies ``config.N_PRIOR_PASSAGES`` DISTINCT priors, not one: the
-domain conditions draw K distinct held-out docs, the neutral condition draws K
-distinct non-domain passages (``config.NEUTRAL_PRIORS``). Downstream the stimulus
-is scored under each prior separately and the per-word surprisals are averaged
-(surprisal.compute_surprisal), so no single idiosyncratic passage drives a
-condition. The neutral condition is the length-matched control that isolates
-domain content from the mere presence of any prior.
+The neutral condition is sampled from the SAME corpus by the SAME code path: the
+off-domain pool (``config.DOMAIN_OTHER_DIR``, built by acquire.domain_preprocessing
+from docs far from both domain seeds). Scientific register, no physics/biology
+content — so the domain-vs-neutral contrast isolates domain content, not register
+or sampling procedure. DAPT never trains on the off-domain pool, so every neutral
+passage is unseen by every checkpoint; the split is applied anyway to keep the
+code path identical across conditions.
+
+Each condition supplies ``config.N_PRIOR_PASSAGES`` DISTINCT priors, not one.
+Downstream the stimulus is scored under each prior separately and the per-word
+surprisals are averaged (surprisal.compute_surprisal), so no single idiosyncratic
+passage drives a condition.
 """
 
 from __future__ import annotations
@@ -24,13 +29,17 @@ from datasets import load_from_disk
 
 from src.config import (
     DOMAIN_BIO_DIR,
+    DOMAIN_OTHER_DIR,
     DOMAIN_PHY_DIR,
     N_PRIOR_PASSAGES,
-    NEUTRAL_PRIORS,
     PRIOR_PASSAGE_SENTENCES,
 )
 
-_DOMAIN_DIRS = {"physics": DOMAIN_PHY_DIR, "biology": DOMAIN_BIO_DIR}
+_DOMAIN_DIRS = {
+    "physics": DOMAIN_PHY_DIR,
+    "biology": DOMAIN_BIO_DIR,
+    "neutral": DOMAIN_OTHER_DIR,
+}
 
 
 def _first_sentences(text: str, n: int) -> str:
@@ -69,18 +78,12 @@ def load_prior_passages(
 ) -> dict[str, list[str]]:
     """``{"physics", "biology", "neutral"}`` -> list of ``k`` prior passages.
 
-    Domain lists are ``k`` distinct held-out german-commons openings (defaults
-    match DAPT's split); the neutral list is the first ``k`` of
-    ``config.NEUTRAL_PRIORS``. Every passage is token-truncated to
-    ``config.PRIOR_MAX_TOKENS`` at scoring time; the caller averages surprisal
-    across each list.
+    All three lists are ``k`` distinct german-commons openings drawn by the same
+    procedure (defaults match DAPT's split); "neutral" draws from the off-domain
+    pool. Every passage is token-truncated to ``config.PRIOR_MAX_TOKENS`` at
+    scoring time; the caller averages surprisal across each list.
     """
-    if len(NEUTRAL_PRIORS) < k:
-        raise ValueError(
-            f"NEUTRAL_PRIORS has {len(NEUTRAL_PRIORS)} passages < k={k}"
-        )
     return {
-        "physics": _held_out_passages("physics", val_frac, seed, n_sent, k),
-        "biology": _held_out_passages("biology", val_frac, seed, n_sent, k),
-        "neutral": list(NEUTRAL_PRIORS[:k]),
+        domain: _held_out_passages(domain, val_frac, seed, n_sent, k)
+        for domain in _DOMAIN_DIRS
     }

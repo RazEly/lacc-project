@@ -6,10 +6,11 @@ def test_prior_config_present():
     # prompted arm uses a prior-reading passage + a length budget, not a persona.
     assert isinstance(config.PRIOR_MAX_TOKENS, int) and config.PRIOR_MAX_TOKENS > 0
     assert config.PRIOR_PASSAGE_SENTENCES > 0
-    # neutral condition is averaged over >= N_PRIOR_PASSAGES distinct passages.
+    # every condition is averaged over N_PRIOR_PASSAGES distinct passages.
     assert config.N_PRIOR_PASSAGES > 0
-    assert len(config.NEUTRAL_PRIORS) >= config.N_PRIOR_PASSAGES
-    assert all(p.strip() for p in config.NEUTRAL_PRIORS)
+    # neutral priors are sampled from the off-domain pool, not hand-written.
+    assert not hasattr(config, "NEUTRAL_PRIORS")
+    assert config.DOMAIN_OTHER_DIR.parent == config.DATA_DIR
     # persona prompts are gone.
     assert not hasattr(config, "GRAD_STUDENT_PROMPTS")
 

@@ -39,23 +39,33 @@ def test_fit_returns_loglik(index_df):
 
 
 def test_model_comparison_over_epochs_paper(mc_inputs):
-    # most sources scored by ΔLL over the no-surprisal baseline; the reader-
-    # conditioned arms (aligned/prompted) over the surprisal baseline.
-    out, reader_ll = mc.model_comparison_over_epochs(
+    # every source scored against the shared no-surprisal baseline (LRT + AIC);
+    # Vuong table compares baseline-surprisal vs the reader-conditioned arms.
+    out, vuong, reader_ll = mc.model_comparison_over_epochs(
         mc_inputs["surp_versions"], mc_inputs["rt_df"], mc_inputs["prompt_surp"],
         measure="TFT",
     )
-    expected = {"index", "epoch", "ref", "model", "n", "ll", "delta_ll",
-                "b_surprisal", "se_surprisal", "p_surprisal", "p_lrt"}
+    expected = {"index", "epoch", "model", "n", "ll", "delta_ll", "chisq",
+                "p_lrt", "aic", "b_surprisal", "se_surprisal"}
     assert expected <= set(out.columns)
     assert set(out["model"]) == set(mc.SURPRISAL_MODELS)
-    # aligned/prompted/prompt_neutral vs surprisal baseline; the rest vs no-surprisal.
-    for model, ref in out.set_index("model")["ref"].items():
-        want = "surprisal_baseline" if model in mc._VS_SURP_BASELINE else "no_surprisal"
-        assert ref == want, model
     assert np.isfinite(out["delta_ll"]).all()
-    # 1-df nested LRT: p in [0, 1].
+    np.testing.assert_allclose(out["chisq"], 2.0 * out["delta_ll"])
+    assert np.isfinite(out["aic"]).all()
+    # LRT vs the null: p in [0, 1].
     assert out["p_lrt"].between(0, 1).all()
+    # Vuong: one row per reader-conditioned arm (aligned per checkpoint).
+    assert {"index", "epoch", "model", "n_readers", "vuong_z", "p_vuong"} <= set(
+        vuong.columns
+    )
+    assert set(vuong["model"]) == mc._VUONG_ARMS
+    n_aligned = out.loc[out["model"] == "aligned", "index"].nunique()
+    assert len(vuong) == n_aligned + 2  # + prompted + prompt_neutral
+    # aligned at checkpoint 0 duplicates the baseline model -> undefined (NaN).
+    ok = vuong["vuong_z"].notna()
+    assert ok.any()
+    assert np.isfinite(vuong.loc[ok, "vuong_z"]).all()
+    assert vuong.loc[ok, "p_vuong"].between(0, 1).all()
     # per-reader conditional LLs collected for the baseline reference + every fit.
     assert {"model", "index", "reader_id", "ll_reader"} <= set(reader_ll.columns)
     assert {"base_ref", *mc.SURPRISAL_MODELS} <= set(reader_ll["model"])

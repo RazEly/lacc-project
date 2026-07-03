@@ -16,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 import torch
 from datasets import load_from_disk
+from peft import LoraConfig, TaskType, get_peft_model
 from tqdm.auto import tqdm
 from transformers import (
     AutoModelForCausalLM,
@@ -37,6 +38,7 @@ from src.features.surprisal import (
     load_causal_lm,
     resize_with_mean_init,
 )
+from src.modeling import hub
 
 DOMAIN_DIRS = {"physics": DOMAIN_PHY_DIR, "biology": DOMAIN_BIO_DIR}
 
@@ -58,8 +60,15 @@ def _lora_targets(model, override):
     if mt == "gpt2":
         targets = ["c_attn", "c_fc", "c_proj"]  # attn qkv/out + mlp in/out
     elif mt == "llama":
-        targets = ["q_proj", "k_proj", "v_proj", "o_proj",
-                   "gate_proj", "up_proj", "down_proj"]
+        targets = [
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ]
     else:  # unknown arch: fall back to PEFT's per-arch defaults
         targets = None
     return override or targets
@@ -123,9 +132,18 @@ class _CheckpointSchedule(TrainerCallback):
     ``include_baseline`` makes the step-0 model index 0; listed steps follow as 1, 2, …
     """
 
-    def __init__(self, trainer, out_dir, n_checkpoints, words_per_epoch,
-                 tokens_per_step, manifest, include_baseline=True,
-                 checkpoint_steps=None, eval_samples=EVAL_SUBSET_SIZE):
+    def __init__(
+        self,
+        trainer,
+        out_dir,
+        n_checkpoints,
+        words_per_epoch,
+        tokens_per_step,
+        manifest,
+        include_baseline=True,
+        checkpoint_steps=None,
+        eval_samples=EVAL_SUBSET_SIZE,
+    ):
         self.trainer = trainer
         self.out_dir = Path(out_dir)
         self.n_checkpoints = n_checkpoints
@@ -144,13 +162,17 @@ class _CheckpointSchedule(TrainerCallback):
     def on_train_begin(self, args, state, control, **kwargs):
         if self.checkpoint_steps is not None:
             # explicit step targets (indices 1..), clamped onto the final step.
-            self._targets = {min(int(s), state.max_steps): i
-                             for i, s in enumerate(self.checkpoint_steps, start=1)}
+            self._targets = {
+                min(int(s), state.max_steps): i
+                for i, s in enumerate(self.checkpoint_steps, start=1)
+            }
         else:
             # evenly spaced; include_baseline puts the first at step 0.
             lo = 0 if self.include_baseline else 1
-            self._targets = {round(i / (self.n_checkpoints - 1) * state.max_steps): i
-                             for i in range(lo, self.n_checkpoints)}
+            self._targets = {
+                round(i / (self.n_checkpoints - 1) * state.max_steps): i
+                for i in range(lo, self.n_checkpoints)
+            }
             collided = (self.n_checkpoints - lo) - len(self._targets)
             if collided:
                 print(
@@ -252,8 +274,7 @@ def finetune_dapt(
     # Run dir carries the seed so per-seed runs don't collide. Delete the dir by
     # hand to force a retrain (there is no recipe-version cache invalidation).
     out_dir = Path(
-        out_dir
-        or CHECKPOINTS_DIR / f"{Path(base_model).name}_{domain}_lora_s{seed}"
+        out_dir or CHECKPOINTS_DIR / f"{Path(base_model).name}_{domain}_lora_s{seed}"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -263,19 +284,22 @@ def finetune_dapt(
         cached = pd.read_csv(manifest_csv)
         if "seed" not in cached.columns:
             cached.insert(1, "seed", seed)
-        print(f"  [{domain}] reusing {len(cached)} saved checkpoints in {out_dir} "
-              "(skipping training)")
+        print(
+            f"  [{domain}] reusing {len(cached)} saved checkpoints in {out_dir} "
+            "(skipping training)"
+        )
         return cached
 
     # Local miss: try the Hub before paying for a GPU run.
-    from src.modeling import hub
 
     remote = hub.try_download_run(out_dir)
     if remote is not None:
         if "seed" not in remote.columns:
             remote.insert(1, "seed", seed)
-        print(f"  [{domain}] reusing {len(remote)} checkpoints pulled from the Hub "
-              "(skipping training)")
+        print(
+            f"  [{domain}] reusing {len(remote)} checkpoints pulled from the Hub "
+            "(skipping training)"
+        )
         return remote
 
     tokenizer = AutoTokenizer.from_pretrained(base_model)
@@ -286,8 +310,6 @@ def finetune_dapt(
     # (deterministic mean-init, frozen under LoRA) to avoid OOB indexing. The
     # surprisal loader applies the same resize, so train and load weights match.
     resize_with_mean_init(model, tokenizer)
-
-    from peft import LoraConfig, TaskType, get_peft_model
 
     targets = _lora_targets(model, lora_target_modules)
     peft_cfg = LoraConfig(
@@ -309,7 +331,9 @@ def finetune_dapt(
     # (max_tokens, or one full pass over the packed train blocks).
     tokens_per_step = block_size * batch_size * grad_accum
     if max_steps is None:
-        budget = max_tokens if max_tokens is not None else len(split["train"]) * block_size
+        budget = (
+            max_tokens if max_tokens is not None else len(split["train"]) * block_size
+        )
         max_steps = max(1, math.ceil(budget / tokens_per_step))
 
     # bf16 on Ampere+, else fp16; tf32 matmuls free on Ampere+.
@@ -348,8 +372,13 @@ def finetune_dapt(
     manifest: list[dict] = []
     trainer.add_callback(
         _CheckpointSchedule(
-            trainer, out_dir, n_checkpoints, words_per_epoch, tokens_per_step,
-            manifest, include_baseline=include_baseline,
+            trainer,
+            out_dir,
+            n_checkpoints,
+            words_per_epoch,
+            tokens_per_step,
+            manifest,
+            include_baseline=include_baseline,
             checkpoint_steps=checkpoint_steps,
         )
     )

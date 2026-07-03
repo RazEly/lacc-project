@@ -5,6 +5,11 @@ Two-pass weak labelling:
   pass 2 — zero-shot NLI (XLM-RoBERTa) with a threshold calibrated on the 12
            gold-labelled PoTeC texts.
 
+Also carves out a NEUTRAL pool (``DOMAIN_OTHER_DIR``): the docs that fall OUTSIDE
+the pass-1 candidate set — both domain TF-IDF similarities below the candidate
+threshold. Same corpus and register as the domain priors, no physics/biology
+content. Feeds the neutral prompt condition (features.priors).
+
 Run from the project root:
     python -m src.acquire.domain_preprocessing
 """
@@ -23,6 +28,7 @@ from transformers import XLMRobertaTokenizer, pipeline
 from src.config import (
     COMMONS_DIR,
     DOMAIN_BIO_DIR,
+    DOMAIN_OTHER_DIR,
     DOMAIN_PHY_DIR,
     LABEL_IDS_PATH,
     OPENALEX_MIN_OCR,
@@ -34,6 +40,18 @@ from src.features.data import read_potec
 TEXT_CHARS = 1024
 BATCH_SIZE = 128
 TFIDF_THRESHOLD = 0.05
+
+# ── neutral (off-domain) pool ────────────────────────────────────────────────
+# The neutral pool is exactly the pass-1 "other" set: docs whose TF-IDF
+# similarity to BOTH domain seeds falls below TFIDF_THRESHOLD, i.e. everything
+# the candidate filter drops. Same corpus and register as the domain priors, no
+# physics/biology content — the length-matched control for the prompt arm.
+# Fluency gate: drop the worst-OCR / least-fluent docs by perplexity percentile,
+# so the neutral priors read as cleanly as the domain priors.
+NEUTRAL_MAX_PPL_PCTL = 60
+# Pool size: a broad sample to draw K priors from, not the whole neutral mass.
+N_OTHER_DOCS = 500
+OTHER_SEED = 0
 
 # When LABEL_IDS_PATH exists, labelling is skipped and datasets rebuilt from it.
 
@@ -86,6 +104,50 @@ def load_commons():
                 and x["ocr_score"] > OPENALEX_MIN_OCR)
         )
     return ds
+
+
+def domain_sims(texts):
+    """TF-IDF char n-gram similarity of every doc to the two domain seed bags."""
+    vectorizer = TfidfVectorizer(
+        analyzer="char_wb",
+        ngram_range=(4, 6),
+        max_features=100_000,
+        sublinear_tf=True,
+        min_df=3,
+        dtype=np.float32,
+    )
+    tfidf_matrix = vectorizer.fit_transform(texts + [PHYSICS_SEED, BIOLOGY_SEED])
+    corpus_vecs = tfidf_matrix[:-2]
+    sim_physics = cosine_similarity(corpus_vecs, tfidf_matrix[-2]).ravel()
+    sim_biology = cosine_similarity(corpus_vecs, tfidf_matrix[-1]).ravel()
+    return sim_physics, sim_biology
+
+
+def select_other(ds, sim_physics, sim_biology):
+    """Neutral pool: the pass-1 "other" docs — outside the candidate filter.
+
+    A doc is "other" when both domain similarities fall below TFIDF_THRESHOLD, so
+    this is exactly the complement of the pass-1 candidate set. A per-pool
+    perplexity fluency gate drops the worst-OCR docs, then a shuffled sample of up
+    to ``N_OTHER_DOCS`` is returned.
+    """
+    idx = [
+        i
+        for i, (sp, sb) in enumerate(zip(sim_physics, sim_biology))
+        if sp < TFIDF_THRESHOLD and sb < TFIDF_THRESHOLD
+    ]
+    other = ds.select(idx)
+    # fluency gate: keep the lower-perplexity share (missing ppl -> kept).
+    ppl = np.array(
+        [p if p is not None else np.nan for p in other["perplexity"]], dtype=float
+    )
+    finite = ppl[np.isfinite(ppl)]
+    if len(finite):
+        cutoff = np.percentile(finite, NEUTRAL_MAX_PPL_PCTL)
+        keep = [i for i, p in enumerate(ppl) if not np.isfinite(p) or p <= cutoff]
+        other = other.select(keep)
+    other = other.shuffle(seed=OTHER_SEED)
+    return other.select(range(min(N_OTHER_DOCS, len(other))))
 
 
 # Calibrate the NLI threshold on the 12 gold POTEC texts before applying to corpus.
@@ -143,22 +205,29 @@ def calibrate_nli_threshold(potec_dir, classifier):
 
 
 # ── label-id cache ───────────────────────────────────────────────────────────
-def save_label_ids(physics_ds, biology_ds, path=LABEL_IDS_PATH):
-    """Persist the selected physics/biology document ids as JSON for reuse."""
-    ids = {"physics": list(physics_ds["id"]), "biology": list(biology_ds["id"])}
+def save_label_ids(physics_ds, biology_ds, other_ds, path=LABEL_IDS_PATH):
+    """Persist the selected physics/biology/other document ids as JSON for reuse."""
+    ids = {
+        "physics": list(physics_ds["id"]),
+        "biology": list(biology_ds["id"]),
+        "other": list(other_ds["id"]),
+    }
     with open(path, "w") as f:
         json.dump(ids, f)
     print(
         f"  wrote label ids: {path} "
-        f"({len(ids['physics']):,} physics, {len(ids['biology']):,} biology)"
+        f"({len(ids['physics']):,} physics, {len(ids['biology']):,} biology, "
+        f"{len(ids['other']):,} other)"
     )
 
 
 def build_from_label_ids(path=LABEL_IDS_PATH):
-    """Rebuild the physics/biology datasets from a saved id file.
+    """Rebuild the physics/biology/other datasets from a saved id file.
 
-    Returns ``(physics_ds, biology_ds)`` or ``None`` if no cache file exists.
-    Skips the whole TF-IDF + NLI labelling pipeline.
+    Returns ``(physics_ds, biology_ds, other_ds)`` or ``None`` if no cache file
+    exists. Skips the NLI pass entirely; an id file predating the off-domain pool
+    (no ``"other"`` key) gets it backfilled by re-running the cheap TF-IDF pass
+    only, and the file is rewritten with the new key.
     """
     if not path.exists():
         return None
@@ -170,16 +239,26 @@ def build_from_label_ids(path=LABEL_IDS_PATH):
     biology = set(ids["biology"])
     physics_ds = ds.filter(lambda x: x["id"] in physics)
     biology_ds = ds.filter(lambda x: x["id"] in biology)
-    print(f"  physics : {len(physics_ds):,}   biology : {len(biology_ds):,}")
-    return physics_ds, biology_ds
+    if "other" in ids:
+        other = set(ids["other"])
+        other_ds = ds.filter(lambda x: x["id"] in other)
+    else:
+        print("  no 'other' key — backfilling neutral pool (TF-IDF only)...")
+        texts = [t[:TEXT_CHARS] if t else "" for t in ds["text"]]
+        other_ds = select_other(ds, *domain_sims(texts))
+        save_label_ids(physics_ds, biology_ds, other_ds, path)
+    print(
+        f"  physics : {len(physics_ds):,}   biology : {len(biology_ds):,}   "
+        f"other : {len(other_ds):,}"
+    )
+    return physics_ds, biology_ds, other_ds
 
 
 def main():
     # Reuse a previous run's labels if they were saved.
     cached = build_from_label_ids()
     if cached is not None:
-        physics_ds, biology_ds = cached
-        _save_domain_datasets(physics_ds, biology_ds)
+        _save_domain_datasets(*cached)
         return
 
     # ── pass 1: TF-IDF with POTEC seeds ──────────────────────────────────────
@@ -187,18 +266,7 @@ def main():
     texts = [t[:TEXT_CHARS] if t else "" for t in ds["text"]]
 
     print(f"\nPass 1 — TF-IDF on {len(texts):,} docs...")
-    vectorizer = TfidfVectorizer(
-        analyzer="char_wb",
-        ngram_range=(4, 6),
-        max_features=100_000,
-        sublinear_tf=True,
-        min_df=3,
-        dtype=np.float32,
-    )
-    tfidf_matrix = vectorizer.fit_transform(texts + [PHYSICS_SEED, BIOLOGY_SEED])
-    corpus_vecs = tfidf_matrix[:-2]
-    sim_physics = cosine_similarity(corpus_vecs, tfidf_matrix[-2]).ravel()
-    sim_biology = cosine_similarity(corpus_vecs, tfidf_matrix[-1]).ravel()
+    sim_physics, sim_biology = domain_sims(texts)
 
     pass1_labels = []
     for sp, sb in zip(sim_physics, sim_biology):
@@ -264,6 +332,8 @@ def main():
 
     physics_ds = ds.filter(lambda x: x["domain_label"] == "physics")
     biology_ds = ds.filter(lambda x: x["domain_label"] == "biology")
+    # neutral pool for the prompt control — the pass-1 "other" docs.
+    other_ds = select_other(ds, sim_physics, sim_biology)
 
     print("\nFinal results (pass 1 ∩ pass 2):")
     print(
@@ -271,6 +341,9 @@ def main():
     )
     print(
         f"biology : {len(biology_ds):,}  ({sum(r['num_tokens'] for r in biology_ds):,} tokens)"
+    )
+    print(
+        f"neutral : {len(other_ds):,}  (outside pass 1: both sims < {TFIDF_THRESHOLD})"
     )
     print(
         f"rejected by NLI: {len(candidates_idx) - len(physics_ds) - len(biology_ds):,}"
@@ -288,17 +361,27 @@ def main():
             f"  nli={row['nli_score']:.2f} tfidf={row['sim_biology']:.3f} [{row['source']}] {row['text'][:100]!r}"
         )
 
-    save_label_ids(physics_ds, biology_ds)
-    _save_domain_datasets(physics_ds, biology_ds)
+    save_label_ids(physics_ds, biology_ds, other_ds)
+    _save_domain_datasets(physics_ds, biology_ds, other_ds)
 
 
-def _save_domain_datasets(physics_ds, biology_ds):
-    """Write the physics/biology datasets to their on-disk locations."""
+def _save_domain_datasets(physics_ds, biology_ds, other_ds):
+    """Write the physics/biology/other datasets to disk.
+
+    An EXISTING domain dir is left untouched — the DAPT checkpoints were trained
+    on its exact contents, and priors.py samples its held-out split, so silently
+    overwriting it (e.g. on a neutral-only backfill) would desync training and
+    the priors. The neutral dir is always (re)written.
+    """
     print("\nSaving datasets...")
-    physics_ds.save_to_disk(str(DOMAIN_PHY_DIR))
-    biology_ds.save_to_disk(str(DOMAIN_BIO_DIR))
-    print(f"saved: {DOMAIN_PHY_DIR}, {DOMAIN_BIO_DIR}")
-    print(f"load with: load_from_disk('{DOMAIN_PHY_DIR}')")
+    for ds, path in [(physics_ds, DOMAIN_PHY_DIR), (biology_ds, DOMAIN_BIO_DIR)]:
+        if path.exists():
+            print(f"  skip {path} (exists — keeping the DAPT-trained version)")
+        else:
+            ds.save_to_disk(str(path))
+            print(f"  saved {path}")
+    other_ds.save_to_disk(str(DOMAIN_OTHER_DIR))
+    print(f"  saved {DOMAIN_OTHER_DIR}")
 
 
 if __name__ == "__main__":
