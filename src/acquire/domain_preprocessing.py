@@ -25,6 +25,8 @@ from src.config import (
     DOMAIN_BIO_DIR,
     DOMAIN_PHY_DIR,
     LABEL_IDS_PATH,
+    OPENALEX_MIN_OCR,
+    OPENALEX_SOURCE,
     POTEC_DIR,
 )
 from src.features.data import read_potec
@@ -74,6 +76,15 @@ def load_commons():
     ds = load_from_disk(str(COMMONS_DIR))
     if not hasattr(ds, "column_names") or isinstance(ds.column_names, dict):
         ds = concatenate_datasets([ds[name] for name in ds.keys()])
+    # OpenAlex is OCR'd: keep only its high-quality docs (ocr_score is 0-100).
+    # `source` column holds the display name "OpenAlex"; other sources kept in full.
+    if "source" in ds.column_names:
+        ds = ds.filter(
+            lambda x: x["source"].lower() != OPENALEX_SOURCE
+            or (x["ocr_score"] is not None
+                and x["ocr_score"] == x["ocr_score"]
+                and x["ocr_score"] > OPENALEX_MIN_OCR)
+        )
     return ds
 
 

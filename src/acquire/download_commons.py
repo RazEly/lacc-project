@@ -7,7 +7,19 @@ splits into one dataset, and ``save_to_disk`` for ``domain_preprocessing``.
 """
 from datasets import concatenate_datasets, load_dataset
 
-from src.config import COMMONS_DIR, COMMONS_HF_CONFIG, COMMONS_HF_REPO
+from src.config import (
+    COMMONS_DIR,
+    COMMONS_HF_CONFIG,
+    COMMONS_HF_REPO,
+    OPENALEX_MIN_OCR,
+    OPENALEX_SOURCE,
+)
+
+
+def _keep_openalex(row) -> bool:
+    """OpenAlex is OCR'd: keep only docs with a high ocr_score (0-100)."""
+    score = row["ocr_score"]
+    return score is not None and score == score and score > OPENALEX_MIN_OCR
 
 
 def main() -> None:
@@ -17,6 +29,12 @@ def main() -> None:
 
     print(f"Downloading {COMMONS_HF_REPO} [{COMMONS_HF_CONFIG}] from the Hugging Face Hub ...")
     dsd = load_dataset(COMMONS_HF_REPO, COMMONS_HF_CONFIG)
+
+    # Gate OpenAlex on OCR quality; keep every other source in full.
+    if OPENALEX_SOURCE in dsd:
+        before = len(dsd[OPENALEX_SOURCE])
+        dsd[OPENALEX_SOURCE] = dsd[OPENALEX_SOURCE].filter(_keep_openalex)
+        print(f"  openalex ocr>{OPENALEX_MIN_OCR}: {len(dsd[OPENALEX_SOURCE]):,}/{before:,} kept")
 
     # Flatten per-source splits into a single dataset.
     ds = concatenate_datasets([dsd[name] for name in dsd.keys()])

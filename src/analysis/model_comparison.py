@@ -38,13 +38,21 @@ import warnings
 
 import numpy as np
 import pandas as pd
+import polars as pl
+import rpy2.robjects as ro
+from pymer4.models import lmer  # lazy: importing loads R via rpy2
 from scipy.stats import chi2
 from tqdm import tqdm
 
 from src.config import WORD_KEY
 
 SURPRISAL_MODELS = (
-    "baseline", "physics", "biology", "aligned", "prompted", "prompt_neutral"
+    "baseline",
+    "physics",
+    "biology",
+    "aligned",
+    "prompted",
+    "prompt_neutral",
 )
 # sources whose surprisal doesn't depend on the DAPT checkpoint: fit once.
 _CKPT_INDEP = {"baseline", "prompted", "prompt_neutral"}
@@ -72,8 +80,9 @@ def _prep_models(df, measure):
         raw_cols.append("s_prompt_neutral")
 
     d = df[df[measure] > 0].copy()
-    d = d.dropna(subset=[measure, "word_length", "lemma_frequency_normalized",
-                         *raw_cols])
+    d = d.dropna(
+        subset=[measure, "word_length", "lemma_frequency_normalized", *raw_cols]
+    )
     d = d[d["word_length"] > 0]
 
     # dlexDB lemma freq: +1 smoothing then log (paper).
@@ -123,12 +132,14 @@ def _fit(d, measure, surprisal_cols=None):
     or a list — each enters as a plain main effect. ML (REML=False) so the LLs
     feed the nested LRT / ΔLL. Coefficient p-values are Wald z.
     """
-    import polars as pl
-    from pymer4.models import lmer  # lazy: importing loads R via rpy2
 
     rhs = _BASE_TERMS
     if surprisal_cols:
-        cols = [surprisal_cols] if isinstance(surprisal_cols, str) else list(surprisal_cols)
+        cols = (
+            [surprisal_cols]
+            if isinstance(surprisal_cols, str)
+            else list(surprisal_cols)
+        )
         rhs += " + " + " + ".join(cols)
     dd = d.copy()
     dd["resp_log"] = np.log(dd[measure].to_numpy())  # valid R identifier
@@ -142,7 +153,6 @@ def _fit(d, measure, surprisal_cols=None):
 
 def _loglik(m) -> float:
     """ML log-likelihood of a fitted pymer4 0.9 ``lmer`` (via the R model)."""
-    import rpy2.robjects as ro
 
     return float(np.asarray(ro.r("logLik")(m.r_model)).ravel()[0])
 
@@ -157,7 +167,6 @@ def _reader_loglik(m, d, measure) -> pd.Series:
     on identical rows (claim_tests), where the shared random-effect penalty
     terms cancel in the pairing. Indexed by ``reader_id``.
     """
-    import rpy2.robjects as ro
 
     fitted = np.asarray(ro.r("fitted")(m.r_model), dtype=float).ravel()
     sigma = float(np.asarray(ro.r("sigma")(m.r_model)).ravel()[0])
@@ -239,10 +248,16 @@ def model_comparison_over_epochs(
 
     def _collect_rll(fit, d, model, index):
         ll = _reader_loglik(fit, d, measure)
-        rll_frames.append(pd.DataFrame({
-            "model": model, "index": index,
-            "reader_id": ll.index, "ll_reader": ll.values,
-        }))
+        rll_frames.append(
+            pd.DataFrame(
+                {
+                    "model": model,
+                    "index": index,
+                    "reader_id": ll.index,
+                    "ll_reader": ll.values,
+                }
+            )
+        )
 
     d0 = build_index_df(surp_versions, rt_df, prompt_surp, all_indices[0], measure)
     # once: no-surprisal baseline + each indep source; per index: dep sources.
@@ -272,21 +287,23 @@ def model_comparison_over_epochs(
             dll = _loglik(fit) - ref_ll
             _collect_rll(fit, d, name, index)
             pbar.update(1)
-            rows.append({
-                "index": index,
-                "epoch": epoch,
-                "ref": ref,
-                "model": name,
-                "n": len(d),
-                "ll": ref_ll + dll,
-                "delta_ll": dll,
-                "b_surprisal": _coef(fit, f"z_S_{name}", "estimate"),
-                "se_surprisal": _coef(fit, f"z_S_{name}", "std_error"),
-                "p_surprisal": _coef(fit, f"z_S_{name}", "p_value"),
-                # nested LRT: 2·ΔLL ~ chi2(1), the single added surprisal term.
-                # Negative ΔLL (no better than the reference) -> p = 1.
-                "p_lrt": float(chi2.sf(2.0 * max(dll, 0.0), 1)),
-            })
+            rows.append(
+                {
+                    "index": index,
+                    "epoch": epoch,
+                    "ref": ref,
+                    "model": name,
+                    "n": len(d),
+                    "ll": ref_ll + dll,
+                    "delta_ll": dll,
+                    "b_surprisal": _coef(fit, f"z_S_{name}", "estimate"),
+                    "se_surprisal": _coef(fit, f"z_S_{name}", "std_error"),
+                    "p_surprisal": _coef(fit, f"z_S_{name}", "p_value"),
+                    # nested LRT: 2·ΔLL ~ chi2(1), the single added surprisal term.
+                    # Negative ΔLL (no better than the reference) -> p = 1.
+                    "p_lrt": float(chi2.sf(2.0 * max(dll, 0.0), 1)),
+                }
+            )
 
         for name in indep:
             if f"z_S_{name}" not in d0.columns:  # neutral absent from an old cache

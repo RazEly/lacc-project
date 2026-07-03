@@ -13,6 +13,9 @@ POTEC_EYETRACKING_DIR = POTEC_DIR / "eyetracking_data"
 COMMONS_DIR = DATA_DIR / "commons_scientific"
 COMMONS_HF_REPO = "coral-nlp/german-commons"
 COMMONS_HF_CONFIG = "scientific"
+# OpenAlex is OCR'd; keep only its high-quality docs. ocr_score is 0-100.
+OPENALEX_SOURCE = "openalex"
+OPENALEX_MIN_OCR = 90.0
 
 # domain_preprocessing outputs
 DOMAIN_PHY_DIR = DATA_DIR / "domain_phy"
