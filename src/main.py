@@ -14,8 +14,6 @@ cross-LM comparisons).
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pandas as pd
 
 from src import config
@@ -37,7 +35,6 @@ DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4096]
 SLIM_MODELS = ("baseline", "prompted", "prompt_neutral", "aligned")
 # every checkpoint: indices 1..N pair to DAPT_CHECKPOINT_STEPS (0 = baseline).
 SLIM_INDICES = list(range(1, len(DAPT_CHECKPOINT_STEPS) + 1))
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
@@ -230,9 +227,9 @@ def main() -> None:
             all_rll.append(reader_ll)
 
     results = pd.concat(all_cmp, ignore_index=True)
-    results_path = PROJECT_ROOT / "results_slim.csv"
+    results_path = config.PROJECT_ROOT / "results_slim.csv"
     results.to_csv(results_path, index=False)
-    print(f"\n  wrote {results_path.relative_to(PROJECT_ROOT)}")
+    print(f"\n  wrote {results_path.name}")
 
     # Step 6 — claim tests: single LRT at the ΔLL-selected checkpoint per LM ×
     # measure, plus direct cross-LM comparisons (slope-difference z + paired
@@ -240,8 +237,8 @@ def main() -> None:
     # significance verdicts.
     reader_ll = pd.concat(all_rll, ignore_index=True)
     best, cross = ct.run_claim_tests(results, reader_ll)
-    best_path = PROJECT_ROOT / "results_best.csv"
-    cross_path = PROJECT_ROOT / "results_cross_lm.csv"
+    best_path = config.PROJECT_ROOT / "results_best.csv"
+    cross_path = config.PROJECT_ROOT / "results_cross_lm.csv"
     best.to_csv(best_path, index=False)
     cross.to_csv(cross_path, index=False)
     print("\nStep 6 — claim tests")

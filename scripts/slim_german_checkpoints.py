@@ -35,8 +35,8 @@ sys.path.insert(0, str(ROOT))
 # Redundant embedding copies to drop (keys end with these).
 DROP_SUFFIXES = (
     "wte.original_module.weight",  # frozen base — provided by base model on load
-    "lm_head.weight",              # tied to wte — rematerialised on load
-    "transformer.wte.weight",      # active-forward dup of modules_to_save
+    "lm_head.weight",  # tied to wte — rematerialised on load
+    "transformer.wte.weight",  # active-forward dup of modules_to_save
 )
 
 
@@ -70,7 +70,8 @@ def _checkpoints(run_dir: Path) -> list[Path]:
 
 def _surprisal_sample(ckpt: Path, n_words: int = 200):
     """Load the checkpoint via the real inference path and return a surprisal vector."""
-    from src.features import data, surprisal as su
+    from src.features import data
+    from src.features import surprisal as su
 
     words = data.load_word_features().head(n_words)
     model, tok = su.load_causal_lm(str(ckpt))
@@ -93,7 +94,9 @@ def verify(run_dir: Path) -> None:
         tmp = Path(td) / ck.name
         shutil.copytree(ck, tmp)  # tokenizer/config alongside the adapter
         sb, db = slim_file(src, tmp / "adapter_model.safetensors")
-        print(f"  size {sb/1e6:.0f} MB -> {db/1e6:.0f} MB  ({sb/db:.1f}x smaller)")
+        print(
+            f"  size {sb / 1e6:.0f} MB -> {db / 1e6:.0f} MB  ({sb / db:.1f}x smaller)"
+        )
         slim = _surprisal_sample(tmp)
 
     import numpy as np
@@ -115,8 +118,8 @@ def apply(run_dir: Path) -> None:
         sb, db = slim_file(f, f)  # overwrite in place
         total_src += sb
         total_dst += db
-        print(f"  {ck.name}: {sb/1e6:.0f} MB -> {db/1e6:.0f} MB")
-    print(f"run total {total_src/1e6:.0f} MB -> {total_dst/1e6:.0f} MB")
+        print(f"  {ck.name}: {sb / 1e6:.0f} MB -> {db / 1e6:.0f} MB")
+    print(f"run total {total_src / 1e6:.0f} MB -> {total_dst / 1e6:.0f} MB")
 
 
 def main() -> None:

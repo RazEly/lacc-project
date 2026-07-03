@@ -38,25 +38,17 @@ def best_checkpoints(results: pd.DataFrame, model: str = "aligned") -> pd.DataFr
     slope. ``p_lrt`` at the selected point is the single claim test.
     """
     sel = results[(results["model"] == model) & results["index"].notna()]
-    rows = []
-    for (lm, measure), g in sel.groupby(["model_lm", "measure"]):
-        r = g.loc[g["delta_ll"].idxmax()]
-        b, se = float(r["b_surprisal"]), float(r["se_surprisal"])
-        rows.append(
-            {
-                "model_lm": lm,
-                "measure": measure,
-                "index": r["index"],
-                "epoch": r["epoch"],
-                "delta_ll": r["delta_ll"],
-                "p_lrt": r["p_lrt"],
-                "b_surprisal": b,
-                "se_surprisal": se,
-                "ci_low": b - 1.96 * se,
-                "ci_high": b + 1.96 * se,
-            }
-        )
-    return pd.DataFrame(rows)
+    best = sel.loc[
+        sel.groupby(["model_lm", "measure"])["delta_ll"].idxmax(),
+        ["model_lm", "measure", "index", "epoch", "delta_ll", "p_lrt",
+         "b_surprisal", "se_surprisal"],
+    ].reset_index(drop=True)
+    # the source ``index`` / ``epoch`` columns are object-typed (NA rows for
+    # checkpoint-independent sources); re-infer now that the NAs are gone.
+    best = best.infer_objects()
+    best["ci_low"] = best["b_surprisal"] - 1.96 * best["se_surprisal"]
+    best["ci_high"] = best["b_surprisal"] + 1.96 * best["se_surprisal"]
+    return best
 
 
 def slope_difference(best: pd.DataFrame) -> pd.DataFrame:

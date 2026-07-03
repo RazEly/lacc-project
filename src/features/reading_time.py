@@ -1,8 +1,5 @@
-"""Clean PoTeC reading times (step 1).
+"""Clean PoTeC reading times"""
 
-Cleaning follows Škrjanec & Demberg (2026): drop the text's first/last word (no
-left/right context), skips (RT == 0), and per-reader ±3 SD outliers.
-"""
 from __future__ import annotations
 
 import pandas as pd
@@ -22,10 +19,12 @@ def clean_reading_times(
 
     # first / last word of each text (no preceding / following context)
     grp_idx = df.groupby("text_id")["word_index_in_text"]
-    df = df[(df["word_index_in_text"] != grp_idx.transform("min"))
-            & (df["word_index_in_text"] != grp_idx.transform("max"))]
+    df = df[
+        (df["word_index_in_text"] != grp_idx.transform("min"))
+        & (df["word_index_in_text"] != grp_idx.transform("max"))
+    ]
 
-    # skipped words (RT 0, equivalently Fix == 0)
+    # skipped words (RT 0)
     df = df[df[measure] > 0]
 
     # per-reader ±sd_k·SD fence around that reader's mean RT

@@ -1,7 +1,6 @@
 # data + assets (downloaded / large)
 data/
-handout/*.pdf
-guidelines/
+build/
 # python
 __pycache__/
 *.py[cod]
@@ -35,4 +34,3 @@ artifacts/*
 
 vm.sh
 run.sh
-build/

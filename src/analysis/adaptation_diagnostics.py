@@ -47,12 +47,23 @@ def perplexity_curves(
     colors = {"physics": "tab:purple", "biology": "tab:green"}
     for (domain, seed), g in df.groupby(["domain", "seed"]):
         g = g.sort_values("index")
-        ax.plot(g["step"].clip(lower=1), g["perplexity"],
-                color=colors.get(domain, "gray"), alpha=0.3, lw=1)
+        ax.plot(
+            g["step"].clip(lower=1),
+            g["perplexity"],
+            color=colors.get(domain, "gray"),
+            alpha=0.3,
+            lw=1,
+        )
     for domain, g in df.groupby("domain"):
         m = g.groupby("index").agg({"step": "first", "perplexity": "mean"})
-        ax.plot(m["step"].clip(lower=1), m["perplexity"],
-                color=colors.get(domain, "gray"), lw=2, marker="o", label=domain)
+        ax.plot(
+            m["step"].clip(lower=1),
+            m["perplexity"],
+            color=colors.get(domain, "gray"),
+            lw=2,
+            marker="o",
+            label=domain,
+        )
     ax.set_xscale("log")
     ax.set_xlabel("training step (log)")
     ax.set_ylabel("held-out perplexity")
@@ -101,11 +112,18 @@ def surprisal_trajectories(
     plt = _plt()
     domains = sorted(agg["domain"].unique())
     matches = ["in-domain", "out-of-domain"]
-    colors = {"common": "tab:blue", "technical T1": "tab:orange",
-              "technical T2": "tab:red"}
+    colors = {
+        "common": "tab:blue",
+        "technical T1": "tab:orange",
+        "technical T2": "tab:red",
+    }
     fig, axes = plt.subplots(
-        len(matches), len(domains), figsize=(5 * len(domains), 3.2 * len(matches)),
-        sharex=True, sharey=True, squeeze=False,
+        len(matches),
+        len(domains),
+        figsize=(5 * len(domains), 3.2 * len(matches)),
+        sharex=True,
+        sharey=True,
+        squeeze=False,
     )
     for i, match in enumerate(matches):
         for j, domain in enumerate(domains):
@@ -113,8 +131,14 @@ def surprisal_trajectories(
             sub = agg[(agg["domain"] == domain) & (agg["text_match"] == match)]
             for term, g in sub.groupby("terminology"):
                 g = g.sort_values("index")
-                ax.errorbar(g["index"], g["mean"], yerr=g["sem"],
-                            color=colors.get(term, "gray"), marker="o", label=term)
+                ax.errorbar(
+                    g["index"],
+                    g["mean"],
+                    yerr=g["sem"],
+                    color=colors.get(term, "gray"),
+                    marker="o",
+                    label=term,
+                )
             ax.set_title(f"{domain} LM — {match}")
             if i == len(matches) - 1:
                 ax.set_xlabel("checkpoint index (0 = baseline, then 4ⁿ steps)")

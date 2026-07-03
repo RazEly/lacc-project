@@ -16,8 +16,6 @@ from src.config import (
     POTEC_WORD_FEATURES_DIR,
 )
 
-# pandas' default NA set minus "null" — PoTeC's German word "null" (p3) must stay
-# a string, so keep_default_na=False + this explicit list.
 _NA_VALUES = [
     "#N/A",
     "#N/A N/A",
@@ -73,7 +71,7 @@ READING_COLS = WORD_COLS + [
 
 
 def read_potec(path, **kw) -> pd.DataFrame:
-    """Read a PoTeC TSV with the correct NA handling (keeps the word "null")."""
+    """Read a PoTeC TSV"""
     return pd.read_csv(
         path,
         sep="\t",

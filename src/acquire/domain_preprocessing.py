@@ -14,7 +14,6 @@ import json
 import os
 
 import numpy as np
-import pandas as pd
 import torch
 from datasets import concatenate_datasets, load_from_disk
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -28,6 +27,7 @@ from src.config import (
     LABEL_IDS_PATH,
     POTEC_DIR,
 )
+from src.features.data import read_potec
 
 TEXT_CHARS = 1024
 BATCH_SIZE = 128
@@ -83,30 +83,7 @@ def calibrate_nli_threshold(potec_dir, classifier):
     for f in sorted(
         glob.glob(os.path.join(potec_dir, "stimuli/word_features/word_features_*.tsv"))
     ):
-        df = pd.read_csv(
-            f,
-            sep="\t",
-            keep_default_na=False,
-            na_values=[
-                "#N/A",
-                "#N/A N/A",
-                "#NA",
-                "-1.#IND",
-                "-1.#QNAN",
-                "-NaN",
-                "-nan",
-                "1.#IND",
-                "1.#QNAN",
-                "<NA>",
-                "N/A",
-                "NA",
-                "NaN",
-                "None",
-                "n/a",
-                "nan",
-                "",
-            ],
-        )
+        df = read_potec(f)
         records.append(
             {
                 "text_id": os.path.basename(f)
