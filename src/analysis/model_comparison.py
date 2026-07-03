@@ -158,8 +158,8 @@ def _reader_loglik(m, d, measure) -> pd.Series:
     the BLUPs) with the ML residual sigma — an approximation of each reader's
     contribution to the fit, NOT a decomposition of the marginal ML
     log-likelihood. Meant only for PAIRED reader-level comparisons between fits
-    on identical rows (claim_tests), where the shared random-effect penalty
-    terms cancel in the pairing. Indexed by ``reader_id``.
+    on identical rows, where the shared random-effect penalty terms cancel in
+    the pairing. Indexed by ``reader_id``.
     """
 
     fitted = _r(m, "fitted")
@@ -224,14 +224,13 @@ def model_comparison_over_epochs(
       results — one row per source × checkpoint, every source vs the shared
         no-surprisal baseline: ``index``, ``epoch``, ``model``, ``n``, ``ll``,
         ``delta_ll``, ``chisq`` (= 2·ΔLL), ``p_lrt``, ``aic``, plus
-        ``b_surprisal`` / ``se_surprisal`` (slope estimate, feeds claim_tests).
+        ``b_surprisal`` / ``se_surprisal`` (slope estimate).
       vuong — one row per reader-conditioned arm (``_VUONG_ARMS``; aligned per
         checkpoint): baseline-surprisal model vs the arm; ``model``, ``index``,
         ``epoch``, ``n_readers``, ``vuong_z``, ``p_vuong``.
       reader_ll — per-reader conditional log-lik sums (``_reader_loglik``) for
         the no-surprisal baseline (``model`` = ``base_ref``) and every source;
-        columns ``model``, ``index``, ``reader_id``, ``ll_reader``. Feeds
-        ``claim_tests``.
+        columns ``model``, ``index``, ``reader_id``, ``ll_reader``.
     """
     all_indices = sorted(surp_versions["index"].unique())
     if indices is not None:

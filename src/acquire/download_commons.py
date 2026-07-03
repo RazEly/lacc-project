@@ -7,13 +7,14 @@ splits into one dataset, and ``save_to_disk`` for ``domain_preprocessing``.
 """
 from datasets import concatenate_datasets, load_dataset
 
-from src.config import (
-    COMMONS_DIR,
-    COMMONS_HF_CONFIG,
-    COMMONS_HF_REPO,
-    OPENALEX_MIN_OCR,
-    OPENALEX_SOURCE,
-)
+from src.config import COMMONS_DIR
+
+COMMONS_HF_REPO = "coral-nlp/german-commons"
+COMMONS_HF_CONFIG = "scientific"
+# OpenAlex is OCR'd; keep only its high-quality docs. ocr_score is 0-100. This is
+# the only OCR gate in the pipeline — the saved corpus is clean downstream.
+OPENALEX_SOURCE = "openalex"
+OPENALEX_MIN_OCR = 90.0
 
 
 def _keep_openalex(row) -> bool:

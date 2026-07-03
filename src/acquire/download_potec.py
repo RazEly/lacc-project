@@ -8,7 +8,9 @@ provides the stimuli / ``word_features`` TSVs. This adds the eye-tracking data.
 import importlib.util
 import sys
 
-from src.config import POTEC_DIR, POTEC_EYETRACKING_DIR
+from src.config import POTEC_DIR
+
+POTEC_EYETRACKING_DIR = POTEC_DIR / "eyetracking_data"
 
 
 def _load_upstream_download_data():

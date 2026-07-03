@@ -89,19 +89,6 @@ def load_causal_lm(name_or_path: str = DEFAULT_MODEL):
     return model, tokenizer
 
 
-def _resolve_prompt(prompt, domain: str | None):
-    """Resolve ``prompt`` for ``domain``: None, str, list[str], or {domain: ...} dict.
-
-    A dict selects the entry for ``domain`` (missing -> None). Anything else passes
-    through unchanged, so a bare str or list is shared across every domain.
-    """
-    if prompt is None:
-        return None
-    if isinstance(prompt, dict):
-        return prompt.get(domain)
-    return prompt
-
-
 def _as_prompt_list(prompt) -> list[str]:
     """Normalise a resolved prompt to a (possibly empty) list of passages."""
     if not prompt:
@@ -145,9 +132,7 @@ def _doc_separator_id(tokenizer) -> int:
 
 
 @torch.no_grad()
-def score_words(
-    word_list, model, tokenizer, prompt=None, domain=None, max_prompt_tokens=None
-):
+def score_words(word_list, model, tokenizer, prompt=None, max_prompt_tokens=None):
     """Per-word surprisal (bits) for an ordered word sequence (a full text).
 
     With a ``prompt`` (a prior-reading passage), the sequence is
@@ -165,9 +150,8 @@ def score_words(
     sent_ids = enc.input_ids[0]
     word_ids = enc.word_ids(0)
 
-    prompt_text = _resolve_prompt(prompt, domain)
-    if prompt_text:
-        prior_ids = tokenizer(prompt_text, return_tensors="pt").input_ids[0]
+    if prompt:
+        prior_ids = tokenizer(prompt, return_tensors="pt").input_ids[0]
         if max_prompt_tokens is not None and len(prior_ids) > max_prompt_tokens:
             prior_ids = prior_ids[:max_prompt_tokens]
         # native document boundary between the prior passage and the stimulus.
@@ -211,27 +195,25 @@ def compute_surprisal(
     Each text is rebuilt as one sequence (ordered by ``word_index_in_text``) so
     context carries across sentences (Eq. 1). The text's first/last word is
     dropped to match the reading-time cleaning. ``prompt`` may be None, a string,
-    a list of strings, or a ``{text_domain: str | list[str]}`` dict; each entry is
-    a prior-reading passage joined to the stimulus by the native document boundary
-    (see ``score_words``). When a domain resolves to SEVERAL priors, the stimulus
-    is scored under each and the per-word surprisals are averaged (``_mean_bits``),
-    so the column is a mean over priors. ``max_prompt_tokens`` fixes the prior's
-    context length across conditions.
+    or a list of strings; each is a prior-reading passage joined to the stimulus
+    by the native document boundary (see ``score_words``). Given SEVERAL priors
+    the stimulus is scored under each and the per-word surprisals are averaged
+    (``_mean_bits``), so the column is a mean over priors. ``max_prompt_tokens``
+    fixes the prior's context length across conditions.
 
     Returns columns: ``text_id``, ``word_index_in_text``, ``surprisal`` (the mean
     over priors when several are given).
     """
+    prompts = _as_prompt_list(prompt)
     rows = []
     for text_id, text in words_df.sort_values(
         ["text_id", "word_index_in_text"]
     ).groupby("text_id", sort=False):
-        domain = text["text_domain"].iloc[0]
         words = text["word"].fillna("").astype(str).tolist()
-        prompts = _as_prompt_list(_resolve_prompt(prompt, domain))
         if len(prompts) > 1:
             bits = _mean_bits([
                 score_words(
-                    words, model, tokenizer, prompt=p, domain=domain,
+                    words, model, tokenizer, prompt=p,
                     max_prompt_tokens=max_prompt_tokens,
                 )
                 for p in prompts
@@ -240,7 +222,7 @@ def compute_surprisal(
             # None / single prior: score once (keeps the no-prompt path unchanged).
             bits = score_words(
                 words, model, tokenizer,
-                prompt=prompts[0] if prompts else None, domain=domain,
+                prompt=prompts[0] if prompts else None,
                 max_prompt_tokens=max_prompt_tokens,
             )
         idx = text["word_index_in_text"].tolist()

@@ -11,10 +11,10 @@ import os
 
 import pandas as pd
 
-from src.config import (
-    POTEC_READING_MEASURES_DIR,
-    POTEC_WORD_FEATURES_DIR,
-)
+from src.config import POTEC_DIR
+
+POTEC_WORD_FEATURES_DIR = POTEC_DIR / "stimuli" / "word_features"
+POTEC_READING_MEASURES_DIR = POTEC_DIR / "eyetracking_data" / "reading_measures_merged"
 
 _NA_VALUES = [
     "#N/A",

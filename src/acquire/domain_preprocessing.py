@@ -26,16 +26,17 @@ from sklearn.metrics.pairwise import cosine_similarity
 from transformers import XLMRobertaTokenizer, pipeline
 
 from src.config import (
+    ARTIFACTS_DIR,
     COMMONS_DIR,
     DOMAIN_BIO_DIR,
     DOMAIN_OTHER_DIR,
     DOMAIN_PHY_DIR,
-    LABEL_IDS_PATH,
-    OPENALEX_MIN_OCR,
-    OPENALEX_SOURCE,
     POTEC_DIR,
 )
 from src.features.data import read_potec
+
+# When this exists, labelling is skipped and datasets are rebuilt from it.
+LABEL_IDS_PATH = ARTIFACTS_DIR / "domain_label_ids.json"
 
 TEXT_CHARS = 1024
 BATCH_SIZE = 128
@@ -52,8 +53,6 @@ NEUTRAL_MAX_PPL_PCTL = 60
 # Pool size: a broad sample to draw K priors from, not the whole neutral mass.
 N_OTHER_DOCS = 500
 OTHER_SEED = 0
-
-# When LABEL_IDS_PATH exists, labelling is skipped and datasets rebuilt from it.
 
 NLI_LABELS = {
     "physics": "Dieser Text handelt von Physik.",
@@ -90,19 +89,14 @@ ATP Glucose Aminosäure Fettsäure Nukleotid
 
 
 def load_commons():
-    """Load the saved german-commons scientific corpus as a single Dataset."""
+    """Load the saved german-commons scientific corpus as a single Dataset.
+
+    OpenAlex OCR gating already happened at download time (acquire.download_commons),
+    so the saved corpus is clean — no re-filtering here.
+    """
     ds = load_from_disk(str(COMMONS_DIR))
     if not hasattr(ds, "column_names") or isinstance(ds.column_names, dict):
         ds = concatenate_datasets([ds[name] for name in ds.keys()])
-    # OpenAlex is OCR'd: keep only its high-quality docs (ocr_score is 0-100).
-    # `source` column holds the display name "OpenAlex"; other sources kept in full.
-    if "source" in ds.column_names:
-        ds = ds.filter(
-            lambda x: x["source"].lower() != OPENALEX_SOURCE
-            or (x["ocr_score"] is not None
-                and x["ocr_score"] == x["ocr_score"]
-                and x["ocr_score"] > OPENALEX_MIN_OCR)
-        )
     return ds
 
 
@@ -225,9 +219,7 @@ def build_from_label_ids(path=LABEL_IDS_PATH):
     """Rebuild the physics/biology/other datasets from a saved id file.
 
     Returns ``(physics_ds, biology_ds, other_ds)`` or ``None`` if no cache file
-    exists. Skips the NLI pass entirely; an id file predating the off-domain pool
-    (no ``"other"`` key) gets it backfilled by re-running the cheap TF-IDF pass
-    only, and the file is rewritten with the new key.
+    exists. Skips the NLI pass entirely.
     """
     if not path.exists():
         return None
@@ -237,16 +229,10 @@ def build_from_label_ids(path=LABEL_IDS_PATH):
     ds = load_commons()
     physics = set(ids["physics"])
     biology = set(ids["biology"])
+    other = set(ids["other"])
     physics_ds = ds.filter(lambda x: x["id"] in physics)
     biology_ds = ds.filter(lambda x: x["id"] in biology)
-    if "other" in ids:
-        other = set(ids["other"])
-        other_ds = ds.filter(lambda x: x["id"] in other)
-    else:
-        print("  no 'other' key — backfilling neutral pool (TF-IDF only)...")
-        texts = [t[:TEXT_CHARS] if t else "" for t in ds["text"]]
-        other_ds = select_other(ds, *domain_sims(texts))
-        save_label_ids(physics_ds, biology_ds, other_ds, path)
+    other_ds = ds.filter(lambda x: x["id"] in other)
     print(
         f"  physics : {len(physics_ds):,}   biology : {len(biology_ds):,}   "
         f"other : {len(other_ds):,}"

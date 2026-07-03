@@ -32,8 +32,11 @@ from src.config import (
     DOMAIN_OTHER_DIR,
     DOMAIN_PHY_DIR,
     N_PRIOR_PASSAGES,
-    PRIOR_PASSAGE_SENTENCES,
 )
+
+# How many leading sentences of a held-out domain doc make one prior passage
+# (token-truncated to the caller's budget at scoring time).
+PRIOR_PASSAGE_SENTENCES = 4
 
 _DOMAIN_DIRS = {
     "physics": DOMAIN_PHY_DIR,
@@ -80,8 +83,8 @@ def load_prior_passages(
 
     All three lists are ``k`` distinct german-commons openings drawn by the same
     procedure (defaults match DAPT's split); "neutral" draws from the off-domain
-    pool. Every passage is token-truncated to ``config.PRIOR_MAX_TOKENS`` at
-    scoring time; the caller averages surprisal across each list.
+    pool. Every passage is token-truncated to the caller's budget at scoring
+    time; the caller averages surprisal across each list.
     """
     return {
         domain: _held_out_passages(domain, val_frac, seed, n_sent, k)

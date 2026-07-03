@@ -1,6 +1,6 @@
 """Pipeline driver — full end-to-end run.
 
-Per LM: DAPT over ``config.DAPT_SEEDS`` (per-word surprisal averaged across
+Per LM: DAPT over ``DAPT_SEEDS`` (per-word surprisal averaged across
 seeds, as in Škrjanec & Demberg), then the mixed-model sweep for the reading-time
 measure (TFT). Every surprisal source (baseline, aligned, prompted, …) enters as
 a single plain main effect and is scored against the SAME shared no-surprisal
@@ -8,8 +8,7 @@ baseline (paper Eq. 2/4/5): LL, ΔLL, χ², LRT p, AIC. A second per-LM table
 reports Vuong tests of the baseline-surprisal model against each
 reader-conditioned arm (aligned per checkpoint, prompted, neutral prompt).
 Afterwards: adaptation diagnostics (perplexity + terminology-surprisal
-trajectories) and the claim-level tests (best-checkpoint single LRT + direct
-cross-LM comparisons).
+trajectories).
 
     python -m src.main
 """
@@ -19,9 +18,8 @@ from __future__ import annotations
 import pandas as pd
 
 from src import config
-from src.analysis import adaptation_diagnostics as diag
-from src.analysis import claim_tests as ct
 from src.analysis import model_comparison as mc
+from src.analysis import viz
 from src.config import WORD_KEY
 from src.features import data
 from src.features import priors as pr
@@ -38,11 +36,48 @@ SLIM_MODELS = ("baseline", "prompted", "prompt_neutral", "aligned")
 # every checkpoint: indices 1..N pair to DAPT_CHECKPOINT_STEPS (0 = baseline).
 SLIM_INDICES = list(range(1, len(DAPT_CHECKPOINT_STEPS) + 1))
 
+# Decoder LMs the pipeline runs over (slug -> HF repo), then compares. Both German:
+# german-gpt2 (124M) + LLäMmlein 1B (German-only, from scratch). Pulled at run time.
+MODELS = {
+    "german-gpt2": "dbmdz/german-gpt2",
+    "llammlein-1b": "LSX-UniWue/LLaMmlein_1B",
+}
+# Short column prefix per model for the wide surprisal cache (surprisal.csv):
+# <prefix>_0 baseline, <prefix>_<i>_<phys|bio> checkpoints, <prefix>_prompt_* prompted.
+MODEL_PREFIX = {
+    "german-gpt2": "gpt",
+    "llammlein-1b": "llama",
+}
+
+# Per-model DAPT train batch (LoRA + bf16 + block_size=512, ~16 GB VRAM).
+DAPT_BATCH_SIZE = {
+    "german-gpt2": 8,
+    "llammlein-1b": 2,
+}
+# Effective batch = batch_size × grad_accum. Both models MUST land on the same
+# effective batch (8 -> 4096 tokens/step at block_size=512) so a checkpoint step
+# means the same number of training tokens for every model.
+DAPT_GRAD_ACCUM = {
+    "llammlein-1b": 4,  # 2 × 4 = 8 effective — matches german-gpt2's 8 × 1
+}
+# Per-model DAPT learning rate: the 1B model gets a smaller LR than the 124M one.
+DAPT_LEARNING_RATE = {
+    "german-gpt2": 2e-4,
+    "llammlein-1b": 1e-4,
+}
+# Training seeds; per-word surprisal is averaged over the seeds' checkpoints
+# (Škrjanec & Demberg average 3 random seeds per method × domain × step). Each
+# extra seed is a FULL extra DAPT run per domain — (0, 1, 2) = 3× training. Use a
+# single seed while iterating; widen to (0, 1, 2) for the final seed-averaged run.
+DAPT_SEEDS = (0,)
+# Context budget (tokens) shared by every prompt condition.
+PRIOR_MAX_TOKENS = 64
+
 
 def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
     """Phase 1 — all surprisal for one model. No linear-model fitting here."""
     print(f"\n=== surprisal: {slug} ({name}) ===")
-    prefix = config.MODEL_PREFIX[slug]
+    prefix = MODEL_PREFIX[slug]
 
     print("Step 2 — load LM")
     model, tok = su.load_causal_lm(name)
@@ -56,7 +91,7 @@ def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
     def _prior_surp(prior_texts: list[str], col: str) -> pd.DataFrame:
         return su.compute_surprisal(
             words, model, tok,
-            prompt=prior_texts, max_prompt_tokens=config.PRIOR_MAX_TOKENS,
+            prompt=prior_texts, max_prompt_tokens=PRIOR_MAX_TOKENS,
         ).rename(columns={"surprisal": col})
 
     prompt_surp = (
@@ -66,11 +101,11 @@ def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
     )
 
     # Step 4 — DAPT checkpoints, one run per domain × seed (cached / Hub-mirrored)
-    print(f"Step 4 — DAPT checkpoints (seeds {config.DAPT_SEEDS})")
+    print(f"Step 4 — DAPT checkpoints (seeds {DAPT_SEEDS})")
 
-    batch_size = config.DAPT_BATCH_SIZE.get(slug, 8)
-    grad_accum = config.DAPT_GRAD_ACCUM.get(slug, 1)
-    learning_rate = config.DAPT_LEARNING_RATE.get(slug, 2e-4)
+    batch_size = DAPT_BATCH_SIZE.get(slug, 8)
+    grad_accum = DAPT_GRAD_ACCUM.get(slug, 1)
+    learning_rate = DAPT_LEARNING_RATE.get(slug, 2e-4)
     manifest = pd.concat(
         [
             ft.finetune_dapt(
@@ -84,13 +119,13 @@ def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
                 seed=seed,
             )
             for domain in ("physics", "biology")
-            for seed in config.DAPT_SEEDS
+            for seed in DAPT_SEEDS
         ],
         ignore_index=True,
     )
 
     # baseline (index 0) weights are seed-independent: score once per domain.
-    first_seed = config.DAPT_SEEDS[0]
+    first_seed = DAPT_SEEDS[0]
     to_score = manifest[(manifest["index"] > 0) | (manifest["seed"] == first_seed)]
     per_seed = ft.recompute_surprisal_over_checkpoints(words, to_score)
     # per-word surprisal averaged over seeds (paper averages 3 seeds).
@@ -152,7 +187,7 @@ def bundle_from_cache(cache: pd.DataFrame, slug: str) -> dict:
     surp_versions is the checkpoint step (display only). ``manifest`` is None —
     perplexity diagnostics need the training manifests.
     """
-    prefix = config.MODEL_PREFIX[slug]
+    prefix = MODEL_PREFIX[slug]
     print(f"\n=== reload from cache: {slug} ({prefix}) ===")
 
     def _col(name: str, new: str) -> pd.DataFrame:
@@ -205,14 +240,14 @@ def main() -> None:
     cache = su.load_cache()
     if cache is not None:
         print(f"Surprisal cache hit ({config.SURPRISAL_CACHE_PATH}) — skipping compute")
-        bundles = [bundle_from_cache(cache, slug) for slug in config.MODELS]
+        bundles = [bundle_from_cache(cache, slug) for slug in MODELS]
     else:
         priors = pr.load_prior_passages()
         print(f"  priors: {config.N_PRIOR_PASSAGES}× physics/biology from held-out "
               f"german-commons + {config.N_PRIOR_PASSAGES}× neutral (off-domain "
-              f"pool), averaged per word (budget {config.PRIOR_MAX_TOKENS} tokens)")
+              f"pool), averaged per word (budget {PRIOR_MAX_TOKENS} tokens)")
         bundles = []
-        for slug, name in config.MODELS.items():
+        for slug, name in MODELS.items():
             b = compute_model_surprisal(slug, name, words, priors)
             bundles.append(b)
             cache = su.merge_model(cache, b["wide"])
@@ -223,20 +258,19 @@ def main() -> None:
     # anything into the reading-time fits (perplexity needs a fresh manifest).
     print("\nStep 4b — adaptation diagnostics -> figures/")
     for b in bundles:
-        diag.surprisal_trajectories(b["surp_versions"], words, b["slug"])
+        viz.surprisal_trajectories(b["surp_versions"], words, b["slug"])
         if b.get("manifest") is not None:
-            diag.perplexity_curves(b["manifest"], b["slug"])
+            viz.perplexity_curves(b["manifest"], b["slug"])
 
     # Phase 2 — mixed models per measure (early + late) per LM.
-    all_cmp, all_vuong, all_rll = [], [], []
+    all_cmp, all_vuong = [], []
     for measure in MEASURES:
         rm = rt.clean_reading_times(rm_raw, measure)
         print(f"\nStep 5 — {measure}: cleaned={len(rm)} ({len(rm) / len(rm_raw):.1%})")
         for b in bundles:
-            cmp, vuong, reader_ll = fit_model(b, rm, measure)
+            cmp, vuong, _ = fit_model(b, rm, measure)
             all_cmp.append(cmp)
             all_vuong.append(vuong)
-            all_rll.append(reader_ll)
 
     results = pd.concat(all_cmp, ignore_index=True)
     results_path = config.PROJECT_ROOT / "results_slim.csv"
@@ -245,21 +279,6 @@ def main() -> None:
     vuong_path = config.PROJECT_ROOT / "results_vuong.csv"
     vuong.to_csv(vuong_path, index=False)
     print(f"\n  wrote {results_path.name}, {vuong_path.name}")
-
-    # Step 6 — claim tests: single LRT at the ΔLL-selected checkpoint per LM ×
-    # measure, plus direct cross-LM comparisons (slope-difference z + paired
-    # per-reader ΔLL). A cross-LM difference claim needs these, not two separate
-    # significance verdicts.
-    reader_ll = pd.concat(all_rll, ignore_index=True)
-    best, cross = ct.run_claim_tests(results, reader_ll)
-    best_path = config.PROJECT_ROOT / "results_best.csv"
-    cross_path = config.PROJECT_ROOT / "results_cross_lm.csv"
-    best.to_csv(best_path, index=False)
-    cross.to_csv(cross_path, index=False)
-    print("\nStep 6 — claim tests")
-    print(best.to_string(index=False))
-    print(cross.to_string(index=False))
-    print(f"  wrote {best_path.name}, {cross_path.name}")
 
 
 if __name__ == "__main__":

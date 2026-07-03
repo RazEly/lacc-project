@@ -28,7 +28,7 @@ from transformers import (
 )
 
 from src.config import (
-    CHECKPOINTS_DIR,
+    ARTIFACTS_DIR,
     DEFAULT_MODEL,
     DOMAIN_BIO_DIR,
     DOMAIN_PHY_DIR,
@@ -274,7 +274,7 @@ def finetune_dapt(
     # Run dir carries the seed so per-seed runs don't collide. Delete the dir by
     # hand to force a retrain (there is no recipe-version cache invalidation).
     out_dir = Path(
-        out_dir or CHECKPOINTS_DIR / f"{Path(base_model).name}_{domain}_lora_s{seed}"
+        out_dir or ARTIFACTS_DIR / f"{Path(base_model).name}_{domain}_lora_s{seed}"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -396,7 +396,7 @@ def finetune_dapt(
 
 
 def recompute_surprisal_over_checkpoints(
-    words_df: pd.DataFrame, manifest: pd.DataFrame, prompt=None
+    words_df: pd.DataFrame, manifest: pd.DataFrame
 ) -> pd.DataFrame:
     """Recompute step-2 surprisal with each fine-tuned checkpoint.
 
@@ -407,7 +407,7 @@ def recompute_surprisal_over_checkpoints(
     # iterrows: the manifest has a column named "index" that itertuples would rename.
     for _, row in manifest.iterrows():
         model, tok = load_causal_lm(row.checkpoint)
-        sup = compute_surprisal(words_df, model, tok, prompt=prompt)
+        sup = compute_surprisal(words_df, model, tok)
         sup["checkpoint"] = row.checkpoint
         sup["index"] = row["index"]  # checkpoint index: stable across domains
         sup["epoch"] = row.epoch

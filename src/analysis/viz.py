@@ -1,5 +1,6 @@
-"""Adaptation diagnostics: did DAPT actually move the model? (paper Figs 4–5).
+"""Project visualizations. Home for every figure the pipeline produces.
 
+Adaptation diagnostics — did DAPT actually move the model? (paper Figs 4–5).
 Before reading anything into reading-time fits — especially a null result for
 one LM — establish that domain adaptation happened at all:
 
