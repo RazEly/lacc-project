@@ -177,9 +177,6 @@ def select_other(ds, sim_physics, sim_biology):
     return other.select(range(min(N_OTHER_DOCS, len(other))))
 
 
-# Calibrate the NLI threshold on the 12 gold POTEC texts before applying to corpus.
-
-
 # ── label-id cache ───────────────────────────────────────────────────────────
 def save_label_ids(physics_ds, biology_ds, other_ds, path=LABEL_IDS_PATH):
     """Persist the selected physics/biology/other document ids as JSON for reuse."""
@@ -188,8 +185,7 @@ def save_label_ids(physics_ds, biology_ds, other_ds, path=LABEL_IDS_PATH):
         "biology": list(biology_ds["id"]),
         "other": list(other_ds["id"]),
     }
-    with open(path, "w") as f:
-        json.dump(ids, f)
+    path.write_text(json.dumps(ids))
     print(
         f"  wrote label ids: {path} "
         f"({len(ids['physics']):,} physics, {len(ids['biology']):,} biology, "
@@ -205,8 +201,7 @@ def build_from_label_ids(path=LABEL_IDS_PATH):
     """
     if not path.exists():
         return None
-    with open(path) as f:
-        ids = json.load(f)
+    ids = json.loads(path.read_text())
     print(f"\nFound cached label ids ({path}); skipping TF-IDF + NLI.")
     ds = load_commons()
     physics = set(ids["physics"])

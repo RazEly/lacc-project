@@ -32,10 +32,6 @@ dependencies = [
     "seaborn>=0.13.0",
     "multimatch-gaze>=0.1.3",
     "formulae>=0.6.2",
-    # domain labelling: spaCy lemmatiser (de_core_news_md, auto-downloaded at
-    # runtime) + nltk German stopwords — PoTeC-vocabulary overlap labelling.
-    "spacy>=3.7,<4",
-    "nltk>=3.8",
 ]
 
 [tool.uv]

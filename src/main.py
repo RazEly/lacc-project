@@ -24,7 +24,6 @@ from src.features import potec
 from src.features import priors as pr
 from src.features import reading_time as rt
 from src.features import surprisal as su
-from src.features import surprisal_cache as sc
 from src.modeling import finetune as ft
 from src.modeling import lm
 
@@ -43,13 +42,6 @@ MODELS = {
     "german-gpt2": "dbmdz/german-gpt2",
     "llammlein-1b": "LSX-UniWue/LLaMmlein_1B",
 }
-# Short column prefix per model for the wide surprisal cache (surprisal.csv):
-# <prefix>_0 baseline, <prefix>_<i>_<domain> checkpoints, <prefix>_prompt_* prompted.
-MODEL_PREFIX = {
-    "german-gpt2": "gpt",
-    "llammlein-1b": "llama",
-}
-
 # Per-model DAPT train batch (LoRA + bf16 + block_size=512, ~16 GB VRAM).
 DAPT_BATCH_SIZE = {
     "german-gpt2": 8,
@@ -76,10 +68,32 @@ EXAMPLE_SENTENCE = ("b0", 1)
 FIGURE_LM = "german-gpt2"
 
 
+def dapt_manifest(slug: str, name: str, domain: str) -> pd.DataFrame:
+    """Resolve one DAPT run: reuse a cached run (local -> Hub) else train it.
+
+    The skip-if-cached check lives here (not in ``finetune_dapt``), so running
+    finetune directly always trains.
+    """
+    out_dir = ft.run_dir_for(name, domain)
+    cached = ft.load_cached_run(out_dir)
+    if cached is not None:
+        print(f"  [{domain}] reusing {len(cached)} cached checkpoints in {out_dir}")
+        return cached
+    return ft.finetune_dapt(
+        domain,
+        base_model=name,
+        out_dir=out_dir,
+        max_steps=DAPT_MAX_STEPS,
+        checkpoint_steps=DAPT_CHECKPOINT_STEPS,
+        batch_size=DAPT_BATCH_SIZE.get(slug, 8),
+        grad_accum=DAPT_GRAD_ACCUM.get(slug, 1),
+        learning_rate=DAPT_LEARNING_RATE.get(slug, 2e-4),
+    )
+
+
 def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
     """Phase 1 — all surprisal for one model. No linear-model fitting here."""
     print(f"\n=== surprisal: {slug} ({name}) ===")
-    prefix = MODEL_PREFIX[slug]
 
     print("Step 2 — load LM")
     model, tok = lm.load_causal_lm(name)
@@ -108,22 +122,8 @@ def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
     # Step 4 — DAPT checkpoints, one run per domain (cached / Hub-mirrored)
     print("Step 4 — DAPT checkpoints")
 
-    batch_size = DAPT_BATCH_SIZE.get(slug, 8)
-    grad_accum = DAPT_GRAD_ACCUM.get(slug, 1)
-    learning_rate = DAPT_LEARNING_RATE.get(slug, 2e-4)
     manifest = pd.concat(
-        [
-            ft.finetune_dapt(
-                domain,
-                base_model=name,
-                max_steps=DAPT_MAX_STEPS,
-                checkpoint_steps=DAPT_CHECKPOINT_STEPS,
-                batch_size=batch_size,
-                grad_accum=grad_accum,
-                learning_rate=learning_rate,
-            )
-            for domain in config.DOMAINS
-        ],
+        [dapt_manifest(slug, name, domain) for domain in config.DOMAINS],
         ignore_index=True,
     )
 
@@ -131,13 +131,10 @@ def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
         columns=["checkpoint"]
     )
 
-    # Wide surprisal columns for this model.
-    wide = sc.build_wide(prefix, surp_versions, prompt_surp)
     return {
         "slug": slug,
         "prompt_surp": prompt_surp,
         "surp_versions": surp_versions,
-        "wide": wide,
         "manifest": manifest,
     }
 
@@ -183,18 +180,13 @@ def main() -> None:
     words = potec.load_word_features()
     print(f"  raw_rows={len(rm_raw)}  words={len(words)}")
 
-    # Phase 1 — surprisal. If the wide cache exists, reload it straight from CSV
+    # Phase 1 — surprisal. If the cache exists, reload it straight from CSV
     # (no model load, no finetune) and go to fitting; trust its contents. Otherwise
-    # compute + cache each model.
-    cache = sc.load_cache()
-    if cache is not None:
+    # compute every model, then write the cache once at the end (a crash mid-run
+    # loses all of it — accepted trade-off for the simpler cache).
+    bundles = su.load_cache(list(MODELS))
+    if bundles is not None:
         print(f"Surprisal cache hit ({config.SURPRISAL_CACHE_PATH}) — skipping compute")
-        bundles = [
-            sc.bundle_from_cache(
-                cache, slug, MODEL_PREFIX[slug], SLIM_INDICES, DAPT_CHECKPOINT_STEPS
-            )
-            for slug in MODELS
-        ]
     else:
         priors = pr.load_prior_passages()
         print(
@@ -202,16 +194,15 @@ def main() -> None:
             f"german-commons + {config.N_PRIOR_PASSAGES}× neutral (off-domain "
             f"pool), averaged per word (budget {PRIOR_MAX_TOKENS} tokens)"
         )
-        bundles = []
-        for slug, name in MODELS.items():
-            b = compute_model_surprisal(slug, name, words, priors)
-            bundles.append(b)
-            cache = sc.merge_model(cache, b["wide"])
-            sc.save_cache(cache)
-            print(f"  wrote surprisal cache -> {config.SURPRISAL_CACHE_PATH}")
+        bundles = [
+            compute_model_surprisal(slug, name, words, priors)
+            for slug, name in MODELS.items()
+        ]
+        su.save_cache(bundles)
+        print(f"  wrote surprisal cache -> {config.SURPRISAL_CACHE_PATH}")
 
     # Surprisal-only figures — perplexity, example sentence, mean surprisal.
-    # Perplexity needs the training manifests (None on a cache reload).
+    # Perplexity needs the training manifests (None on a cache reload -> skipped).
     print("\nStep 4b — surprisal figures -> figures/")
     manifests = [
         b["manifest"].assign(model=b["slug"])
@@ -226,7 +217,7 @@ def main() -> None:
             columns={"domain": "ft_domain"}
         )
         m["eval_domain"] = m["ft_domain"]
-        # viz.perplexity_grid(m)
+        viz.perplexity_grid(m)
 
     for b in bundles:
         viz.mean_surprisal_over_steps(

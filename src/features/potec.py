@@ -6,9 +6,6 @@ so reading-time work needs one read per reader×text — no join to ``word_featu
 
 from __future__ import annotations
 
-import glob
-import os
-
 import pandas as pd
 
 from src.config import POTEC_DIR
@@ -84,7 +81,7 @@ def read_potec(path, **kw) -> pd.DataFrame:
 
 def _load_concat(directory, pattern, cols) -> pd.DataFrame:
     """Read + concat every ``pattern`` file under ``directory`` (selected ``cols``)."""
-    files = sorted(glob.glob(os.path.join(directory, pattern)))
+    files = sorted(directory.glob(pattern))
     if not files:
         raise FileNotFoundError(f"no {pattern} under {directory}")
     frames = [read_potec(f, usecols=cols) for f in files]

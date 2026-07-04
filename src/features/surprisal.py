@@ -5,19 +5,65 @@ aligned via the tokenizer's ``word_ids``. Each text is scored as one sequence so
 context spans sentence boundaries (Eq. 1). An optional ``prompt`` prepends
 domain-matched context.
 
-Model/tokenizer loading lives in ``modeling.lm``; the wide CSV cache that
-persists these (expensive) forwards lives in ``features.surprisal_cache``.
+Model/tokenizer loading lives in ``modeling.lm``. ``save_cache`` /
+``load_cache`` persist these (expensive) forwards as one long CSV
+(``surprisal.csv``), written once after every model has finished.
 """
 
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import pandas as pd
 import torch
 
-from src.config import DEVICE, WORD_KEY
+from src.config import DEVICE, SURPRISAL_CACHE_PATH, WORD_KEY
 from src.modeling.lm import load_causal_lm
+
+
+def save_cache(bundles: list[dict], path: Path = SURPRISAL_CACHE_PATH) -> None:
+    """Write every model's surprisal to one long CSV — only after all models ran.
+
+    One row per word × source: checkpoint rows keep ``index``/``domain``/``epoch``
+    (``condition`` = "dapt"), prompted rows carry the ``s_prompt_*`` column name
+    as ``condition``.
+    """
+    frames = []
+    for b in bundles:
+        frames.append(b["surp_versions"].assign(model=b["slug"], condition="dapt"))
+        frames.append(
+            b["prompt_surp"]
+            .melt(id_vars=WORD_KEY, var_name="condition", value_name="surprisal")
+            .assign(model=b["slug"])
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.concat(frames, ignore_index=True).to_csv(path, index=False)
+
+
+def load_cache(slugs, path: Path = SURPRISAL_CACHE_PATH) -> list[dict] | None:
+    """Rebuild the fit bundles from the CSV, or ``None`` when no file exists.
+
+    ``manifest`` is None — perplexity diagnostics need the training manifests.
+    """
+    if not Path(path).exists():
+        return None
+    df = pd.read_csv(path)
+    bundles = []
+    for slug in slugs:
+        m = df[df["model"] == slug]
+        sv = m[m["condition"] == "dapt"].drop(columns=["model", "condition"])
+        sv = sv.astype({"index": int, "epoch": int}).reset_index(drop=True)
+        ps = (
+            m[m["condition"] != "dapt"]
+            .pivot(index=WORD_KEY, columns="condition", values="surprisal")
+            .reset_index()
+            .rename_axis(columns=None)
+        )
+        bundles.append(
+            {"slug": slug, "prompt_surp": ps, "surp_versions": sv, "manifest": None}
+        )
+    return bundles
 
 
 def _as_prompt_list(prompt) -> list[str]:

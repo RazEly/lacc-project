@@ -49,39 +49,45 @@ def _slugs(df: pd.DataFrame, col: str) -> list[str]:
     )
 
 
-# def perplexity_grid(manifests: pd.DataFrame, out_dir: Path = FIGURES_DIR) -> pd.DataFrame:
-#     """Fig 1 — held-out perplexity vs training step.
-#
-#     2×2 grid: columns = LM (GPT-2 / Llama), rows = fine-tune domain (biology /
-#     physics); one line per held-out test set. ``manifests`` is long with columns
-#     ``model``, ``ft_domain``, ``eval_domain``, ``step``, ``perplexity``
-#     (cross-domain eval — every run scored on BOTH test sets).
-#     """
-#     plt = _plt()
-#     models = _slugs(manifests, "model")
-#     fig, axes = plt.subplots(
-#         len(FT_DOMAINS), len(models), figsize=(5 * len(models), 3.5 * len(FT_DOMAINS)),
-#         sharex=True, squeeze=False,
-#     )
-#     for j, model in enumerate(models):
-#         for i, ft in enumerate(FT_DOMAINS):
-#             ax = axes[i][j]
-#             sub = manifests[(manifests["model"] == model) & (manifests["ft_domain"] == ft)]
-#             for ev, g in sub.groupby("eval_domain"):
-#                 g = g.sort_values("step")
-#                 ax.plot(g["step"].clip(lower=1), g["perplexity"],
-#                         color=PROMPT_COLORS.get(ev, "gray"), marker="o", label=f"{ev} test")
-#             ax.set_xscale("log")
-#             ax.set_title(f"{MODEL_LABELS.get(model, model)} — {ft} fine-tune")
-#             if i == len(FT_DOMAINS) - 1:
-#                 ax.set_xlabel("training step (log)")
-#             if j == 0:
-#                 ax.set_ylabel("held-out perplexity")
-#     axes[0][0].legend()
-#     _save(fig, "fig1_perplexity", out_dir)
-#     plt.close(fig)
-#     return manifests
-#
+def perplexity_grid(manifests: pd.DataFrame, out_dir: Path = FIGURES_DIR) -> pd.DataFrame:
+    """Fig 1 — held-out perplexity vs training step.
+
+    2×2 grid: columns = LM (GPT-2 / Llama), rows = fine-tune domain (biology /
+    physics); one line per held-out test set. ``manifests`` is long with columns
+    ``model``, ``ft_domain``, ``eval_domain``, ``step``, ``perplexity``. Each DAPT
+    run evals only on its OWN held-out split, so ``eval_domain == ft_domain`` (one
+    line per panel); cross-domain eval (both test sets per panel) needs a finetune
+    change.
+    """
+    plt = _plt()
+    models = _slugs(manifests, "model")
+    fig, axes = plt.subplots(
+        len(FT_DOMAINS), len(models),
+        figsize=(5 * len(models), 3.5 * len(FT_DOMAINS)),
+        sharex=True, squeeze=False,
+    )
+    for j, model in enumerate(models):
+        for i, ft in enumerate(FT_DOMAINS):
+            ax = axes[i][j]
+            sub = manifests[
+                (manifests["model"] == model) & (manifests["ft_domain"] == ft)
+            ]
+            for ev, g in sub.groupby("eval_domain"):
+                g = g.sort_values("step")
+                ax.plot(
+                    g["step"].clip(lower=1), g["perplexity"],
+                    color=PROMPT_COLORS.get(ev, "gray"), marker="o", label=f"{ev} test",
+                )
+            ax.set_xscale("log")
+            ax.set_title(f"{MODEL_LABELS.get(model, model)} — {ft} fine-tune")
+            if i == len(FT_DOMAINS) - 1:
+                ax.set_xlabel("training step (log)")
+            if j == 0:
+                ax.set_ylabel("held-out perplexity")
+    axes[0][0].legend()
+    _save(fig, "fig1_perplexity", out_dir)
+    plt.close(fig)
+    return manifests
 
 
 def sentence_surprisal_example(

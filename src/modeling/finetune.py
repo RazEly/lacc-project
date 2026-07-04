@@ -199,6 +199,24 @@ class _StepProgress(TrainerCallback):
         self.bar.close()
 
 
+def run_dir_for(base_model: str, domain: str, out_dir=None) -> Path:
+    """Artifact directory for a DAPT run — one per base model × domain."""
+    return Path(out_dir or ARTIFACTS_DIR / f"{Path(base_model).name}_{domain}_lora")
+
+
+def load_cached_run(out_dir) -> pd.DataFrame | None:
+    """A finished run's manifest — local ``manifest.csv``, else the Hub, else None.
+
+    A cached run is trusted as-is. The caller (``main``) decides whether to reuse
+    it or call ``finetune_dapt``; ``finetune_dapt`` itself always trains.
+    """
+    out_dir = Path(out_dir)
+    manifest_csv = out_dir / "manifest.csv"
+    if manifest_csv.exists():
+        return pd.read_csv(manifest_csv)
+    return hub.try_download_run(out_dir)
+
+
 def finetune_dapt(
     domain: str,
     base_model: str = DEFAULT_MODEL,
@@ -235,34 +253,12 @@ def finetune_dapt(
     (``n_checkpoints`` evenly spaced, or exactly ``checkpoint_steps``).
     ``max_docs`` truncates the corpus (smoke testing).
 
-    Resumable: an existing cached run (local or Hub) is reused instead of
-    retraining. Columns: ``domain``, ``checkpoint``, ``index``,
+    Always trains — the skip-if-cached check lives in the caller (``main`` via
+    ``load_cached_run``). Columns: ``domain``, ``checkpoint``, ``index``,
     ``epoch``, ``step``, ``tokens_seen``, ``words_seen``, ``perplexity``.
     """
-    # Delete the run dir by hand to force a retrain (there is no recipe-version
-    # cache invalidation).
-    out_dir = Path(out_dir or ARTIFACTS_DIR / f"{Path(base_model).name}_{domain}_lora")
+    out_dir = run_dir_for(base_model, domain, out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Resume from a cached run if the dir already holds one (trusted as-is).
-    manifest_csv = out_dir / "manifest.csv"
-    if manifest_csv.exists():
-        cached = pd.read_csv(manifest_csv)
-        print(
-            f"  [{domain}] reusing {len(cached)} saved checkpoints in {out_dir} "
-            "(skipping training)"
-        )
-        return cached
-
-    # Local miss: try the Hub before paying for a GPU run.
-
-    remote = hub.try_download_run(out_dir)
-    if remote is not None:
-        print(
-            f"  [{domain}] reusing {len(remote)} checkpoints pulled from the Hub "
-            "(skipping training)"
-        )
-        return remote
 
     tokenizer = AutoTokenizer.from_pretrained(base_model)
     if tokenizer.pad_token is None:
@@ -274,18 +270,22 @@ def finetune_dapt(
     resize_with_mean_init(model, tokenizer)
 
     adapters_init(model)
-    lora_cfg = LoRAConfig(
-        r=lora_r,
-        alpha=lora_alpha,
-        dropout=lora_dropout,
-        # attn (q, k, v) + both MLP projections on any arch; the attention output
-        # projection is not adaptable in `adapters`, unlike PEFT's "all-linear".
-        attn_matrices=["q", "k", "v"],
-        intermediate_lora=True,
-        output_lora=True,
+    model.add_adapter(
+        ADAPTER_NAME,
+        config=LoRAConfig(
+            r=lora_r,
+            alpha=lora_alpha,
+            dropout=lora_dropout,
+            # attn (q, k, v) + both MLP projections on any arch; the attention output
+            # projection is not adaptable in `adapters`, unlike PEFT's "all-linear".
+            attn_matrices=["q", "k", "v"],
+            intermediate_lora=True,
+            output_lora=True,
+        ),
     )
-    model.add_adapter(ADAPTER_NAME, config=lora_cfg)
-    model.train_adapter(ADAPTER_NAME)  # freeze everything but the adapter
+    model.train_adapter(
+        ADAPTER_NAME
+    )  # freeze everything but the adapter; sets it active
     print(model.adapter_summary())
 
     split, words_per_epoch = _prepare_splits(
