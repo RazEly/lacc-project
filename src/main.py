@@ -92,8 +92,11 @@ def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
     # stored column is the mean over priors.
     def _prior_surp(prior_texts: list[str], col: str) -> pd.DataFrame:
         return su.compute_surprisal(
-            words, model, tok,
-            prompt=prior_texts, max_prompt_tokens=PRIOR_MAX_TOKENS,
+            words,
+            model,
+            tok,
+            prompt=prior_texts,
+            max_prompt_tokens=PRIOR_MAX_TOKENS,
         ).rename(columns={"surprisal": col})
 
     prompt_surp = (
@@ -194,9 +197,11 @@ def main() -> None:
         ]
     else:
         priors = pr.load_prior_passages()
-        print(f"  priors: {config.N_PRIOR_PASSAGES}× physics/biology from held-out "
-              f"german-commons + {config.N_PRIOR_PASSAGES}× neutral (off-domain "
-              f"pool), averaged per word (budget {PRIOR_MAX_TOKENS} tokens)")
+        print(
+            f"  priors: {config.N_PRIOR_PASSAGES}× physics/biology from held-out "
+            f"german-commons + {config.N_PRIOR_PASSAGES}× neutral (off-domain "
+            f"pool), averaged per word (budget {PRIOR_MAX_TOKENS} tokens)"
+        )
         bundles = []
         for slug, name in MODELS.items():
             b = compute_model_surprisal(slug, name, words, priors)
@@ -217,9 +222,11 @@ def main() -> None:
         # NOTE: the DAPT manifest evals each run on its OWN held-out split only,
         # so eval_domain == ft_domain (one line per panel). Cross-domain eval
         # (both test sets per panel, per viz.md fig 1) needs a finetune change.
-        m = pd.concat(manifests, ignore_index=True).rename(columns={"domain": "ft_domain"})
+        m = pd.concat(manifests, ignore_index=True).rename(
+            columns={"domain": "ft_domain"}
+        )
         m["eval_domain"] = m["ft_domain"]
-        viz.perplexity_grid(m)
+        # viz.perplexity_grid(m)
 
     for b in bundles:
         viz.mean_surprisal_over_steps(
@@ -229,8 +236,12 @@ def main() -> None:
     fig_lm = next((b for b in bundles if b["slug"] == FIGURE_LM), bundles[0])
     text_id, sent_index = EXAMPLE_SENTENCE
     viz.sentence_surprisal_example(
-        fig_lm["surp_versions"], fig_lm["prompt_surp"], words,
-        text_id, sent_index, slug=fig_lm["slug"],
+        fig_lm["surp_versions"],
+        fig_lm["prompt_surp"],
+        words,
+        text_id,
+        sent_index,
+        slug=fig_lm["slug"],
     )
 
     # Phase 2 — mixed models per measure (early + late) per LM.
