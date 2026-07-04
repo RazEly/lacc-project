@@ -39,7 +39,7 @@ from src.features.potec import read_potec
 # When this exists, labelling is skipped and datasets are rebuilt from it.
 LABEL_IDS_PATH = ARTIFACTS_DIR / "domain_label_ids.json"
 
-TEXT_CHARS = 1024
+TEXT_CHARS = 2048
 BATCH_SIZE = 128
 TFIDF_THRESHOLD = 0.05
 
@@ -237,15 +237,9 @@ def _pass1_tfidf(texts):
 
 
 def _pass2_nli(texts, candidates_idx, pass1_labels):
-    """Pass 2 — zero-shot NLI over the candidates, threshold calibrated on PoTeC.
-
-    A candidate keeps its pass-1 label only when the NLI top label agrees AND its
-    score clears the calibrated threshold; everything else falls back to "other".
-    Returns ``(final_labels, nli_scores)`` over ALL docs (non-candidates "other"/0).
-    """
     print(f"\nLoading NLI model (device={DEVICE})...")
 
-    _model_name = "joeddav/xlm-roberta-large-xnli"
+    _model_name = "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli"
     classifier = pipeline(
         "zero-shot-classification",
         model=_model_name,
@@ -253,13 +247,15 @@ def _pass2_nli(texts, candidates_idx, pass1_labels):
         device=DEVICE,
     )
 
-    nli_threshold = calibrate_nli_threshold(str(POTEC_DIR), classifier)
+    # Removed the calibrate_nli_threshold call entirely
+    nli_threshold = 0.50  # Hardcoded sensible threshold
 
     print(
-        f"\nPass 2 — NLI on {len(candidates_idx):,} candidates (threshold={nli_threshold:.3f})..."
+        f"\nPass 2 — NLI on {len(candidates_idx):,} candidates (threshold={nli_threshold:.2f})..."
     )
     hyps = list(NLI_LABELS.values())
     keys = list(NLI_LABELS.keys())
+
     results = classifier(
         [texts[i] for i in candidates_idx],
         candidate_labels=hyps,
@@ -275,9 +271,12 @@ def _pass2_nli(texts, candidates_idx, pass1_labels):
     ):
         top_label = keys[hyps.index(result["labels"][0])]
         score = result["scores"][0]
+
+        # Now checking against the static 0.50 threshold
         if top_label == p1_label and score >= nli_threshold:
             final_labels[idx] = p1_label
             nli_scores[idx] = score
+
     return final_labels, nli_scores
 
 
