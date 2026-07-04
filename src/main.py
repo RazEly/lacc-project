@@ -6,8 +6,8 @@ a single plain main effect and is scored against the SAME shared no-surprisal
 baseline (paper Eq. 2/4/5): LL, ΔLL, χ², LRT p, AIC. A second per-LM table
 reports Vuong tests of the baseline-surprisal model against each
 reader-conditioned arm (aligned per checkpoint, prompted, neutral prompt).
-Afterwards: adaptation diagnostics (perplexity + terminology-surprisal
-trajectories).
+Along the way: figures (viz.md) — perplexity grid, example-sentence surprisal,
+mean surprisal over steps, ΔLL curves, RT–surprisal.
 
     python -m src.main
 """
@@ -68,6 +68,12 @@ DAPT_LEARNING_RATE = {
 }
 # Context budget (tokens) shared by every prompt condition.
 PRIOR_MAX_TOKENS = 64
+
+# Example sentence for the fig-2 surprisal walk-through: (text_id, sent_index).
+# Baseline GPT-2 surprisal + Δ over checkpoints/prompts on one PoTeC sentence.
+EXAMPLE_SENTENCE = ("b0", 1)
+# The LM whose baseline drives the single-model figures (fig 2 + fig 5).
+FIGURE_LM = "german-gpt2"
 
 
 def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
@@ -199,18 +205,40 @@ def main() -> None:
             sc.save_cache(cache)
             print(f"  wrote surprisal cache -> {config.SURPRISAL_CACHE_PATH}")
 
-    # Adaptation diagnostics — establish DAPT moved each model before reading
-    # anything into the reading-time fits (perplexity needs a fresh manifest).
-    print("\nStep 4b — adaptation diagnostics -> figures/")
+    # Surprisal-only figures — perplexity, example sentence, mean surprisal.
+    # Perplexity needs the training manifests (None on a cache reload).
+    print("\nStep 4b — surprisal figures -> figures/")
+    manifests = [
+        b["manifest"].assign(model=b["slug"])
+        for b in bundles
+        if b.get("manifest") is not None
+    ]
+    if manifests:
+        # NOTE: the DAPT manifest evals each run on its OWN held-out split only,
+        # so eval_domain == ft_domain (one line per panel). Cross-domain eval
+        # (both test sets per panel, per viz.md fig 1) needs a finetune change.
+        m = pd.concat(manifests, ignore_index=True).rename(columns={"domain": "ft_domain"})
+        m["eval_domain"] = m["ft_domain"]
+        viz.perplexity_grid(m)
+
     for b in bundles:
-        viz.surprisal_trajectories(b["surp_versions"], words, b["slug"])
-        if b.get("manifest") is not None:
-            viz.perplexity_curves(b["manifest"], b["slug"])
+        viz.mean_surprisal_over_steps(
+            b["surp_versions"], b["prompt_surp"], words, b["slug"]
+        )
+
+    fig_lm = next((b for b in bundles if b["slug"] == FIGURE_LM), bundles[0])
+    text_id, sent_index = EXAMPLE_SENTENCE
+    viz.sentence_surprisal_example(
+        fig_lm["surp_versions"], fig_lm["prompt_surp"], words,
+        text_id, sent_index, slug=fig_lm["slug"],
+    )
 
     # Phase 2 — mixed models per measure (early + late) per LM.
     all_cmp, all_vuong = [], []
+    rm_by_measure = {}
     for measure in MEASURES:
         rm = rt.clean_reading_times(rm_raw, measure)
+        rm_by_measure[measure] = rm
         print(f"\nStep 5 — {measure}: cleaned={len(rm)} ({len(rm) / len(rm_raw):.1%})")
         for b in bundles:
             cmp, vuong, _ = fit_model(b, rm, measure)
@@ -224,6 +252,16 @@ def main() -> None:
     vuong_path = config.PROJECT_ROOT / "results_vuong.csv"
     vuong.to_csv(vuong_path, index=False)
     print(f"\n  wrote {results_path.name}, {vuong_path.name}")
+
+    # Fit-dependent figures — ΔLL curves (all LMs) + RT vs baseline surprisal
+    # (baseline of FIGURE_LM, first measure only).
+    print("\nStep 5b — fit figures -> figures/")
+    viz.delta_ll_curves(results)
+    measure = MEASURES[0]
+    baseline_surp = fig_lm["surp_versions"].query("index == 0")
+    viz.rt_vs_surprisal(
+        rm_by_measure[measure], baseline_surp, measure=measure, slug=fig_lm["slug"]
+    )
 
 
 if __name__ == "__main__":
