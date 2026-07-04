@@ -1,19 +1,9 @@
-"""Surprisal comparison — EXACTLY Škrjanec & Demberg (2026), J. Mem. Lang. 146.
-
-For each surprisal source S we fit the paper's two nested lme4 models (via
-pymer4) and report ΔLL = LL_experimental − LL_reference (Eq. 5).
-
+"""
 Baseline model (Eq. 2), NO surprisal:
     log(RT) ~ Length + LogFreq + Position + Expertise*Terminology
               + (1|SubjectID) + (1 + Expertise|WordID)
 Experimental model (Eq. 4): baseline + Surprisal, a SINGLE PLAIN MAIN EFFECT
 (no interaction, no residualization).
-
-As the paper: Expertise and Terminology sum-coded (−1/+1), with the two
-technical levels merged into one "technical" level; Position is the word's
-position IN TEXT; ML fits (REML=False) so log-likelihoods are comparable.
-Predictors enter on their natural scale — the paper z-scales them, but scaling
-is affine and leaves ΔLL / the LRT unchanged.
 
 Surprisal sources:
   baseline          : un-adapted step-0 model (same for every reader).
@@ -23,21 +13,6 @@ Surprisal sources:
   prompted          : baseline weights + discipline-matched prior passage.
   prompt_neutral    : off-domain scientific prior control (same corpus and
                       register as the domain priors, no domain content).
-
-Two comparison tables per LM × measure:
-
-1. LRT vs the shared no-surprisal baseline — EVERY source is fit as Eq. 2 +
-   its own single surprisal column and compared to the no-surprisal model
-   (Eq. 2). Reported: ``ll``, ``delta_ll``, ``chisq`` (= 2·ΔLL), ``p_lrt``
-   (the models are nested, differing by the one surprisal term), ``aic``.
-2. Vuong tests (Vuong 1989, non-nested) — the baseline-surprisal model
-   (Eq. 2 + ``s_base``) against each reader-conditioned arm (``aligned`` at
-   every checkpoint, ``prompted``, ``prompt_neutral``), each fit with its own
-   column only. Both models have the same number of parameters, so no AIC/BIC
-   correction. Observations are clustered within reader, so the z-statistic is
-   computed over PER-READER sums of conditional pointwise log-densities
-   (``_reader_loglik``): z = mean(d_r) / (sd(d_r)/√R). Positive z favours the
-   baseline-surprisal model; negative favours the arm.
 """
 
 from __future__ import annotations
@@ -45,7 +20,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import polars as pl
-import rpy2.robjects as ro
 from pymer4.models import lmer  # lazy: importing loads R via rpy2
 from scipy.stats import chi2, norm
 from tqdm import tqdm
@@ -74,9 +48,9 @@ _BASE_TERMS = "word_length + log_word_freq + word_position + is_expert * is_tech
 _RANDOM_EFFECTS = "(1|reader_id) + (1 + is_expert|word_id)"
 
 
-def _sum_code(flag):
+def _sum_code(flag: int):
     """0/1 flag -> −1/+1."""
-    return 2 * flag.astype(int) - 1
+    return 2 * flag - 1
 
 
 def _prep_models(df, measure):
@@ -95,6 +69,8 @@ def _prep_models(df, measure):
         return x["reader_discipline_numeric"] == 1
 
     return (
+        # skips (measure == 0) are owned by reading_time.clean_reading_times;
+        # re-applied here only as a guard for callers passing uncleaned frames.
         df.loc[lambda x: x[measure] > 0]
         .dropna(
             subset=[measure, "word_length", "lemma_frequency_normalized", *raw_cols]
@@ -141,33 +117,30 @@ def _fit(d, measure, surprisal_cols=None):
     return m
 
 
-def _r(m, fn) -> np.ndarray:
-    """R ``fn(<fitted lmer>)`` on a pymer4 0.9 model, as a flat float array."""
-    return np.asarray(ro.r(fn)(m.r_model), dtype=float).ravel()
+def _stat(m, name) -> float:
+    """Fit statistic (``logLik`` / ``AIC`` / ``sigma`` …) from pymer4 0.9's
+    ``result_fit_stats``."""
+    return float(m.result_fit_stats[name].item())
 
 
-def _loglik(m) -> float:
-    """ML log-likelihood of a fitted lmer."""
-    return float(_r(m, "logLik")[0])
-
-
-def _reader_loglik(m, d, measure) -> pd.Series:
+def _reader_loglik(m, d) -> pd.Series:
     """Per-reader sums of pointwise CONDITIONAL log-densities of a fitted lmer.
 
-    Normal log-density of each observation around ``fitted()`` (which includes
-    the BLUPs) with the ML residual sigma — an approximation of each reader's
-    contribution to the fit, NOT a decomposition of the marginal ML
-    log-likelihood. Meant only for PAIRED reader-level comparisons between fits
-    on identical rows, where the shared random-effect penalty terms cancel in
-    the pairing. Indexed by ``reader_id``.
+    Normal log-density of each observation's conditional residual (around the
+    fitted values, which include the BLUPs) with the ML residual sigma — an
+    approximation of each reader's contribution to the fit, NOT a decomposition
+    of the marginal ML log-likelihood. Meant only for PAIRED reader-level
+    comparisons between fits on identical rows, where the shared random-effect
+    penalty terms cancel in the pairing. Indexed by ``reader_id``.
     """
 
-    fitted = _r(m, "fitted")
-    sigma = float(_r(m, "sigma")[0])
-    if len(fitted) != len(d):
-        raise ValueError(f"fitted() length {len(fitted)} != data rows {len(d)}")
-    resp = np.log(d[measure].to_numpy(dtype=float))
-    dens = -0.5 * np.log(2 * np.pi * sigma**2) - (resp - fitted) ** 2 / (2 * sigma**2)
+    # pymer4 augments m.data with broom-style `resid` (response - conditional
+    # fitted) in the original row order.
+    resid = m.data["resid"].to_numpy()
+    sigma = _stat(m, "sigma")
+    if len(resid) != len(d):
+        raise ValueError(f"resid length {len(resid)} != data rows {len(d)}")
+    dens = -0.5 * np.log(2 * np.pi * sigma**2) - resid**2 / (2 * sigma**2)
     return pd.Series(dens).groupby(d["reader_id"].to_numpy()).sum()
 
 
@@ -204,6 +177,44 @@ def _coef(m, name, field):
     return float(row[field][0]) if row.height else np.nan
 
 
+def _score_source(d, measure, name, index, epoch, ll_null):
+    """Fit Eq. 2 + one surprisal main effect; LRT stats vs the shared
+    no-surprisal null. Returns ``(results row, per-reader LL sums)``."""
+    col = _SURP_COL[name]
+    fit = _fit(d, measure, col)
+    ll = _stat(fit, "logLik")
+    dll = ll - ll_null
+    row = {
+        "index": index,
+        "epoch": epoch,
+        "model": name,
+        "n": len(d),
+        "ll": ll,
+        "delta_ll": dll,
+        # nested LRT: 2·ΔLL ~ chi2(1), the single added surprisal term.
+        # Negative ΔLL (no better than the null) -> p = 1.
+        "chisq": 2.0 * dll,
+        "p_lrt": float(chi2.sf(max(2.0 * dll, 0.0), 1)),
+        "aic": _stat(fit, "AIC"),
+        "b_surprisal": _coef(fit, col, "estimate"),
+        "se_surprisal": _coef(fit, col, "std_error"),
+    }
+    return row, _reader_loglik(fit, d)
+
+
+def _vuong(ll_base: pd.Series, ll_arm: pd.Series) -> tuple[int, float, float]:
+    """Paired Vuong test on per-reader LL sums: ``(n_readers, z, p)``."""
+    d1, d2 = ll_base.align(ll_arm, join="inner")
+    diff = d1 - d2
+    sd = float(diff.std(ddof=1))
+    if sd == 0.0:
+        # indistinguishable fits (e.g. aligned at checkpoint 0 duplicates
+        # the baseline model) — the Vuong statistic is undefined.
+        return len(diff), np.nan, np.nan
+    z = float(diff.mean() / (sd / np.sqrt(len(diff))))
+    return len(diff), z, float(2.0 * norm.sf(abs(z)))
+
+
 def model_comparison_over_epochs(
     surp_versions: pd.DataFrame,
     rt_df: pd.DataFrame,
@@ -236,64 +247,34 @@ def model_comparison_over_epochs(
     if indices is not None:
         all_indices = [i for i in all_indices if i in set(indices)]
     epoch_of = surp_versions.groupby("index")["epoch"].first().to_dict()
-    dep = [m for m in models if m not in _CKPT_INDEP]
-    indep = [m for m in models if m in _CKPT_INDEP]
-
-    rows: list[dict] = []
-    rll_frames: list[pd.DataFrame] = []
-    # per-reader conditional LL sums per (source, index) — feeds the Vuong table.
-    reader_sums: dict[tuple, pd.Series] = {}
-
-    def _collect_rll(rll, model, index):
-        rll_frames.append(
-            rll.rename("ll_reader")
-            .rename_axis("reader_id")
-            .reset_index()
-            .assign(model=model, index=index)
-        )
 
     d0 = build_index_df(surp_versions, rt_df, prompt_surp, all_indices[0], measure)
+    dep = [m for m in models if m not in _CKPT_INDEP]
+    # column check: neutral prompt absent from old caches.
+    indep = [m for m in models if m in _CKPT_INDEP and _SURP_COL[m] in d0.columns]
+
+    rows: list[dict] = []
+    # one (model, index, epoch, per-reader LL sums) entry per fit; feeds both
+    # the Vuong table and the reader_ll frame.
+    reader_lls: list[tuple] = []
+
     # once: no-surprisal baseline + each indep source; per index: dep sources.
     total_fits = 1 + len(indep) + len(all_indices) * len(dep)
     with tqdm(total=total_fits, desc="lme4 fits", unit="fit") as pbar:
         pbar.set_postfix(model="no_surprisal_baseline")
         null_fit = _fit(d0, measure)
-        ll_null = _loglik(null_fit)
-        _collect_rll(_reader_loglik(null_fit, d0, measure), "base_ref", pd.NA)
+        ll_null = _stat(null_fit, "logLik")
+        rll_null = _reader_loglik(null_fit, d0)
+        reader_lls.append(("base_ref", pd.NA, pd.NA, rll_null))
         pbar.update(1)
 
         def _score(name, d, index, epoch):
-            """Fit Eq. 2 + the source's own column; LRT vs the no-surprisal null."""
-            col = _SURP_COL[name]
-            fit = _fit(d, measure, col)
-            ll = _loglik(fit)
-            dll = ll - ll_null
-            rll = _reader_loglik(fit, d, measure)
-            reader_sums[(name, index, epoch)] = rll
-            _collect_rll(rll, name, index)
+            row, rll = _score_source(d, measure, name, index, epoch, ll_null)
+            rows.append(row)
+            reader_lls.append((name, index, epoch, rll))
             pbar.update(1)
-            rows.append(
-                {
-                    "index": index,
-                    "epoch": epoch,
-                    "model": name,
-                    "n": len(d),
-                    "ll": ll,
-                    "delta_ll": dll,
-                    # nested LRT: 2·ΔLL ~ chi2(1), the single added surprisal term.
-                    # Negative ΔLL (no better than the null) -> p = 1.
-                    "chisq": 2.0 * dll,
-                    "p_lrt": float(chi2.sf(max(2.0 * dll, 0.0), 1)),
-                    "aic": float(_r(fit, "AIC")[0]),
-                    "b_surprisal": _coef(fit, col, "estimate"),
-                    "se_surprisal": _coef(fit, col, "std_error"),
-                }
-            )
 
         for name in indep:
-            if _SURP_COL[name] not in d0.columns:  # neutral absent from old cache
-                pbar.update(1)
-                continue
             pbar.set_postfix(model=name)
             _score(name, d0, pd.NA, pd.NA)
 
@@ -313,36 +294,37 @@ def model_comparison_over_epochs(
     # Vuong table: baseline-surprisal model vs each reader-conditioned arm
     # (module doc §2). Per-reader LL sums cluster the repeated measures; the
     # arms were fit on the same rows as the baseline (asserted above).
-    base_key = next((k for k in reader_sums if k[0] == "baseline"), None)
+    base_rll = next((r for name, _, _, r in reader_lls if name == "baseline"), None)
     vuong_rows = []
-    for (name, index, epoch), rll in reader_sums.items():
-        if base_key is None or name not in _VUONG_ARMS:
-            continue
-        d1, d2 = reader_sums[base_key].align(rll, join="inner")
-        diff = d1 - d2
-        sd = float(diff.std(ddof=1))
-        if sd == 0.0:
-            # indistinguishable fits (e.g. aligned at checkpoint 0 duplicates
-            # the baseline model) — the Vuong statistic is undefined.
-            z, p = np.nan, np.nan
-        else:
-            z = float(diff.mean() / (sd / np.sqrt(len(diff))))
-            p = float(2.0 * norm.sf(abs(z)))
-        vuong_rows.append(
-            {
-                "index": index,
-                "epoch": epoch,
-                "model": name,
-                "n_readers": len(diff),
-                "vuong_z": z,
-                "p_vuong": p,
-            }
-        )
+    if base_rll is not None:
+        for name, index, epoch, rll in reader_lls:
+            if name not in _VUONG_ARMS:
+                continue
+            n_readers, z, p = _vuong(base_rll, rll)
+            vuong_rows.append(
+                {
+                    "index": index,
+                    "epoch": epoch,
+                    "model": name,
+                    "n_readers": n_readers,
+                    "vuong_z": z,
+                    "p_vuong": p,
+                }
+            )
 
     results = pd.DataFrame(rows).sort_values(["model", "index"])
     vuong = pd.DataFrame(
         vuong_rows,
         columns=["index", "epoch", "model", "n_readers", "vuong_z", "p_vuong"],
     ).sort_values(["model", "index"])
-    reader_ll = pd.concat(rll_frames, ignore_index=True)
+    reader_ll = pd.concat(
+        [
+            rll.rename("ll_reader")
+            .rename_axis("reader_id")
+            .reset_index()
+            .assign(model=name, index=index)
+            for name, index, _, rll in reader_lls
+        ],
+        ignore_index=True,
+    )
     return results, vuong, reader_ll

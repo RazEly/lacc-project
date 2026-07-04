@@ -5,7 +5,7 @@ Before reading anything into reading-time fits — especially a null result for
 one LM — establish that domain adaptation happened at all:
 
 * ``perplexity_curves``: held-out perplexity per checkpoint from the training
-  manifests (per domain, per seed).
+  manifests (per domain).
 * ``surprisal_trajectories``: mean PoTeC surprisal per checkpoint, split by
   terminology level (common / T1 / T2) and in- vs out-of-domain text. Successful
   adaptation shows technical-term surprisal dropping on in-domain texts while
@@ -38,28 +38,19 @@ def _plt():
 def perplexity_curves(
     manifest: pd.DataFrame, slug: str, out_dir: Path = FIGURES_DIR
 ) -> pd.DataFrame:
-    """Held-out perplexity vs training step, per domain; seeds thin, mean bold."""
+    """Held-out perplexity vs training step, per domain."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    df = manifest[["domain", "seed", "index", "step", "perplexity"]].copy()
+    df = manifest[["domain", "index", "step", "perplexity"]].copy()
     df.to_csv(out_dir / f"diag_{slug}_perplexity.csv", index=False)
 
     plt = _plt()
     fig, ax = plt.subplots(figsize=(6, 4))
     colors = {"physics": "tab:purple", "biology": "tab:green"}
-    for (domain, seed), g in df.groupby(["domain", "seed"]):
+    for domain, g in df.groupby("domain"):
         g = g.sort_values("index")
         ax.plot(
             g["step"].clip(lower=1),
             g["perplexity"],
-            color=colors.get(domain, "gray"),
-            alpha=0.3,
-            lw=1,
-        )
-    for domain, g in df.groupby("domain"):
-        m = g.groupby("index").agg({"step": "first", "perplexity": "mean"})
-        ax.plot(
-            m["step"].clip(lower=1),
-            m["perplexity"],
             color=colors.get(domain, "gray"),
             lw=2,
             marker="o",

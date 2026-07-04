@@ -27,20 +27,9 @@ from transformers import (
     TrainingArguments,
 )
 
-from src.config import (
-    ARTIFACTS_DIR,
-    DEFAULT_MODEL,
-    DOMAIN_BIO_DIR,
-    DOMAIN_PHY_DIR,
-)
-from src.features.surprisal import (
-    compute_surprisal,
-    load_causal_lm,
-    resize_with_mean_init,
-)
+from src.config import ARTIFACTS_DIR, DEFAULT_MODEL, DOMAIN_DIRS
 from src.modeling import hub
-
-DOMAIN_DIRS = {"physics": DOMAIN_PHY_DIR, "biology": DOMAIN_BIO_DIR}
+from src.modeling.lm import resize_with_mean_init
 
 # Blocks used for the checkpoint perplexity readout. The held-out split is huge
 # (val_frac of a multi-M-token corpus); a fixed subset gives a stable perplexity
@@ -258,7 +247,7 @@ def finetune_dapt(
     LoRA continued causal pre-training (the only method). Embeddings stay frozen
     for every arch (LoRA paradigm only — no ``modules_to_save``), so differently
     sized models get identical adaptation capacity classes. Checkpoints store the
-    adapter only; ``surprisal.load_causal_lm`` reattaches it. ``lora_target_modules``
+    adapter only; ``modeling.lm.load_causal_lm`` reattaches it. ``lora_target_modules``
     defaults per-arch via ``_lora_targets`` (attention + MLP).
 
     Budgeted by tokens: ``max_tokens`` (one step = block_size·batch_size·grad_accum
@@ -271,19 +260,15 @@ def finetune_dapt(
     retraining. Columns: ``domain``, ``checkpoint``, ``index``,
     ``epoch``, ``step``, ``tokens_seen``, ``words_seen``, ``perplexity``.
     """
-    # Run dir carries the seed so per-seed runs don't collide. Delete the dir by
-    # hand to force a retrain (there is no recipe-version cache invalidation).
-    out_dir = Path(
-        out_dir or ARTIFACTS_DIR / f"{Path(base_model).name}_{domain}_lora_s{seed}"
-    )
+    # Delete the run dir by hand to force a retrain (there is no recipe-version
+    # cache invalidation).
+    out_dir = Path(out_dir or ARTIFACTS_DIR / f"{Path(base_model).name}_{domain}_lora")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Resume from a cached run if the dir already holds one (trusted as-is).
     manifest_csv = out_dir / "manifest.csv"
     if manifest_csv.exists():
         cached = pd.read_csv(manifest_csv)
-        if "seed" not in cached.columns:
-            cached.insert(1, "seed", seed)
         print(
             f"  [{domain}] reusing {len(cached)} saved checkpoints in {out_dir} "
             "(skipping training)"
@@ -294,8 +279,6 @@ def finetune_dapt(
 
     remote = hub.try_download_run(out_dir)
     if remote is not None:
-        if "seed" not in remote.columns:
-            remote.insert(1, "seed", seed)
         print(
             f"  [{domain}] reusing {len(remote)} checkpoints pulled from the Hub "
             "(skipping training)"
@@ -387,30 +370,8 @@ def finetune_dapt(
 
     df = pd.DataFrame(manifest)
     df.insert(0, "domain", domain)
-    df.insert(1, "seed", seed)
     # Persist manifest so the next run resumes from cache instead of retraining.
     df.to_csv(out_dir / "manifest.csv", index=False)
     # Mirror to the Hub for future runs. Best effort — never fails the run.
     hub.upload_run(out_dir)
     return df
-
-
-def recompute_surprisal_over_checkpoints(
-    words_df: pd.DataFrame, manifest: pd.DataFrame
-) -> pd.DataFrame:
-    """Recompute step-2 surprisal with each fine-tuned checkpoint.
-
-    Concatenated surprisal table tagged with ``checkpoint`` / ``index`` / ``epoch``
-    / ``domain``. ``index`` (0 = baseline) is the stable key for pairing domains.
-    """
-    frames = []
-    # iterrows: the manifest has a column named "index" that itertuples would rename.
-    for _, row in manifest.iterrows():
-        model, tok = load_causal_lm(row.checkpoint)
-        sup = compute_surprisal(words_df, model, tok)
-        sup["checkpoint"] = row.checkpoint
-        sup["index"] = row["index"]  # checkpoint index: stable across domains
-        sup["epoch"] = row.epoch
-        sup["domain"] = row.domain
-        frames.append(sup)
-    return pd.concat(frames, ignore_index=True)

@@ -1,92 +1,23 @@
-"""Model surprisal from a decoder-only causal LM (step 2) + its wide cache.
+"""Model surprisal from a decoder-only causal LM (step 2).
 
 Word surprisal = sum of sub-token surprisals (-log2 p(token | left context)),
 aligned via the tokenizer's ``word_ids``. Each text is scored as one sequence so
 context spans sentence boundaries (Eq. 1). An optional ``prompt`` prepends
 domain-matched context.
 
-The bottom half persists the (expensive) forwards to one wide CSV so reruns
-reload instead of re-scoring — see the "wide surprisal cache" section.
+Model/tokenizer loading lives in ``modeling.lm``; the wide CSV cache that
+persists these (expensive) forwards lives in ``features.surprisal_cache``.
 """
 
 from __future__ import annotations
 
 import math
-from pathlib import Path
 
 import pandas as pd
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from src.config import DEFAULT_MODEL, SURPRISAL_CACHE_PATH, WORD_KEY
-
-
-def _load_tokenizer(name_or_path: str):
-    # add_prefix_space (BPE/german-gpt2): first word tokenizes like a mid-sentence
-    # word. SentencePiece (Llama) adds it itself and may reject the kwarg.
-    try:
-        return AutoTokenizer.from_pretrained(name_or_path, add_prefix_space=True)
-    except (TypeError, ValueError):
-        return AutoTokenizer.from_pretrained(name_or_path)
-
-
-def resize_with_mean_init(model, tokenizer) -> bool:
-    """Grow embeddings to cover every tokenizer id; new rows = mean embedding.
-
-    german-gpt2's eos/pad id sits one past its embedding rows, so training (which
-    appends eos as a document separator) needs the resize. The default resize
-    initialises new rows randomly — nondeterministic across loads and never
-    trained under LoRA (embeddings stay frozen); mean-init is deterministic and a
-    sane prior. Returns whether a resize happened.
-    """
-    if len(tokenizer) <= model.config.vocab_size:
-        return False
-    old_n = model.get_input_embeddings().weight.shape[0]
-    model.resize_token_embeddings(len(tokenizer))
-    with torch.no_grad():
-        emb = model.get_input_embeddings().weight
-        emb[old_n:] = emb[:old_n].mean(dim=0)
-        out = model.get_output_embeddings()
-        if out is not None and out.weight.data_ptr() != emb.data_ptr():
-            out.weight[old_n:] = out.weight[:old_n].mean(dim=0)
-    return True
-
-
-def load_causal_lm(name_or_path: str = DEFAULT_MODEL):
-    """Load a causal LM + tokenizer for surprisal.
-
-    Accepts an HF model id, a full fine-tuned checkpoint, or a LoRA (PEFT) adapter
-    checkpoint — the latter is detected by ``adapter_config.json`` and folded onto
-    its base model so callers get a plain merged model either way.
-    """
-    kwargs = {}
-    # fp16 on GPU: halves VRAM, inference-safe (log_softmax upcasts via .float()).
-    if torch.cuda.is_available():
-        kwargs["torch_dtype"] = torch.float16
-
-    if (Path(name_or_path) / "adapter_config.json").is_file():
-        # LoRA checkpoint: load the adapter's base model, match embedding size,
-        # then merge the adapter so the forward needs no PEFT machinery.
-        from peft import PeftConfig, PeftModel
-
-        base = PeftConfig.from_pretrained(name_or_path).base_model_name_or_path
-        tokenizer = _load_tokenizer(base)
-        model = AutoModelForCausalLM.from_pretrained(base, **kwargs)
-        resize_with_mean_init(model, tokenizer)
-        model = PeftModel.from_pretrained(model, name_or_path).merge_and_unload()
-    else:
-        tokenizer = _load_tokenizer(name_or_path)
-        model = AutoModelForCausalLM.from_pretrained(name_or_path, **kwargs)
-        # Same resize as the adapter branch: german-gpt2's eos id sits one past its
-        # embedding rows, and the document-boundary separator (below, in
-        # score_words) feeds that id in as CONTEXT — an un-resized base model would
-        # index out of bounds. No-op for Llama (eos already in vocab).
-        resize_with_mean_init(model, tokenizer)
-    model.eval()
-    # from_pretrained leaves the model on CPU; move to GPU once here.
-    if torch.cuda.is_available():
-        model.to("cuda")
-    return model, tokenizer
+from src.config import WORD_KEY
+from src.modeling.lm import load_causal_lm
 
 
 def _as_prompt_list(prompt) -> list[str]:
@@ -235,72 +166,22 @@ def compute_surprisal(
     return pd.DataFrame(rows, columns=WORD_KEY + ["surprisal"])
 
 
-# ── wide surprisal cache ─────────────────────────────────────────────────────
-# One CSV for every model + checkpoint. One row per word (``WORD_KEY``), one
-# column per source named ``<prefix>_<what>`` (prefix from ``config.MODEL_PREFIX``,
-# e.g. ``gpt`` / ``llama``):
-#
-#     <p>_0                            baseline (un-adapted, checkpoint index 0)
-#     <p>_<i>_phys / <p>_<i>_bio       domain-adapted checkpoint i>=1 (physics/biology)
-#     <p>_prompt_phys / _bio           discipline-matched prompted baseline
-#
-# Each model fills its own columns; a model already present is reused while
-# missing ones are computed and merged in.
-_DOMAIN_SHORT = {"physics": "phys", "biology": "bio"}
-# prompt_surp column (``s_prompt_*``) suffixes -> cache column ``<prefix>_prompt_*``.
-# phys/bio = reader-aligned domain prior; neutral = off-domain scientific prior
-# (register-matched control from the german-commons off-domain pool).
-_PROMPT_SUFFIXES = ["phys", "bio", "neutral"]
-
-
-def _prompt_map(prefix: str) -> dict[str, str]:
-    return {f"s_prompt_{s}": f"{prefix}_prompt_{s}" for s in _PROMPT_SUFFIXES}
-
-
-def load_cache(path: Path = SURPRISAL_CACHE_PATH) -> pd.DataFrame | None:
-    """Return the cached wide table, or ``None`` when no file exists yet."""
-    path = Path(path)
-    return pd.read_csv(path) if path.exists() else None
-
-
-def save_cache(cache: pd.DataFrame, path: Path = SURPRISAL_CACHE_PATH) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    cache.to_csv(path, index=False)
-
-
-def build_wide(
-    prefix: str, surp_versions: pd.DataFrame, prompt_surp: pd.DataFrame
+def recompute_surprisal_over_checkpoints(
+    words_df: pd.DataFrame, manifest: pd.DataFrame
 ) -> pd.DataFrame:
-    """Fold one model's ``surp_versions`` + ``prompt_surp`` into wide columns."""
-    base_index = surp_versions["index"].min()
+    """Recompute step-2 surprisal with each fine-tuned checkpoint.
 
-    def _col(sel, col):
-        return sel[WORD_KEY + ["surprisal"]].rename(columns={"surprisal": col})
-
-    base = surp_versions[surp_versions["index"] == base_index].drop_duplicates(WORD_KEY)
-    wide = _col(base, f"{prefix}_0")
-    for idx in sorted(surp_versions["index"].unique()):
-        if idx == base_index:
-            continue
-        for domain, short in _DOMAIN_SHORT.items():
-            sel = surp_versions[
-                (surp_versions["index"] == idx) & (surp_versions["domain"] == domain)
-            ]
-            wide = wide.merge(
-                _col(sel, f"{prefix}_{idx}_{short}"), on=WORD_KEY, how="outer"
-            )
-
-    # keep only mapped prompt columns (drops any extra scratch columns callers merged in)
-    prompts = prompt_surp.rename(columns=_prompt_map(prefix))
-    keep = [c for c in prompts.columns if c.startswith(f"{prefix}_prompt_")]
-    return wide.merge(prompts[WORD_KEY + keep], on=WORD_KEY, how="outer")
-
-
-def merge_model(cache: pd.DataFrame | None, wide: pd.DataFrame) -> pd.DataFrame:
-    """Add/replace one model's columns in the cache and return the combined table."""
-    if cache is None:
-        return wide
-    new_cols = [c for c in wide.columns if c not in WORD_KEY]
-    cache = cache.drop(columns=[c for c in new_cols if c in cache.columns])
-    return cache.merge(wide, on=WORD_KEY, how="outer")
+    Concatenated surprisal table tagged with ``checkpoint`` / ``index`` / ``epoch``
+    / ``domain``. ``index`` (0 = baseline) is the stable key for pairing domains.
+    """
+    frames = []
+    # iterrows: the manifest has a column named "index" that itertuples would rename.
+    for _, row in manifest.iterrows():
+        model, tok = load_causal_lm(row.checkpoint)
+        sup = compute_surprisal(words_df, model, tok)
+        sup["checkpoint"] = row.checkpoint
+        sup["index"] = row["index"]  # checkpoint index: stable across domains
+        sup["epoch"] = row.epoch
+        sup["domain"] = row.domain
+        frames.append(sup)
+    return pd.concat(frames, ignore_index=True)

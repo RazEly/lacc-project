@@ -1,7 +1,7 @@
 """Central paths and dataset identifiers. Paths resolve from the project root.
 
 Knobs used by a single module live in that module (e.g. the DAPT hyper-parameter
-tables in main, the PoTeC sub-paths in features.data). This file holds only what
+tables in main, the PoTeC sub-paths in features.potec). This file holds only what
 more than one module shares.
 """
 
@@ -11,16 +11,51 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 
 # PoTeC (eye-tracking corpus). Sub-paths (word_features / reading measures /
-# eyetracking) are derived where they're read — acquire.download_potec, features.data.
+# eyetracking) are derived where they're read — acquire.download_potec, features.potec.
 POTEC_DIR = DATA_DIR / "potec"
 
 # german-commons (fine-tuning corpus). The HF repo/config id and the OpenAlex
 # OCR gate live in acquire.download_commons (its only reader).
 COMMONS_DIR = DATA_DIR / "commons_scientific"
 
+# The two DAPT domains: slug -> short cache-column suffix (<prefix>_<i>_<short>).
+# Single source for every module that iterates the domains or names their columns.
+DOMAINS = {"physics": "phys", "biology": "bio"}
+
+# TF-IDF domain seeds: keyword bags, not prose — prose shares too many char
+# n-grams with any German text, collapsing the similarity spread. Domain-term
+# bags avoid that. Consumed by acquire.domain_preprocessing.domain_sims.
+PHYSICS_SEED = """
+Physik Quantenmechanik Thermodynamik Elektrodynamik Elektrochemie
+Relativitätstheorie Optik Kernphysik Teilchenphysik Feldtheorie
+Wellenmechanik Wellenlänge Frequenz Schwingung Strahlung Spektroskopie
+Energie Masse Kraft Impuls Beschleunigung Geschwindigkeit Schwerkraft
+Druck Temperatur Entropie Wärme Wärmeleitung Wärmekapazität
+Elektron Proton Neutron Photon Atom Molekül Ion Plasma
+Spannung Stromstärke Widerstand Magnetfeld Elektrisches Feld
+Potential Welle Interferenz Beugung Brechung Reflexion
+Planck Boltzmann Schrödinger Maxwell Newton Einstein Heisenberg Ohm
+Joule Watt Volt Ampere Tesla Hertz Kelvin Pascal
+"""
+
+BIOLOGY_SEED = """
+Biologie Zelle Organismus Evolution Genetik Erbgut
+DNS RNS Protein Chromosom Gen Allel Mutation Genotyp Phänotyp
+Art Taxonomie Ökologie Ökosystem Population Habitat Biotop
+Photosynthese Stoffwechsel Zellatmung Glykolyse Enzym Rezeptor
+Neuron Synapse Gehirn Nervensystem Immunsystem Antikörper
+Mitose Meiose Fortpflanzung Embryo Zygote Gamete
+Membran Zellkern Zytoplasma Ribosom Mitochondrium Chloroplast
+Virus Bakterium Pilz Pflanze Tier Säugetier Wirbeltier
+Darwin Mendel Koch Pasteur Virchow Haeckel
+ATP Glucose Aminosäure Fettsäure Nukleotid
+"""
+
 # domain_preprocessing outputs
 DOMAIN_PHY_DIR = DATA_DIR / "domain_phy"
 DOMAIN_BIO_DIR = DATA_DIR / "domain_bio"
+# Training-domain corpora by slug (finetune loads these; priors adds "neutral").
+DOMAIN_DIRS = {"physics": DOMAIN_PHY_DIR, "biology": DOMAIN_BIO_DIR}
 # Neutral control pool: german-commons docs OUTSIDE the pass-1 candidate set
 # (both domain TF-IDF sims below threshold) — same corpus and register as the
 # domain pools, no physics/biology content. See
@@ -30,8 +65,10 @@ DOMAIN_OTHER_DIR = DATA_DIR / "domain_other"
 # Default decoder LM; loaders are model-agnostic within the decoder family.
 DEFAULT_MODEL = "dbmdz/german-gpt2"
 
-# Run artifacts (relative -> resolved against cwd at run time).
-ARTIFACTS_DIR = Path("artifacts")
+# Run artifacts — anchored to the project root like every other path, so runs
+# from any cwd hit the same DAPT/surprisal caches (a cwd-relative path made a
+# wrong-dir run silently retrain everything).
+ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 # Wide per-word surprisal cache: computed once, reloaded to skip model forwards.
 # Delete the file (and the DAPT run dirs) by hand to force a recompute.
 SURPRISAL_CACHE_PATH = ARTIFACTS_DIR / "surprisal.csv"

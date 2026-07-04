@@ -1,7 +1,6 @@
 """Pipeline driver — full end-to-end run.
 
-Per LM: DAPT over ``DAPT_SEEDS`` (per-word surprisal averaged across
-seeds, as in Škrjanec & Demberg), then the mixed-model sweep for the reading-time
+Per LM: one DAPT run per domain, then the mixed-model sweep for the reading-time
 measure (TFT). Every surprisal source (baseline, aligned, prompted, …) enters as
 a single plain main effect and is scored against the SAME shared no-surprisal
 baseline (paper Eq. 2/4/5): LL, ΔLL, χ², LRT p, AIC. A second per-LM table
@@ -21,11 +20,13 @@ from src import config
 from src.analysis import model_comparison as mc
 from src.analysis import viz
 from src.config import WORD_KEY
-from src.features import data
+from src.features import potec
 from src.features import priors as pr
 from src.features import reading_time as rt
 from src.features import surprisal as su
+from src.features import surprisal_cache as sc
 from src.modeling import finetune as ft
+from src.modeling import lm
 
 # reading-time measure (TFT); the effect is expected on the late measure.
 MEASURES = ("TFT",)
@@ -65,11 +66,6 @@ DAPT_LEARNING_RATE = {
     "german-gpt2": 2e-4,
     "llammlein-1b": 1e-4,
 }
-# Training seeds; per-word surprisal is averaged over the seeds' checkpoints
-# (Škrjanec & Demberg average 3 random seeds per method × domain × step). Each
-# extra seed is a FULL extra DAPT run per domain — (0, 1, 2) = 3× training. Use a
-# single seed while iterating; widen to (0, 1, 2) for the final seed-averaged run.
-DAPT_SEEDS = (0,)
 # Context budget (tokens) shared by every prompt condition.
 PRIOR_MAX_TOKENS = 64
 
@@ -80,7 +76,7 @@ def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
     prefix = MODEL_PREFIX[slug]
 
     print("Step 2 — load LM")
-    model, tok = su.load_causal_lm(name)
+    model, tok = lm.load_causal_lm(name)
 
     # Prompted arm: prior-reading passage + native document boundary, truncated to
     # a shared context budget. physics/biology = domain priors (reader-aligned per
@@ -100,8 +96,8 @@ def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
         .merge(_prior_surp(priors["neutral"], "s_prompt_neutral"), on=WORD_KEY)
     )
 
-    # Step 4 — DAPT checkpoints, one run per domain × seed (cached / Hub-mirrored)
-    print(f"Step 4 — DAPT checkpoints (seeds {DAPT_SEEDS})")
+    # Step 4 — DAPT checkpoints, one run per domain (cached / Hub-mirrored)
+    print("Step 4 — DAPT checkpoints")
 
     batch_size = DAPT_BATCH_SIZE.get(slug, 8)
     grad_accum = DAPT_GRAD_ACCUM.get(slug, 1)
@@ -116,25 +112,18 @@ def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
                 batch_size=batch_size,
                 grad_accum=grad_accum,
                 learning_rate=learning_rate,
-                seed=seed,
             )
             for domain in ("physics", "biology")
-            for seed in DAPT_SEEDS
         ],
         ignore_index=True,
     )
 
-    # baseline (index 0) weights are seed-independent: score once per domain.
-    first_seed = DAPT_SEEDS[0]
-    to_score = manifest[(manifest["index"] > 0) | (manifest["seed"] == first_seed)]
-    per_seed = ft.recompute_surprisal_over_checkpoints(words, to_score)
-    # per-word surprisal averaged over seeds (paper averages 3 seeds).
-    surp_versions = per_seed.groupby(
-        WORD_KEY + ["index", "domain"], as_index=False
-    ).agg(surprisal=("surprisal", "mean"), epoch=("epoch", "first"))
+    surp_versions = su.recompute_surprisal_over_checkpoints(words, manifest).drop(
+        columns=["checkpoint"]
+    )
 
     # Wide surprisal columns for this model.
-    wide = su.build_wide(prefix, surp_versions, prompt_surp)
+    wide = sc.build_wide(prefix, surp_versions, prompt_surp)
     return {
         "slug": slug,
         "prompt_surp": prompt_surp,
@@ -179,68 +168,24 @@ def fit_model(
     return cmp, vuong, reader_ll
 
 
-def bundle_from_cache(cache: pd.DataFrame, slug: str) -> dict:
-    """Rebuild a fit bundle straight from the wide cache — no model load, no finetune.
-
-    Pulls only what ``fit_model`` needs for the slim run: baseline surprisal, the
-    prompted columns, and the slim checkpoint(s) for both domains. ``epoch`` in
-    surp_versions is the checkpoint step (display only). ``manifest`` is None —
-    perplexity diagnostics need the training manifests.
-    """
-    prefix = MODEL_PREFIX[slug]
-    print(f"\n=== reload from cache: {slug} ({prefix}) ===")
-
-    def _col(name: str, new: str) -> pd.DataFrame:
-        return (
-            cache[WORD_KEY + [name]]
-            .dropna(subset=[name])
-            .rename(columns={name: new})
-            .reset_index(drop=True)
-        )
-
-    prompt_surp = _col(f"{prefix}_prompt_phys", "s_prompt_phys")
-    prompt_surp = prompt_surp.merge(
-        _col(f"{prefix}_prompt_bio", "s_prompt_bio"), on=WORD_KEY
-    )
-    # neutral prior is optional: older caches predate it. Merge only if present.
-    if f"{prefix}_prompt_neutral" in cache.columns:
-        prompt_surp = prompt_surp.merge(
-            _col(f"{prefix}_prompt_neutral", "s_prompt_neutral"), on=WORD_KEY
-        )
-
-    # Long per-checkpoint table for model_comparison: index 0 (baseline, shared by
-    # both domains) + the slim checkpoint(s), each domain.
-    frames = []
-    for idx in [0, *SLIM_INDICES]:
-        step = 0 if idx == 0 else DAPT_CHECKPOINT_STEPS[idx - 1]
-        for domain, short in [("physics", "phys"), ("biology", "bio")]:
-            col = f"{prefix}_0" if idx == 0 else f"{prefix}_{idx}_{short}"
-            sv = _col(col, "surprisal")
-            sv["index"], sv["domain"], sv["epoch"] = idx, domain, step
-            frames.append(sv)
-    surp_versions = pd.concat(frames, ignore_index=True)
-
-    return {
-        "slug": slug,
-        "prompt_surp": prompt_surp,
-        "surp_versions": surp_versions,
-        "manifest": None,
-    }
-
-
 def main() -> None:
     print("Step 1 — load PoTeC")
-    rm_raw = data.load_reading_measures()
-    words = data.load_word_features()
+    rm_raw = potec.load_reading_measures()
+    words = potec.load_word_features()
     print(f"  raw_rows={len(rm_raw)}  words={len(words)}")
 
     # Phase 1 — surprisal. If the wide cache exists, reload it straight from CSV
     # (no model load, no finetune) and go to fitting; trust its contents. Otherwise
     # compute + cache each model.
-    cache = su.load_cache()
+    cache = sc.load_cache()
     if cache is not None:
         print(f"Surprisal cache hit ({config.SURPRISAL_CACHE_PATH}) — skipping compute")
-        bundles = [bundle_from_cache(cache, slug) for slug in MODELS]
+        bundles = [
+            sc.bundle_from_cache(
+                cache, slug, MODEL_PREFIX[slug], SLIM_INDICES, DAPT_CHECKPOINT_STEPS
+            )
+            for slug in MODELS
+        ]
     else:
         priors = pr.load_prior_passages()
         print(f"  priors: {config.N_PRIOR_PASSAGES}× physics/biology from held-out "
@@ -250,8 +195,8 @@ def main() -> None:
         for slug, name in MODELS.items():
             b = compute_model_surprisal(slug, name, words, priors)
             bundles.append(b)
-            cache = su.merge_model(cache, b["wide"])
-            su.save_cache(cache)
+            cache = sc.merge_model(cache, b["wide"])
+            sc.save_cache(cache)
             print(f"  wrote surprisal cache -> {config.SURPRISAL_CACHE_PATH}")
 
     # Adaptation diagnostics — establish DAPT moved each model before reading

@@ -27,13 +27,15 @@ from transformers import XLMRobertaTokenizer, pipeline
 
 from src.config import (
     ARTIFACTS_DIR,
+    BIOLOGY_SEED,
     COMMONS_DIR,
     DOMAIN_BIO_DIR,
     DOMAIN_OTHER_DIR,
     DOMAIN_PHY_DIR,
+    PHYSICS_SEED,
     POTEC_DIR,
 )
-from src.features.data import read_potec
+from src.features.potec import read_potec
 
 # When this exists, labelling is skipped and datasets are rebuilt from it.
 LABEL_IDS_PATH = ARTIFACTS_DIR / "domain_label_ids.json"
@@ -51,41 +53,13 @@ TFIDF_THRESHOLD = 0.05
 # so the neutral priors read as cleanly as the domain priors.
 NEUTRAL_MAX_PPL_PCTL = 60
 # Pool size: a broad sample to draw K priors from, not the whole neutral mass.
-N_OTHER_DOCS = 500
+N_OTHER_DOCS = 1000
 OTHER_SEED = 0
 
 NLI_LABELS = {
     "physics": "Dieser Text handelt von Physik.",
     "biology": "Dieser Text handelt von Biologie.",
 }
-
-# TF-IDF seeds: keyword bags, not prose — prose shares too many char n-grams with
-# any German text, collapsing the similarity spread. Domain-term bags avoid that.
-PHYSICS_SEED = """
-Physik Quantenmechanik Thermodynamik Elektrodynamik Elektrochemie
-Relativitätstheorie Optik Kernphysik Teilchenphysik Feldtheorie
-Wellenmechanik Wellenlänge Frequenz Schwingung Strahlung Spektroskopie
-Energie Masse Kraft Impuls Beschleunigung Geschwindigkeit Schwerkraft
-Druck Temperatur Entropie Wärme Wärmeleitung Wärmekapazität
-Elektron Proton Neutron Photon Atom Molekül Ion Plasma
-Spannung Stromstärke Widerstand Magnetfeld Elektrisches Feld
-Potential Welle Interferenz Beugung Brechung Reflexion
-Planck Boltzmann Schrödinger Maxwell Newton Einstein Heisenberg Ohm
-Joule Watt Volt Ampere Tesla Hertz Kelvin Pascal
-"""
-
-BIOLOGY_SEED = """
-Biologie Zelle Organismus Evolution Genetik Erbgut
-DNS RNS Protein Chromosom Gen Allel Mutation Genotyp Phänotyp
-Art Taxonomie Ökologie Ökosystem Population Habitat Biotop
-Photosynthese Stoffwechsel Zellatmung Glykolyse Enzym Rezeptor
-Neuron Synapse Gehirn Nervensystem Immunsystem Antikörper
-Mitose Meiose Fortpflanzung Embryo Zygote Gamete
-Membran Zellkern Zytoplasma Ribosom Mitochondrium Chloroplast
-Virus Bakterium Pilz Pflanze Tier Säugetier Wirbeltier
-Darwin Mendel Koch Pasteur Virchow Haeckel
-ATP Glucose Aminosäure Fettsäure Nukleotid
-"""
 
 
 def load_commons():
@@ -240,17 +214,8 @@ def build_from_label_ids(path=LABEL_IDS_PATH):
     return physics_ds, biology_ds, other_ds
 
 
-def main():
-    # Reuse a previous run's labels if they were saved.
-    cached = build_from_label_ids()
-    if cached is not None:
-        _save_domain_datasets(*cached)
-        return
-
-    # ── pass 1: TF-IDF with POTEC seeds ──────────────────────────────────────
-    ds = load_commons()
-    texts = [t[:TEXT_CHARS] if t else "" for t in ds["text"]]
-
+def _pass1_tfidf(texts):
+    """Pass 1 — TF-IDF domain labels + the candidate set (everything not "other")."""
     print(f"\nPass 1 — TF-IDF on {len(texts):,} docs...")
     sim_physics, sim_biology = domain_sims(texts)
 
@@ -269,8 +234,16 @@ def main():
         f"({pass1_labels.count('physics'):,} physics, "
         f"{pass1_labels.count('biology'):,} biology)"
     )
+    return sim_physics, sim_biology, pass1_labels, candidates_idx
 
-    # ── pass 2: NLI with calibrated threshold ────────────────────────────────
+
+def _pass2_nli(texts, candidates_idx, pass1_labels):
+    """Pass 2 — zero-shot NLI over the candidates, threshold calibrated on PoTeC.
+
+    A candidate keeps its pass-1 label only when the NLI top label agrees AND its
+    score clears the calibrated threshold; everything else falls back to "other".
+    Returns ``(final_labels, nli_scores)`` over ALL docs (non-candidates "other"/0).
+    """
     device = 0 if torch.cuda.is_available() else -1
     print(f"\nLoading NLI model (device={'cuda' if device == 0 else 'cpu'})...")
 
@@ -296,8 +269,8 @@ def main():
         batch_size=BATCH_SIZE,
     )
 
-    final_labels = ["other"] * len(ds)
-    nli_scores = [0.0] * len(ds)
+    final_labels = ["other"] * len(texts)
+    nli_scores = [0.0] * len(texts)
 
     for idx, p1_label, result in zip(
         candidates_idx, [pass1_labels[i] for i in candidates_idx], results
@@ -307,6 +280,21 @@ def main():
         if top_label == p1_label and score >= nli_threshold:
             final_labels[idx] = p1_label
             nli_scores[idx] = score
+    return final_labels, nli_scores
+
+
+def main():
+    # Reuse a previous run's labels if they were saved.
+    cached = build_from_label_ids()
+    if cached is not None:
+        _save_domain_datasets(*cached)
+        return
+
+    ds = load_commons()
+    texts = [t[:TEXT_CHARS] if t else "" for t in ds["text"]]
+
+    sim_physics, sim_biology, pass1_labels, candidates_idx = _pass1_tfidf(texts)
+    final_labels, nli_scores = _pass2_nli(texts, candidates_idx, pass1_labels)
 
     # ── results ──────────────────────────────────────────────────────────────
     ds = (

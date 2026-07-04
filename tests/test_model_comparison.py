@@ -34,7 +34,7 @@ def test_build_index_df_base_uses_index_zero(index_df):
 
 def test_fit_returns_loglik(index_df):
     res = mc._fit(index_df, "TFT", "s_base")
-    assert np.isfinite(mc._loglik(res))
+    assert np.isfinite(mc._stat(res, "logLik"))
     assert "s_base" in res.result_fit["term"].to_list()
 
 
