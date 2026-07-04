@@ -16,7 +16,7 @@ import math
 import pandas as pd
 import torch
 
-from src.config import WORD_KEY
+from src.config import DEVICE, WORD_KEY
 from src.modeling.lm import load_causal_lm
 
 
@@ -100,7 +100,7 @@ def score_words(word_list, model, tokenizer, prompt=None, max_prompt_tokens=None
         input_ids = sent_ids
         offset = 0
 
-    input_ids = input_ids.to(next(model.parameters()).device)
+    input_ids = input_ids.to(DEVICE)
     logits = model(input_ids.unsqueeze(0)).logits[0]  # [seq, vocab]
     logprobs = torch.log_softmax(logits.float(), dim=-1)  # natural log
 

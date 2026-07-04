@@ -7,6 +7,13 @@ more than one module shares.
 
 from pathlib import Path
 
+import torch
+
+# Single compute-device decision for the whole pipeline: pick CUDA when present,
+# else CPU. Modules move models/inputs onto this and gate CUDA-only flags on it,
+# so a run never splits work across devices.
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 
@@ -18,9 +25,9 @@ POTEC_DIR = DATA_DIR / "potec"
 # OCR gate live in acquire.download_commons (its only reader).
 COMMONS_DIR = DATA_DIR / "commons_scientific"
 
-# The two DAPT domains: slug -> short cache-column suffix (<prefix>_<i>_<short>).
-# Single source for every module that iterates the domains or names their columns.
-DOMAINS = {"physics": "phys", "biology": "bio"}
+# The two DAPT domains. The full name is the ONLY spelling anywhere — dataset
+# labels, cache-column suffixes, run dirs, data dirs — no shorthand aliases.
+DOMAINS = ("physics", "biology")
 
 # TF-IDF domain seeds: keyword bags, not prose — prose shares too many char
 # n-grams with any German text, collapsing the similarity spread. Domain-term
@@ -51,11 +58,9 @@ Darwin Mendel Koch Pasteur Virchow Haeckel
 ATP Glucose Aminosäure Fettsäure Nukleotid
 """
 
-# domain_preprocessing outputs
-DOMAIN_PHY_DIR = DATA_DIR / "domain_phy"
-DOMAIN_BIO_DIR = DATA_DIR / "domain_bio"
-# Training-domain corpora by slug (finetune loads these; priors adds "neutral").
-DOMAIN_DIRS = {"physics": DOMAIN_PHY_DIR, "biology": DOMAIN_BIO_DIR}
+# domain_preprocessing outputs — training-domain corpora by domain name
+# (finetune loads these; priors adds "neutral").
+DOMAIN_DIRS = {domain: DATA_DIR / f"domain_{domain}" for domain in DOMAINS}
 # Neutral control pool: german-commons docs OUTSIDE the pass-1 candidate set
 # (both domain TF-IDF sims below threshold) — same corpus and register as the
 # domain pools, no physics/biology content. See

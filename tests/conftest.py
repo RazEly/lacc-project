@@ -216,8 +216,8 @@ def mc_inputs():
             {
                 "text_id": tid,
                 "word_index_in_text": wi,
-                "s_prompt_phys": pphys[(tid, dom, wi)],
-                "s_prompt_bio": pbio[(tid, dom, wi)],
+                "s_prompt_physics": pphys[(tid, dom, wi)],
+                "s_prompt_biology": pbio[(tid, dom, wi)],
                 "s_prompt_neutral": base[(tid, dom, wi)] + rng.normal(0, 0.5),
             }
             for (tid, dom, wi) in words

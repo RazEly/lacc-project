@@ -19,7 +19,6 @@ import json
 import os
 
 import numpy as np
-import torch
 from datasets import concatenate_datasets, load_from_disk
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -29,9 +28,9 @@ from src.config import (
     ARTIFACTS_DIR,
     BIOLOGY_SEED,
     COMMONS_DIR,
-    DOMAIN_BIO_DIR,
+    DEVICE,
+    DOMAIN_DIRS,
     DOMAIN_OTHER_DIR,
-    DOMAIN_PHY_DIR,
     PHYSICS_SEED,
     POTEC_DIR,
 )
@@ -244,15 +243,14 @@ def _pass2_nli(texts, candidates_idx, pass1_labels):
     score clears the calibrated threshold; everything else falls back to "other".
     Returns ``(final_labels, nli_scores)`` over ALL docs (non-candidates "other"/0).
     """
-    device = 0 if torch.cuda.is_available() else -1
-    print(f"\nLoading NLI model (device={'cuda' if device == 0 else 'cpu'})...")
+    print(f"\nLoading NLI model (device={DEVICE})...")
 
     _model_name = "joeddav/xlm-roberta-large-xnli"
     classifier = pipeline(
         "zero-shot-classification",
         model=_model_name,
         tokenizer=XLMRobertaTokenizer.from_pretrained(_model_name),
-        device=device,
+        device=DEVICE,
     )
 
     nli_threshold = calibrate_nli_threshold(str(POTEC_DIR), classifier)
@@ -348,7 +346,10 @@ def _save_domain_datasets(physics_ds, biology_ds, other_ds):
     the priors. The neutral dir is always (re)written.
     """
     print("\nSaving datasets...")
-    for ds, path in [(physics_ds, DOMAIN_PHY_DIR), (biology_ds, DOMAIN_BIO_DIR)]:
+    for ds, path in [
+        (physics_ds, DOMAIN_DIRS["physics"]),
+        (biology_ds, DOMAIN_DIRS["biology"]),
+    ]:
         if path.exists():
             print(f"  skip {path} (exists — keeping the DAPT-trained version)")
         else:

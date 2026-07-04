@@ -5,10 +5,10 @@ reruns reload instead of re-scoring. One row per word (``WORD_KEY``), one
 column per source named ``<prefix>_<what>`` (prefix per model, e.g. ``gpt`` /
 ``llama``):
 
-    <p>_0                            baseline (un-adapted, checkpoint index 0)
-    <p>_<i>_phys / <p>_<i>_bio       domain-adapted checkpoint i>=1 (physics/biology)
-    <p>_prompt_phys / _bio           discipline-matched prompted baseline
-    <p>_prompt_neutral               off-domain scientific prompted control
+    <p>_0                              baseline (un-adapted, checkpoint index 0)
+    <p>_<i>_physics / <p>_<i>_biology  domain-adapted checkpoint i>=1
+    <p>_prompt_physics / _biology      discipline-matched prompted baseline
+    <p>_prompt_neutral                 off-domain scientific prompted control
 
 Each model fills its own columns; a model already present is reused while
 missing ones are computed and merged in (``merge_model``). ``build_wide`` folds
@@ -26,9 +26,9 @@ import pandas as pd
 from src.config import DOMAINS, SURPRISAL_CACHE_PATH, WORD_KEY
 
 # prompt_surp column (``s_prompt_*``) suffixes -> cache column ``<prefix>_prompt_*``.
-# phys/bio = reader-aligned domain prior; neutral = off-domain scientific prior
+# domains = reader-aligned domain prior; neutral = off-domain scientific prior
 # (register-matched control from the german-commons off-domain pool).
-_PROMPT_SUFFIXES = ["phys", "bio", "neutral"]
+_PROMPT_SUFFIXES = [*DOMAINS, "neutral"]
 
 
 def _prompt_map(prefix: str) -> dict[str, str]:
@@ -61,12 +61,12 @@ def build_wide(
     for idx in sorted(surp_versions["index"].unique()):
         if idx == base_index:
             continue
-        for domain, short in DOMAINS.items():
+        for domain in DOMAINS:
             sel = surp_versions[
                 (surp_versions["index"] == idx) & (surp_versions["domain"] == domain)
             ]
             wide = wide.merge(
-                _col(sel, f"{prefix}_{idx}_{short}"), on=WORD_KEY, how="outer"
+                _col(sel, f"{prefix}_{idx}_{domain}"), on=WORD_KEY, how="outer"
             )
 
     # keep only mapped prompt columns (drops any extra scratch columns callers merged in)
@@ -109,9 +109,9 @@ def bundle_from_cache(
             .reset_index(drop=True)
         )
 
-    prompt_surp = _col(f"{prefix}_prompt_phys", "s_prompt_phys")
+    prompt_surp = _col(f"{prefix}_prompt_physics", "s_prompt_physics")
     prompt_surp = prompt_surp.merge(
-        _col(f"{prefix}_prompt_bio", "s_prompt_bio"), on=WORD_KEY
+        _col(f"{prefix}_prompt_biology", "s_prompt_biology"), on=WORD_KEY
     )
     # neutral prior is optional: older caches predate it. Merge only if present.
     if f"{prefix}_prompt_neutral" in cache.columns:
@@ -124,8 +124,8 @@ def bundle_from_cache(
     frames = []
     for idx in [0, *indices]:
         step = 0 if idx == 0 else checkpoint_steps[idx - 1]
-        for domain, short in DOMAINS.items():
-            col = f"{prefix}_0" if idx == 0 else f"{prefix}_{idx}_{short}"
+        for domain in DOMAINS:
+            col = f"{prefix}_0" if idx == 0 else f"{prefix}_{idx}_{domain}"
             sv = _col(col, "surprisal")
             sv["index"], sv["domain"], sv["epoch"] = idx, domain, step
             frames.append(sv)

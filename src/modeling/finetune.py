@@ -1,7 +1,7 @@
 """Domain-adaptive continued pre-training (DAPT) of a causal LM (step 4).
 
 Continued next-token pre-training (Gururangan et al. 2020) of a German decoder LM
-on the ``german-commons`` domain splits (``data/domain_phy`` / ``data/domain_bio``),
+on the ``german-commons`` domain splits (``data/domain_physics`` / ``data/domain_biology``),
 disjoint from the PoTeC stimuli (no leakage). Physics and biology train
 independently on a shared *token* budget (``max_tokens``), so both see the same
 tokens at the same checkpoint index despite different corpus sizes. Saves
@@ -27,7 +27,7 @@ from transformers import (
     TrainingArguments,
 )
 
-from src.config import ARTIFACTS_DIR, DEFAULT_MODEL, DOMAIN_DIRS
+from src.config import ARTIFACTS_DIR, DEFAULT_MODEL, DEVICE, DOMAIN_DIRS
 from src.modeling import hub
 from src.modeling.lm import resize_with_mean_init
 
@@ -37,37 +37,12 @@ from src.modeling.lm import resize_with_mean_init
 EVAL_SUBSET_SIZE = 256
 
 
-def _lora_targets(model, override):
-    """Per-architecture LoRA target modules for DAPT.
-
-    Targets MLP as well as attention (PEFT's attention-only default is too thin
-    for domain adaptation). Embeddings are NEVER trained — every arch adapts
-    through LoRA weights only, so models of different sizes get the same
-    adaptation paradigm. ``override`` short-circuits the targets.
-    """
-    mt = model.config.model_type
-    if mt == "gpt2":
-        targets = ["c_attn", "c_fc", "c_proj"]  # attn qkv/out + mlp in/out
-    elif mt == "llama":
-        targets = [
-            "q_proj",
-            "k_proj",
-            "v_proj",
-            "o_proj",
-            "gate_proj",
-            "up_proj",
-            "down_proj",
-        ]
-    else:  # unknown arch: fall back to PEFT's per-arch defaults
-        targets = None
-    return override or targets
-
-
 def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text"):
     """Tokenize a text dataset and pack into fixed-size causal-LM blocks.
 
     A separator token is appended per document before packing so blocks carry a
-    document boundary (GPT-2's tokenizer adds none). ``labels`` = inputs.
+    document boundary (GPT-2's tokenizer adds none). Labels come from the
+    collator (inputs with pad==eos loss-masked, so separators aren't predicted).
     """
     sep_id = tokenizer.eos_token_id or tokenizer.sep_token_id
 
@@ -78,15 +53,19 @@ def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text"):
                 ids.append(sep_id)
         return out
 
-    ds = ds.map(tok, batched=True, remove_columns=ds.column_names)
+    ds = ds.map(
+        tok, batched=True, remove_columns=ds.column_names, num_proc=4, desc="tokenize"
+    )
 
     def group(batch):
         concat = sum(batch["input_ids"], [])
         n = (len(concat) // block_size) * block_size
         ids = [concat[i : i + block_size] for i in range(0, n, block_size)]
-        return {"input_ids": ids, "labels": [x[:] for x in ids]}
+        return {"input_ids": ids}
 
-    return ds.map(group, batched=True, remove_columns=ds.column_names)
+    return ds.map(
+        group, batched=True, remove_columns=ds.column_names, num_proc=4, desc="pack"
+    )
 
 
 def _prepare_splits(domain, tokenizer, block_size, val_frac, seed, max_docs):
@@ -248,7 +227,7 @@ def finetune_dapt(
     for every arch (LoRA paradigm only — no ``modules_to_save``), so differently
     sized models get identical adaptation capacity classes. Checkpoints store the
     adapter only; ``modeling.lm.load_causal_lm`` reattaches it. ``lora_target_modules``
-    defaults per-arch via ``_lora_targets`` (attention + MLP).
+    defaults to PEFT's ``"all-linear"`` (attention + MLP on every arch, head excluded).
 
     Budgeted by tokens: ``max_tokens`` (one step = block_size·batch_size·grad_accum
     tokens); the same ``max_tokens`` equalises two domains. ``None`` = one pass.
@@ -294,13 +273,13 @@ def finetune_dapt(
     # surprisal loader applies the same resize, so train and load weights match.
     resize_with_mean_init(model, tokenizer)
 
-    targets = _lora_targets(model, lora_target_modules)
     peft_cfg = LoraConfig(
         task_type=TaskType.CAUSAL_LM,
         r=lora_r,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        target_modules=targets,  # attn + MLP (None -> PEFT per-arch default)
+        # every nn.Linear/Conv1D except the LM head — attn + MLP on any arch
+        target_modules=lora_target_modules or "all-linear",
         bias="none",
     )
     model = get_peft_model(model, peft_cfg)
@@ -320,7 +299,7 @@ def finetune_dapt(
         max_steps = max(1, math.ceil(budget / tokens_per_step))
 
     # bf16 on Ampere+, else fp16; tf32 matmuls free on Ampere+.
-    use_cuda = torch.cuda.is_available()
+    use_cuda = DEVICE == "cuda"
     use_bf16 = use_cuda and torch.cuda.is_bf16_supported()
     args = TrainingArguments(
         output_dir=str(out_dir / "_hf"),
@@ -341,15 +320,18 @@ def finetune_dapt(
         eval_strategy="no",
         save_strategy="no",  # checkpointing handled by the callback
         logging_steps=50,
+        disable_tqdm=True,  # _StepProgress replaces the built-in bar
         report_to=[],
     )
-    collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
     trainer = Trainer(
         model=model,
         args=args,
-        data_collator=collator,
+        # mlm=False: labels = inputs with pad(=eos) loss-masked
+        data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
         train_dataset=split["train"],
         eval_dataset=split["test"],
+        processing_class=tokenizer,  # saved into each checkpoint dir
+        callbacks=[_StepProgress(domain)],
     )
 
     manifest: list[dict] = []
@@ -365,7 +347,6 @@ def finetune_dapt(
             checkpoint_steps=checkpoint_steps,
         )
     )
-    trainer.add_callback(_StepProgress(domain))
     trainer.train()
 
     df = pd.DataFrame(manifest)

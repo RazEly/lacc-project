@@ -16,10 +16,12 @@ def index_df(mc_inputs):
 
 def test_prep_models_builds_surprisal_columns(index_df):
     d = index_df
-    assert set(mc._SURP_COL.values()) <= set(d.columns)
+    assert {f"s_{m}" for m in mc.SURPRISAL_MODELS} <= set(d.columns)
     # reader-aligned = discipline-matched surprisal.
     physicist = d["reader_discipline_numeric"] == 1
-    np.testing.assert_allclose(d["s_aligned"], d["s_phys"].where(physicist, d["s_bio"]))
+    np.testing.assert_allclose(
+        d["s_aligned"], d["s_physics"].where(physicist, d["s_biology"])
+    )
     # continuous covariates present and finite.
     assert np.isfinite(d[["word_length", "log_word_freq", "word_position"]]).all().all()
     # factors sum-coded (−1 / +1); rows with non-positive RT dropped.
@@ -29,13 +31,13 @@ def test_prep_models_builds_surprisal_columns(index_df):
 
 def test_build_index_df_base_uses_index_zero(index_df):
     # at index 1 the physics-adapted surprisal differs from the index-0 baseline.
-    assert not np.allclose(index_df["s_base"], index_df["s_phys"])
+    assert not np.allclose(index_df["s_baseline"], index_df["s_physics"])
 
 
 def test_fit_returns_loglik(index_df):
-    res = mc._fit(index_df, "TFT", "s_base")
+    res = mc._fit(index_df, "TFT", "s_baseline")
     assert np.isfinite(mc._stat(res, "logLik"))
-    assert "s_base" in res.result_fit["term"].to_list()
+    assert "s_baseline" in res.result_fit["term"].to_list()
 
 
 def test_model_comparison_over_epochs_paper(mc_inputs):

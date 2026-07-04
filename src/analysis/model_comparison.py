@@ -26,16 +26,16 @@ from tqdm import tqdm
 
 from src.config import WORD_KEY
 
-# surprisal column per source; aligned / prompted are built in _prep_models.
-_SURP_COL = {
-    "baseline": "s_base",
-    "physics": "s_phys",
-    "biology": "s_bio",
-    "aligned": "s_aligned",
-    "prompted": "s_prompted",
-    "prompt_neutral": "s_prompt_neutral",
-}
-SURPRISAL_MODELS = tuple(_SURP_COL)
+# every source's surprisal column is ``s_<source>``; aligned / prompted are
+# built in _prep_models.
+SURPRISAL_MODELS = (
+    "baseline",
+    "physics",
+    "biology",
+    "aligned",
+    "prompted",
+    "prompt_neutral",
+)
 # sources whose surprisal doesn't depend on the DAPT checkpoint: fit once.
 _CKPT_INDEP = {"baseline", "prompted", "prompt_neutral"}
 # reader-conditioned arms compared to the baseline-surprisal model by Vuong test.
@@ -56,11 +56,13 @@ def _sum_code(flag: int):
 def _prep_models(df, measure):
     """One row per reader×word with every surprisal column + covariates.
 
-    ``df`` must carry ``s_base`` / ``s_phys`` / ``s_bio`` / ``s_prompt_*`` plus
-    the reading measures; ``s_prompt_neutral`` is optional (older caches
-    predate it).
+    ``df`` must carry ``s_baseline`` / ``s_physics`` / ``s_biology`` /
+    ``s_prompt_*`` plus the reading measures; ``s_prompt_neutral`` is optional
+    (older caches predate it).
     """
-    raw_cols = ["s_base", "s_phys", "s_bio", "s_prompt_phys", "s_prompt_bio"]
+    raw_cols = [
+        "s_baseline", "s_physics", "s_biology", "s_prompt_physics", "s_prompt_biology"
+    ]
     if "s_prompt_neutral" in df.columns:
         raw_cols.append("s_prompt_neutral")
 
@@ -82,9 +84,9 @@ def _prep_models(df, measure):
             # Position IN TEXT (paper: "Word position in text").
             word_position=lambda x: x["word_index_in_text"].astype(float),
             # reader-conditioned sources: pick the discipline-matched column.
-            s_aligned=lambda x: x["s_phys"].where(is_physicist(x), x["s_bio"]),
-            s_prompted=lambda x: x["s_prompt_phys"].where(
-                is_physicist(x), x["s_prompt_bio"]
+            s_aligned=lambda x: x["s_physics"].where(is_physicist(x), x["s_biology"]),
+            s_prompted=lambda x: x["s_prompt_physics"].where(
+                is_physicist(x), x["s_prompt_biology"]
             ),
             # terminology merges general + expert technical (paper).
             is_technical=lambda x: _sum_code(
@@ -148,8 +150,8 @@ def build_index_df(surp_versions, rt_df, prompt_surp, index, measure):
     """Reader×word frame with all surprisal columns + covariates at one checkpoint.
 
     Physics/biology checkpoints are paired by ``index`` (0 = baseline), not
-    ``epoch`` (step counts differ). Index 0 supplies ``s_base``. ``prompt_surp``
-    carries the checkpoint-independent prompted columns.
+    ``epoch`` (step counts differ). Index 0 supplies ``s_baseline``.
+    ``prompt_surp`` carries the checkpoint-independent prompted columns.
     """
     base_index = sorted(surp_versions["index"].unique())[0]
 
@@ -160,9 +162,9 @@ def build_index_df(surp_versions, rt_df, prompt_surp, index, measure):
         return sel[WORD_KEY + ["surprisal"]].rename(columns={"surprisal": name})
 
     surp = (
-        _surp(base_index, "physics", "s_base")
-        .merge(_surp(index, "physics", "s_phys"), on=WORD_KEY)
-        .merge(_surp(index, "biology", "s_bio"), on=WORD_KEY)
+        _surp(base_index, "physics", "s_baseline")
+        .merge(_surp(index, "physics", "s_physics"), on=WORD_KEY)
+        .merge(_surp(index, "biology", "s_biology"), on=WORD_KEY)
         .merge(prompt_surp, on=WORD_KEY)
     )
     merged = surp.merge(rt_df, on=WORD_KEY, how="inner")
@@ -180,7 +182,7 @@ def _coef(m, name, field):
 def _score_source(d, measure, name, index, epoch, ll_null):
     """Fit Eq. 2 + one surprisal main effect; LRT stats vs the shared
     no-surprisal null. Returns ``(results row, per-reader LL sums)``."""
-    col = _SURP_COL[name]
+    col = f"s_{name}"
     fit = _fit(d, measure, col)
     ll = _stat(fit, "logLik")
     dll = ll - ll_null
@@ -251,7 +253,7 @@ def model_comparison_over_epochs(
     d0 = build_index_df(surp_versions, rt_df, prompt_surp, all_indices[0], measure)
     dep = [m for m in models if m not in _CKPT_INDEP]
     # column check: neutral prompt absent from old caches.
-    indep = [m for m in models if m in _CKPT_INDEP and _SURP_COL[m] in d0.columns]
+    indep = [m for m in models if m in _CKPT_INDEP and f"s_{m}" in d0.columns]
 
     rows: list[dict] = []
     # one (model, index, epoch, per-reader LL sums) entry per fit; feeds both

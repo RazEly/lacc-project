@@ -1,15 +1,15 @@
-"""Pipeline driver — full end-to-end run.
+"""Pipeline driver — slim 3-model run.
 
-Per LM: one DAPT run per domain, then the mixed-model sweep for the reading-time
-measure (TFT). Every surprisal source (baseline, aligned, prompted, …) enters as
-a single plain main effect and is scored against the SAME shared no-surprisal
-baseline (paper Eq. 2/4/5): LL, ΔLL, χ², LRT p, AIC. A second per-LM table
-reports Vuong tests of the baseline-surprisal model against each
-reader-conditioned arm (aligned per checkpoint, prompted, neutral prompt).
-Afterwards: adaptation diagnostics (perplexity + terminology-surprisal
-trajectories).
+Same phases as :mod:`src.main`, but the mixed-model sweep fits only three
+arms: the no-surprisal baseline (Eq. 2, always the shared null), the
+baseline-surprisal model (un-adapted step-0 surprisal, Eq. 4), and the
+prompted model (baseline weights + discipline-matched prior passage). The
+reader-aligned (per-checkpoint DAPT) and neutral-prompt arms are dropped.
+Every surprisal source still enters as a single plain main effect scored
+against the SAME shared no-surprisal baseline (LL, ΔLL, χ², LRT p, AIC); the
+Vuong table reports the baseline-surprisal model vs the prompted arm.
 
-    python -m src.main
+    python -m src.main_slim3
 """
 
 from __future__ import annotations
@@ -33,7 +33,8 @@ MEASURES = ("TFT",)
 # delete the artifacts/ run dirs + surprisal cache by hand to force a retrain
 DAPT_MAX_STEPS = 4_096
 DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4096]
-SLIM_MODELS = ("baseline", "prompted", "prompt_neutral", "aligned")
+# Slim run: baseline-surprisal + prompted only (both checkpoint-independent).
+SLIM_MODELS = ("baseline", "prompted")
 # every checkpoint: indices 1..N pair to DAPT_CHECKPOINT_STEPS (0 = baseline).
 SLIM_INDICES = list(range(1, len(DAPT_CHECKPOINT_STEPS) + 1))
 
@@ -144,13 +145,13 @@ def fit_model(
     slug = bundle["slug"]
     print(f"\n=== fit: {slug} / {measure} ===")
 
-    # drop the neutral-prompt arm when the cache lacks it (older surprisal.csv).
-    has_neutral = "s_prompt_neutral" in bundle["prompt_surp"].columns
-    models = tuple(m for m in SLIM_MODELS if has_neutral or m != "prompt_neutral")
+    # SLIM_MODELS = baseline-surprisal + prompted; both checkpoint-independent,
+    # so SLIM_INDICES is inert for the fit but kept for API compatibility.
+    models = SLIM_MODELS
 
     # Model comparison — every source scored against the shared no-surprisal
-    # baseline (LRT + AIC), plus Vuong tests of the baseline-surprisal model
-    # vs the reader-conditioned arms. All checkpoints.
+    # baseline (LRT + AIC), plus the Vuong test of the baseline-surprisal model
+    # vs the prompted arm.
     cmp, vuong, reader_ll = mc.model_comparison_over_epochs(
         bundle["surp_versions"],
         rm,
@@ -163,7 +164,7 @@ def fit_model(
         df.insert(0, "model_lm", slug)
         df.insert(1, "measure", measure)
     print(cmp.to_string(index=False))
-    print("\nVuong — baseline+surprisal vs reader-conditioned arms:")
+    print("\nVuong — baseline+surprisal vs prompted:")
     print(vuong.to_string(index=False))
     return cmp, vuong, reader_ll
 
@@ -218,10 +219,10 @@ def main() -> None:
             all_vuong.append(vuong)
 
     results = pd.concat(all_cmp, ignore_index=True)
-    results_path = config.PROJECT_ROOT / "results_slim.csv"
+    results_path = config.PROJECT_ROOT / "results_slim3.csv"
     results.to_csv(results_path, index=False)
     vuong = pd.concat(all_vuong, ignore_index=True)
-    vuong_path = config.PROJECT_ROOT / "results_vuong.csv"
+    vuong_path = config.PROJECT_ROOT / "results_slim3_vuong.csv"
     vuong.to_csv(vuong_path, index=False)
     print(f"\n  wrote {results_path.name}, {vuong_path.name}")
 

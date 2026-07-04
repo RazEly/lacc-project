@@ -11,14 +11,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import torch
+from peft import PeftConfig, PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from src.config import DEFAULT_MODEL
+from src.config import DEFAULT_MODEL, DEVICE
 
 
 def _load_tokenizer(name_or_path: str):
-    # add_prefix_space (BPE/german-gpt2): first word tokenizes like a mid-sentence
-    # word. SentencePiece (Llama) adds it itself and may reject the kwarg.
     try:
         return AutoTokenizer.from_pretrained(name_or_path, add_prefix_space=True)
     except (TypeError, ValueError):
@@ -56,13 +55,12 @@ def load_causal_lm(name_or_path: str = DEFAULT_MODEL):
     """
     kwargs = {}
     # fp16 on GPU: halves VRAM, inference-safe (log_softmax upcasts via .float()).
-    if torch.cuda.is_available():
-        kwargs["torch_dtype"] = torch.float16
+    if DEVICE == "cuda":
+        kwargs["dtype"] = torch.float16
 
     if (Path(name_or_path) / "adapter_config.json").is_file():
         # LoRA checkpoint: load the adapter's base model, match embedding size,
         # then merge the adapter so the forward needs no PEFT machinery.
-        from peft import PeftConfig, PeftModel
 
         base = PeftConfig.from_pretrained(name_or_path).base_model_name_or_path
         tokenizer = _load_tokenizer(base)
@@ -72,13 +70,7 @@ def load_causal_lm(name_or_path: str = DEFAULT_MODEL):
     else:
         tokenizer = _load_tokenizer(name_or_path)
         model = AutoModelForCausalLM.from_pretrained(name_or_path, **kwargs)
-        # Same resize as the adapter branch: german-gpt2's eos id sits one past its
-        # embedding rows, and the document-boundary separator (surprisal.score_words)
-        # feeds that id in as CONTEXT — an un-resized base model would index out of
-        # bounds. No-op for Llama (eos already in vocab).
         resize_with_mean_init(model, tokenizer)
     model.eval()
-    # from_pretrained leaves the model on CPU; move to GPU once here.
-    if torch.cuda.is_available():
-        model.to("cuda")
+    model.to(DEVICE)
     return model, tokenizer
