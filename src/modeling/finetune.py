@@ -15,21 +15,21 @@ from pathlib import Path
 
 import pandas as pd
 import torch
+from adapters import AdapterTrainer, LoRAConfig
+from adapters import init as adapters_init
 from datasets import load_from_disk
-from peft import LoraConfig, TaskType, get_peft_model
 from tqdm.auto import tqdm
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     DataCollatorForLanguageModeling,
-    Trainer,
     TrainerCallback,
     TrainingArguments,
 )
 
 from src.config import ARTIFACTS_DIR, DEFAULT_MODEL, DEVICE, DOMAIN_DIRS
 from src.modeling import hub
-from src.modeling.lm import resize_with_mean_init
+from src.modeling.lm import ADAPTER_NAME, resize_with_mean_init
 
 # Blocks used for the checkpoint perplexity readout. The held-out split is huge
 # (val_frac of a multi-M-token corpus); a fixed subset gives a stable perplexity
@@ -219,15 +219,15 @@ def finetune_dapt(
     lora_r: int = 32,
     lora_alpha: int = 64,
     lora_dropout: float = 0.05,
-    lora_target_modules=None,
 ) -> pd.DataFrame:
     """DAPT-fine-tune ``base_model`` on one domain; return a checkpoint manifest.
 
-    LoRA continued causal pre-training (the only method). Embeddings stay frozen
-    for every arch (LoRA paradigm only — no ``modules_to_save``), so differently
-    sized models get identical adaptation capacity classes. Checkpoints store the
-    adapter only; ``modeling.lm.load_causal_lm`` reattaches it. ``lora_target_modules``
-    defaults to PEFT's ``"all-linear"`` (attention + MLP on every arch, head excluded).
+    LoRA continued causal pre-training (the only method), via the AdapterHub
+    ``adapters`` library. Embeddings stay frozen for every arch (LoRA paradigm
+    only), so differently sized models get identical adaptation capacity classes.
+    Checkpoints store the adapter only; ``modeling.lm.load_causal_lm`` reattaches
+    it. LoRA is injected into attention (q, k, v) and both MLP projections on
+    every arch (head and embeddings excluded).
 
     Budgeted by tokens: ``max_tokens`` (one step = block_size·batch_size·grad_accum
     tokens); the same ``max_tokens`` equalises two domains. ``None`` = one pass.
@@ -273,17 +273,20 @@ def finetune_dapt(
     # surprisal loader applies the same resize, so train and load weights match.
     resize_with_mean_init(model, tokenizer)
 
-    peft_cfg = LoraConfig(
-        task_type=TaskType.CAUSAL_LM,
+    adapters_init(model)
+    lora_cfg = LoRAConfig(
         r=lora_r,
-        lora_alpha=lora_alpha,
-        lora_dropout=lora_dropout,
-        # every nn.Linear/Conv1D except the LM head — attn + MLP on any arch
-        target_modules=lora_target_modules or "all-linear",
-        bias="none",
+        alpha=lora_alpha,
+        dropout=lora_dropout,
+        # attn (q, k, v) + both MLP projections on any arch; the attention output
+        # projection is not adaptable in `adapters`, unlike PEFT's "all-linear".
+        attn_matrices=["q", "k", "v"],
+        intermediate_lora=True,
+        output_lora=True,
     )
-    model = get_peft_model(model, peft_cfg)
-    model.print_trainable_parameters()
+    model.add_adapter(ADAPTER_NAME, config=lora_cfg)
+    model.train_adapter(ADAPTER_NAME)  # freeze everything but the adapter
+    print(model.adapter_summary())
 
     split, words_per_epoch = _prepare_splits(
         domain, tokenizer, block_size, val_frac, seed, max_docs
@@ -323,7 +326,8 @@ def finetune_dapt(
         disable_tqdm=True,  # _StepProgress replaces the built-in bar
         report_to=[],
     )
-    trainer = Trainer(
+    # AdapterTrainer: save_model writes the active adapter only, not full weights.
+    trainer = AdapterTrainer(
         model=model,
         args=args,
         # mlm=False: labels = inputs with pad(=eos) loss-masked

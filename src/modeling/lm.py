@@ -8,13 +8,18 @@ dependency arrow points features -> modeling only.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import torch
-from peft import PeftConfig, PeftModel
+from adapters import init as adapters_init
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.config import DEFAULT_MODEL, DEVICE
+
+# Name of the single LoRA adapter trained by ``finetune``; also the checkpoint
+# subdirectory the ``adapters`` library saves it under.
+ADAPTER_NAME = "dapt"
 
 
 def _load_tokenizer(name_or_path: str):
@@ -49,24 +54,29 @@ def resize_with_mean_init(model, tokenizer) -> bool:
 def load_causal_lm(name_or_path: str = DEFAULT_MODEL):
     """Load a causal LM + tokenizer for surprisal.
 
-    Accepts an HF model id, a full fine-tuned checkpoint, or a LoRA (PEFT) adapter
-    checkpoint — the latter is detected by ``adapter_config.json`` and folded onto
-    its base model so callers get a plain merged model either way.
+    Accepts an HF model id, a full fine-tuned checkpoint, or a LoRA adapter
+    checkpoint (``adapters`` library) — the latter is detected by its
+    ``ADAPTER_NAME`` subdirectory and merged onto its base model so callers get
+    a plain model either way.
     """
     kwargs = {}
     # fp16 on GPU: halves VRAM, inference-safe (log_softmax upcasts via .float()).
     if DEVICE == "cuda":
         kwargs["dtype"] = torch.float16
 
-    if (Path(name_or_path) / "adapter_config.json").is_file():
+    adapter_dir = Path(name_or_path) / ADAPTER_NAME
+    if (adapter_dir / "adapter_config.json").is_file():
         # LoRA checkpoint: load the adapter's base model, match embedding size,
-        # then merge the adapter so the forward needs no PEFT machinery.
-
-        base = PeftConfig.from_pretrained(name_or_path).base_model_name_or_path
+        # then merge the adapter so the forward carries no LoRA overhead.
+        base = json.loads((adapter_dir / "adapter_config.json").read_text())[
+            "model_name"
+        ]
         tokenizer = _load_tokenizer(base)
         model = AutoModelForCausalLM.from_pretrained(base, **kwargs)
         resize_with_mean_init(model, tokenizer)
-        model = PeftModel.from_pretrained(model, name_or_path).merge_and_unload()
+        adapters_init(model)
+        model.load_adapter(str(adapter_dir), set_active=True)
+        model.merge_adapter(ADAPTER_NAME)
     else:
         tokenizer = _load_tokenizer(name_or_path)
         model = AutoModelForCausalLM.from_pretrained(name_or_path, **kwargs)
