@@ -29,34 +29,9 @@ COMMONS_DIR = DATA_DIR / "commons_scientific"
 # labels, cache-column suffixes, run dirs, data dirs — no shorthand aliases.
 DOMAINS = ("physics", "biology")
 
-# TF-IDF domain seeds: keyword bags, not prose — prose shares too many char
-# n-grams with any German text, collapsing the similarity spread. Domain-term
-# bags avoid that. Consumed by acquire.domain_preprocessing.domain_sims.
-PHYSICS_SEED = """
-Physik Quantenmechanik Thermodynamik Elektrodynamik Elektrochemie
-Relativitätstheorie Optik Kernphysik Teilchenphysik Feldtheorie
-Wellenmechanik Wellenlänge Frequenz Schwingung Strahlung Spektroskopie
-Energie Masse Kraft Impuls Beschleunigung Geschwindigkeit Schwerkraft
-Druck Temperatur Entropie Wärme Wärmeleitung Wärmekapazität
-Elektron Proton Neutron Photon Atom Molekül Ion Plasma
-Spannung Stromstärke Widerstand Magnetfeld Elektrisches Feld
-Potential Welle Interferenz Beugung Brechung Reflexion
-Planck Boltzmann Schrödinger Maxwell Newton Einstein Heisenberg Ohm
-Joule Watt Volt Ampere Tesla Hertz Kelvin Pascal
-"""
-
-BIOLOGY_SEED = """
-Biologie Zelle Organismus Evolution Genetik Erbgut
-DNS RNS Protein Chromosom Gen Allel Mutation Genotyp Phänotyp
-Art Taxonomie Ökologie Ökosystem Population Habitat Biotop
-Photosynthese Stoffwechsel Zellatmung Glykolyse Enzym Rezeptor
-Neuron Synapse Gehirn Nervensystem Immunsystem Antikörper
-Mitose Meiose Fortpflanzung Embryo Zygote Gamete
-Membran Zellkern Zytoplasma Ribosom Mitochondrium Chloroplast
-Virus Bakterium Pilz Pflanze Tier Säugetier Wirbeltier
-Darwin Mendel Koch Pasteur Virchow Haeckel
-ATP Glucose Aminosäure Fettsäure Nukleotid
-"""
+# TF-IDF domain seeds are no longer hardcoded here: the pass-1 seed bags are
+# built at runtime from the PoTeC-stimuli domain terms (potec_domain_terms.md)
+# by acquire.domain_preprocessing.load_domain_seeds.
 
 # domain_preprocessing outputs — training-domain corpora by domain name
 # (finetune loads these; priors adds "neutral").
