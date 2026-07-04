@@ -17,7 +17,6 @@ import pandas as pd
 import torch
 from datasets import load_from_disk
 from peft import LoraConfig, TaskType, get_peft_model
-from tqdm.auto import tqdm
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -182,23 +181,6 @@ class _CheckpointSchedule(TrainerCallback):
         )
 
 
-class _StepProgress(TrainerCallback):
-    """tqdm bar over training steps (the run is budgeted by tokens, not epochs)."""
-
-    def __init__(self, domain):
-        self.domain = domain
-        self.bar = None
-
-    def on_train_begin(self, args, state, control, **kwargs):
-        self.bar = tqdm(total=state.max_steps, desc=f"DAPT {self.domain}", unit="step")
-
-    def on_step_end(self, args, state, control, **kwargs):
-        self.bar.update(1)
-
-    def on_train_end(self, args, state, control, **kwargs):
-        self.bar.close()
-
-
 def finetune_dapt(
     domain: str,
     base_model: str = DEFAULT_MODEL,
@@ -319,10 +301,10 @@ def finetune_dapt(
         # need (perplexity on a fixed subset), avoiding redundant full-split passes.
         eval_strategy="no",
         save_strategy="no",  # checkpointing handled by the callback
-        logging_steps=50,
-        disable_tqdm=True,  # _StepProgress replaces the built-in bar
-        report_to=[],
+        logging_strategy="no",
+        report_to=[],  # built-in tqdm bar shows step progress
     )
+    print(f"  [{domain}] training {max_steps} steps...")
     trainer = Trainer(
         model=model,
         args=args,
@@ -331,7 +313,6 @@ def finetune_dapt(
         train_dataset=split["train"],
         eval_dataset=split["test"],
         processing_class=tokenizer,  # saved into each checkpoint dir
-        callbacks=[_StepProgress(domain)],
     )
 
     manifest: list[dict] = []

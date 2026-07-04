@@ -29,10 +29,10 @@ from src.modeling import finetune as ft
 from src.modeling import lm
 
 # reading-time measure (TFT); the effect is expected on the late measure.
-MEASURES = ("TFT",)
+MEASURE = "TFT"
 # delete the artifacts/ run dirs + surprisal cache by hand to force a retrain
-DAPT_MAX_STEPS = 4_096
-DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4096]
+DAPT_MAX_STEPS = 256
+DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256]
 SLIM_MODELS = ("baseline", "prompted", "prompt_neutral", "aligned")
 # every checkpoint: indices 1..N pair to DAPT_CHECKPOINT_STEPS (0 = baseline).
 SLIM_INDICES = list(range(1, len(DAPT_CHECKPOINT_STEPS) + 1))
@@ -67,7 +67,7 @@ DAPT_LEARNING_RATE = {
     "llammlein-1b": 1e-4,
 }
 # Context budget (tokens) shared by every prompt condition.
-PRIOR_MAX_TOKENS = 64
+PRIOR_MAX_TOKENS = 128
 
 # Example sentence for the fig-2 surprisal walk-through: (text_id, sent_index).
 # Baseline GPT-2 surprisal + Δ over checkpoints/prompts on one PoTeC sentence.
@@ -236,14 +236,13 @@ def main() -> None:
     # Phase 2 — mixed models per measure (early + late) per LM.
     all_cmp, all_vuong = [], []
     rm_by_measure = {}
-    for measure in MEASURES:
-        rm = rt.clean_reading_times(rm_raw, measure)
-        rm_by_measure[measure] = rm
-        print(f"\nStep 5 — {measure}: cleaned={len(rm)} ({len(rm) / len(rm_raw):.1%})")
-        for b in bundles:
-            cmp, vuong, _ = fit_model(b, rm, measure)
-            all_cmp.append(cmp)
-            all_vuong.append(vuong)
+    rm = rt.clean_reading_times(rm_raw, MEASURE)
+    rm_by_measure[MEASURE] = rm
+    print(f"\nStep 5 — {MEASURE}: cleaned={len(rm)} ({len(rm) / len(rm_raw):.1%})")
+    for b in bundles:
+        cmp, vuong, _ = fit_model(b, rm, MEASURE)
+        all_cmp.append(cmp)
+        all_vuong.append(vuong)
 
     results = pd.concat(all_cmp, ignore_index=True)
     results_path = config.PROJECT_ROOT / "results_slim.csv"
@@ -257,10 +256,9 @@ def main() -> None:
     # (baseline of FIGURE_LM, first measure only).
     print("\nStep 5b — fit figures -> figures/")
     viz.delta_ll_curves(results)
-    measure = MEASURES[0]
     baseline_surp = fig_lm["surp_versions"].query("index == 0")
     viz.rt_vs_surprisal(
-        rm_by_measure[measure], baseline_surp, measure=measure, slug=fig_lm["slug"]
+        rm_by_measure[MEASURE], baseline_surp, measure=MEASURE, slug=fig_lm["slug"]
     )
 
 
