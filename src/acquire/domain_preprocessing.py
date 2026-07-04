@@ -2,7 +2,8 @@
 
 Two-pass weak labelling:
   pass 1 — TF-IDF char n-gram similarity against physics/biology term bags built
-           from the PoTeC stimuli domain terms (``potec_domain_terms.md``).
+           from the PoTeC-stimuli domain seed terms (``config.PHYSICS_SEED_TERMS``
+           / ``config.BIOLOGY_SEED_TERMS``).
   pass 2 — zero-shot NLI (XLM-RoBERTa); per domain, keep the top NLI-ranked docs
            whose label agrees with pass 1 until their token count hits a tuned
            budget (``DOMAIN_TOKEN_BUDGET``) — no fixed score threshold.
@@ -16,9 +17,7 @@ Run from the project root:
     python -m src.acquire.domain_preprocessing
 """
 
-import glob
 import json
-import os
 
 import numpy as np
 from datasets import concatenate_datasets, load_from_disk
@@ -28,24 +27,34 @@ from transformers import XLMRobertaTokenizer, pipeline
 
 from src.config import (
     ARTIFACTS_DIR,
+    BIOLOGY_SEED_TERMS,
     COMMONS_DIR,
     DEVICE,
     DOMAIN_DIRS,
     DOMAIN_OTHER_DIR,
-    POTEC_DIR,
-    PROJECT_ROOT,
+    PHYSICS_SEED_TERMS,
 )
-from src.features.potec import read_potec
 
 # When this exists, labelling is skipped and datasets are rebuilt from it.
 LABEL_IDS_PATH = ARTIFACTS_DIR / "domain_label_ids.json"
 
-# PoTeC-stimuli domain terms — source of the pass-1 TF-IDF seed bags.
-DOMAIN_TERMS_PATH = PROJECT_ROOT / "potec_domain_terms.md"
-
 TEXT_CHARS = 2048
 BATCH_SIZE = 128
 TFIDF_THRESHOLD = 0.05
+
+# ── document quality gate ─────────────────────────────────────────────────────
+# Applied to the WHOLE corpus before labelling, so physics / biology / neutral
+# are all gated identically. This is the ONLY OCR gate in the pipeline —
+# download_commons saves the corpus unfiltered.
+#   • OCR score: present → must clear MIN_OCR_SCORE; missing → kept for
+#     born-digital sources (Wikibooks etc.), dropped for OCR_REQUIRED_SOURCES
+#     where a missing score means unassessed scan quality.
+#   • Length: drop stubs / redirect pages and cap huge docs so no single doc
+#     dominates the token budget.
+MIN_OCR_SCORE = 90.0  # ocr_score is 0-100
+OCR_REQUIRED_SOURCES = {"openalex"}  # OCR'd corpora: no score → drop
+MIN_DOC_TOKENS = 128
+MAX_DOC_TOKENS = 40_000
 
 # Pass-2 token budget per domain: keep the top NLI-agreeing docs (ranked by NLI
 # score) until their num_tokens sum reaches this. Replaces a fixed NLI score
@@ -73,8 +82,8 @@ NLI_LABELS = {
 def load_commons():
     """Load the saved german-commons scientific corpus as a single Dataset.
 
-    OpenAlex OCR gating already happened at download time (acquire.download_commons),
-    so the saved corpus is clean — no re-filtering here.
+    Raw load only; the quality gate is applied separately
+    (``apply_quality_filter``) so every downstream pool shares it.
     """
     ds = load_from_disk(str(COMMONS_DIR))
     if not hasattr(ds, "column_names") or isinstance(ds.column_names, dict):
@@ -82,25 +91,46 @@ def load_commons():
     return ds
 
 
-def load_domain_seeds(path=DOMAIN_TERMS_PATH):
-    """Build the physics/biology TF-IDF seed bags from ``potec_domain_terms.md``.
+def apply_quality_filter(ds):
+    """Drop low-OCR / length-outlier docs before labelling.
 
-    Collects the bulleted terms under the ``## Physics`` / ``## Biology`` headers
-    (expert + general technical terms flagged in the PoTeC stimuli) into a
-    space-joined term bag per domain. Keyword bag, not prose — prose shares too
-    many char n-grams with any German text and collapses the similarity spread.
-    Returns ``(physics_seed, biology_seed)``.
+    Keeps a doc when its OCR score clears ``MIN_OCR_SCORE`` (missing score: kept
+    for born-digital sources, dropped for ``OCR_REQUIRED_SOURCES``) and its token
+    count sits in ``[MIN_DOC_TOKENS, MAX_DOC_TOKENS]``.
     """
-    seeds = {"physics": [], "biology": []}
-    current = None
-    for line in path.read_text().splitlines():
-        s = line.strip()
-        if s.startswith("## "):  # domain header; "### " subheaders don't match
-            name = s[3:].strip().lower()
-            current = name if name in seeds else None
-        elif current and s.startswith("- "):
-            seeds[current].append(s[2:].strip())
-    return " ".join(seeds["physics"]), " ".join(seeds["biology"])
+
+    def _ocr_ok(src, ocr):
+        if ocr is None or ocr != ocr:  # missing / NaN
+            return src not in OCR_REQUIRED_SOURCES
+        return float(ocr) >= MIN_OCR_SCORE
+
+    def _keep(src, ocr, ntok):
+        ntok = ntok or 0
+        return _ocr_ok(src, ocr) and MIN_DOC_TOKENS <= ntok <= MAX_DOC_TOKENS
+
+    idx = [
+        i
+        for i, (src, ocr, ntok) in enumerate(
+            zip(ds["source"], ds["ocr_score"], ds["num_tokens"])
+        )
+        if _keep(src, ocr, ntok)
+    ]
+    kept = ds.select(idx)
+    print(
+        f"\nQuality gate: {len(kept):,}/{len(ds):,} docs kept "
+        f"({len(ds) - len(kept):,} dropped: OCR/length)."
+    )
+    return kept
+
+
+def load_domain_seeds():
+    """Space-joined physics/biology TF-IDF seed bags from the config term lists.
+
+    The seed terms live in ``src.config`` (``PHYSICS_SEED_TERMS`` /
+    ``BIOLOGY_SEED_TERMS``); this joins each into the keyword bag TF-IDF scores
+    against. Returns ``(physics_seed, biology_seed)``.
+    """
+    return " ".join(PHYSICS_SEED_TERMS), " ".join(BIOLOGY_SEED_TERMS)
 
 
 def domain_sims(texts, physics_seed, biology_seed):
@@ -284,7 +314,7 @@ def main():
         _save_domain_datasets(*cached)
         return
 
-    ds = load_commons()
+    ds = apply_quality_filter(load_commons())
     texts = [t[:TEXT_CHARS] if t else "" for t in ds["text"]]
 
     physics_seed, biology_seed = load_domain_seeds()

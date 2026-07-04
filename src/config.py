@@ -21,17 +21,95 @@ DATA_DIR = PROJECT_ROOT / "data"
 # eyetracking) are derived where they're read — acquire.download_potec, features.potec.
 POTEC_DIR = DATA_DIR / "potec"
 
-# german-commons (fine-tuning corpus). The HF repo/config id and the OpenAlex
-# OCR gate live in acquire.download_commons (its only reader).
+# german-commons (fine-tuning corpus). The HF repo/config id lives in
+# acquire.download_commons; the quality gate (OCR score, length) is applied in
+# acquire.domain_preprocessing.apply_quality_filter.
 COMMONS_DIR = DATA_DIR / "commons_scientific"
 
 # The two DAPT domains. The full name is the ONLY spelling anywhere — dataset
 # labels, cache-column suffixes, run dirs, data dirs — no shorthand aliases.
 DOMAINS = ("physics", "biology")
 
-# TF-IDF domain seeds are no longer hardcoded here: the pass-1 seed bags are
-# built at runtime from the PoTeC-stimuli domain terms (potec_domain_terms.md)
-# by acquire.domain_preprocessing.load_domain_seeds.
+# TF-IDF domain seed terms — the pass-1 labelling seed bags. These are the
+# technical terms flagged in the PoTeC stimuli ``word_features`` annotations
+# (expert ∪ general technical terms), as unique surface forms per text domain. A
+# keyword bag, not prose — prose shares too many char n-grams with any German
+# text and collapses the TF-IDF similarity spread. Consumed by
+# acquire.domain_preprocessing.load_domain_seeds.
+PHYSICS_SEED_TERMS = (
+    # expert technical terms
+    "Anregungszustände", "Bandlücke", "Brechzahlen", "dielektrische",
+    "dielektrischen", "Dielektrizitätskonstante", "Dopplerverschiebung",
+    "Elektronenparabel", "Emissionslinien", "emittierten", "Energieparabel",
+    "Hadronen", "holografischen", "Hologramm", "Hologrammbild",
+    "Hologrammplatte", "Hyperfeinstrukturenaufspaltungen", "Impulserhaltung",
+    "Interferenzstrukturen", "Interferometrie", "Ionenquelle", "kinetische",
+    "kinetischen", "Leitungsband", "Löcherparabel", "Lorentzkraft",
+    "Mößbauerspektroskopie", "Parität", "Phasen", "phasenrichtig",
+    "Phasenverschiebungen", "Phonon", "Photon", "Photonen", "Photonenabsorption",
+    "Photonenenergie", "Photonenenergien", "Photonenimpuls", "Photonische",
+    "Photons", "Quarkmodell", "Rekonstruktionswelle", "Spin", "Standardbänder",
+    "Valenzband", "Valenzbandes", "Wellenamplitude", "Wellenvektor", "Zyklotron",
+    # general technical terms
+    "Ablenkfeld", "absorbieren", "absorbiertem", "Absorption",
+    "Absorptionswahrscheinlichkeit", "Abszisse", "Anregung", "Anregungsenergie",
+    "Atom", "Atome", "Beschleunigungsspannung", "effektive", "effektiven",
+    "elektrisches", "Elektromagneten", "Elektron", "Elektronen", "Elektrons",
+    "elementaren", "elementareren", "Elementarteilchen", "Emission",
+    "emittieren", "emittiertem", "Energie", "Energiemaximum", "Energieminimum",
+    "Feld", "freie", "Frequenz", "geladenen", "Geschwindigkeit",
+    "hochenergetischen", "Hochfrequenz", "Hochfrequenzspannung", "Impuls",
+    "Ionen", "Kristalle", "Kristalles", "Kristallgitter", "Kristalls",
+    "Ladungen", "Lichtwelle", "Magnetfeld", "Magnetfeldes", "magnetische",
+    "magnetisches", "Masse", "Medien", "Mikrozylinder", "Moment", "negativ",
+    "negative", "neutrales", "Neutronen", "Neutrons", "Nukleonen", "optischen",
+    "Ordinate", "Ordnungsschemas", "Parabeln", "Periode", "periodische",
+    "periodischen", "Polarität", "Polen", "positiven", "Protonen", "Radien",
+    "Radius", "Referenzwelle", "reflektiert", "reflektierten",
+    "Reflexionsvermögen", "Rückstoß", "Rückstoßenergie", "Rückstoßimpuls",
+    "Signalwelle", "Streuung", "Teilchen", "thermische", "transparente",
+    "Übergänge", "Überlagerung", "Umlaufszeit", "Vakuumkammer", "Wellen",
+    "Wellenlänge", "x-y-Ebene", "Zentripetalkraft", "z-Richtung",
+    "zylindrischen", "π-vielfaches",
+)
+BIOLOGY_SEED_TERMS = (
+    # expert technical terms
+    "Agarose", "Agarose-Sieb", "Aktin", "Aktinfilamente", "Aktinfilaments",
+    "Amyloid", "amyloiden", "amyloider", "Angiospermenblatt", "ATP",
+    "ATP-Bindungsstelle", "Autokatalyse", "Banden", "bipolares",
+    "Calmodulinkette", "Cellulose-Mikrofibrillen", "Cellulose-Synthasekomplexe",
+    "Chloroplast", "Diffusionskoeffizienten", "Dimer", "endogenen",
+    "Endonuklease-Schnitte", "Ethidiumbromid", "Ethidiumbromids", "Eukaryoten",
+    "Filament", "Gelelektrophorese", "homologe", "homologen", "Hydrolyse", "II",
+    "infektiöse", "Kongorot", "kontraktilen", "Ligation", "Matrix", "Matrize",
+    "membranständige", "Mikrotubuli", "Motordomäne", "Myosin", "Myosine",
+    "Nitrationen", "Parenchymzelle", "Phosphatreste", "Polymer",
+    "Polymerasekettenreaktion-Produkte", "Primärstruktur", "Prion",
+    "Prionenform", "Prioneninfektion", "Prionenprotein", "Prions",
+    "Proteinaggregate", "Quartärstrukturen", "RecA", "RecA-Protein",
+    "Rekombinationsreparatur", "rekombinatorischen", "Replikationsgabel",
+    "Replikationskomplex", "Replikationslücke", "Schwesterchromatide",
+    "Vesikel", "VI", "Wildtypprotein", "β-D-Glucose", "β-Faltblattstrukturen",
+    # general technical terms
+    "Apparat", "Auflösung", "Basen", "binden", "Biosphäre", "Calciumionen",
+    "Cellulose", "chlorophyllfreien", "chlorophyllhaltige", "Chromosom",
+    "codierenden", "Deletion", "diffundieren", "DNA-Fragmente", "DNA-Schaden",
+    "DNA-Stelle", "Doppelbrechung", "Doppelhelices", "Doppelhelix", "einlagern",
+    "Einzelstrang-DNA-Enden", "elektrischen", "+Ende", "Energie", "Enzyme",
+    "Expression", "extrazellulär", "extrazelluläre", "Fadenform", "Fasern",
+    "Feldes", "Gen", "Gens", "Glucose", "Hefen", "heterogen", "induzieren",
+    "infektiöses", "Kette", "Ketten", "Kohlenhydrat", "komplementären",
+    "Komplex", "Komplexes", "Konformationsänderung", "Kontraktionsmechanismus",
+    "Ladung", "lineares", "Lösung", "Medium", "Membran", "mineralischer",
+    "Mineralstoffe", "Mineralstoffgehalt", "Minuspol", "Molekül",
+    "Motormoleküle", "Motorproteine", "Muskelzellen", "Nährstoffe", "negativ",
+    "negative", "Nitrat", "Nitrataufnahme", "organisches", "Pflanzenkörper",
+    "Pflanzenzellen", "Phosphat", "Phosphataufnahme", "Phosphatverarmungszonen",
+    "Phosphatversorgung", "Photosynthese", "Pluspol", "polarisiertem",
+    "Protein", "Proteine", "Proteinen", "Proteins", "Regulation", "Saccharose",
+    "Sequenzen", "Speicherorganen", "Stärke", "synthetisiert", "Tochterstrang",
+    "transpirierende", "Zelle", "Zellen", "zellulären",
+)
 
 # domain_preprocessing outputs — training-domain corpora by domain name
 # (finetune loads these; priors adds "neutral").
