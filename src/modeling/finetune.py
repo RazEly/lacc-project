@@ -52,8 +52,8 @@ MODELS = {
 # Budget + checkpoint schedule: the adapter is saved at exactly DAPT_CHECKPOINT_STEPS
 # (indices 1..); index 0 is the un-fine-tuned base model. Shared so a checkpoint
 # index means the same training-token count for every model.
-DAPT_MAX_STEPS = 4_096
-DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4096]
+DAPT_MAX_STEPS = 16_384
+DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 16384]
 BLOCK_SIZE = 512  # causal-LM block length (tokens)
 VAL_FRAC = 0.05  # doc-level held-out fraction for the perplexity eval
 WARMUP_RATIO = 0.05  # short warmup + low LR: limit catastrophic forgetting
@@ -67,10 +67,10 @@ LORA_DROPOUT = 0.05
 # 4096 tokens/step at BLOCK_SIZE=512) so a checkpoint step is the same #tokens.
 BATCH_SIZE = {
     "german-gpt2": 8,
-    "llammlein-1b": 2,
+    "llammlein-1b": 4,
 }  # per-device train batch (~16 GB VRAM)
-GRAD_ACCUM = {"german-gpt2": 1, "llammlein-1b": 4}  # 8×1 == 2×4 effective batch
-LEARNING_RATE = {"german-gpt2": 2e-4, "llammlein-1b": 1e-4}  # larger model, smaller LR
+GRAD_ACCUM = {"german-gpt2": 1, "llammlein-1b": 2}  # 8×1 == 2×4 effective batch
+LEARNING_RATE = {"german-gpt2": 1e-4, "llammlein-1b": 1e-4}  # larger model, smaller LR
 
 
 def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text"):
@@ -193,7 +193,9 @@ class _CheckpointSchedule(TrainerCallback):
         step = state.global_step
         if step in self._index:
             control.should_save = True  # AdapterTrainer saves the adapter (default)
-            self._log(state, step, self._index[step], self.out_dir / f"checkpoint-{step}")
+            self._log(
+                state, step, self._index[step], self.out_dir / f"checkpoint-{step}"
+            )
         return control
 
     def _log(self, state, step, idx, checkpoint):

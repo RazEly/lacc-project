@@ -40,7 +40,7 @@ LABEL_IDS_PATH = ARTIFACTS_DIR / "domain_label_ids.json"
 
 TEXT_CHARS = 2048
 BATCH_SIZE = 128
-TFIDF_THRESHOLD = 0.08
+TFIDF_THRESHOLD = 0.1
 
 # ── document quality gate ─────────────────────────────────────────────────────
 # Applied to the WHOLE corpus before labelling, so physics / biology / neutral
@@ -51,15 +51,15 @@ TFIDF_THRESHOLD = 0.08
 #     where a missing score means unassessed scan quality.
 #   • Length: drop stubs / redirect pages and cap huge docs so no single doc
 #     dominates the token budget.
-MIN_OCR_SCORE = 90.0  # ocr_score is 0-100
+MIN_OCR_SCORE = 80.0  # ocr_score is 0-100
 OCR_REQUIRED_SOURCES = {"openalex"}  # OCR'd corpora: no score → drop
 MIN_DOC_TOKENS = 128
-MAX_DOC_TOKENS = 80_000
+MAX_DOC_TOKENS = 1_000_000
 
 # Pass-2 token budget per domain: keep the top NLI-agreeing docs (ranked by NLI
 # score) until their num_tokens sum reaches this. Replaces a fixed NLI score
 # threshold — sizes each DAPT domain corpus directly. Tuned hyperparameter.
-DOMAIN_TOKEN_BUDGET = 2_000_000
+DOMAIN_TOKEN_BUDGET = 700_000
 
 # ── neutral (off-domain) pool ────────────────────────────────────────────────
 # The neutral pool is exactly the pass-1 "other" set: docs whose TF-IDF
@@ -347,16 +347,16 @@ def main():
         f"rejected by NLI: {len(candidates_idx) - len(physics_ds) - len(biology_ds):,}"
     )
 
-    print("\n-- top physics docs --")
-    for row in sorted(physics_ds, key=lambda x: x["nli_score"], reverse=True)[:3]:
+    print("\n-- bottom physics docs --")
+    for row in sorted(physics_ds, key=lambda x: x["nli_score"], reverse=False)[:7]:
         print(
-            f"  nli={row['nli_score']:.2f} tfidf={row['sim_physics']:.3f} [{row['source']}] {row['text'][:100]!r}"
+            f"  nli={row['nli_score']:.2f} tfidf={row['sim_physics']:.3f} [{row['source']}] {row['text'][:150]!r}"
         )
 
-    print("\n-- top biology docs --")
-    for row in sorted(biology_ds, key=lambda x: x["nli_score"], reverse=True)[:3]:
+    print("\n-- bottom biology docs --")
+    for row in sorted(biology_ds, key=lambda x: x["nli_score"], reverse=False)[:7]:
         print(
-            f"  nli={row['nli_score']:.2f} tfidf={row['sim_biology']:.3f} [{row['source']}] {row['text'][:100]!r}"
+            f"  nli={row['nli_score']:.2f} tfidf={row['sim_biology']:.3f} [{row['source']}] {row['text'][:150]!r}"
         )
 
     save_label_ids(physics_ds, biology_ds, other_ds)
