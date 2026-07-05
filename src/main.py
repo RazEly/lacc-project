@@ -182,19 +182,30 @@ def main() -> None:
         if b.get("manifest") is not None
     ]
     if manifests:
-        # NOTE: the DAPT manifest evals each run on its OWN held-out split only,
-        # so eval_domain == ft_domain (one line per panel). Cross-domain eval
-        # (both test sets per panel, per viz.md fig 1) needs a finetune change.
+        # ``perplexity`` is the run's OWN held-out split; ``perplexity_<domain>``
+        # (newer manifests) is the other domain's held-out split. Melt to long
+        # eval_domain form — old cached manifests lack the cross columns and
+        # plot in-domain lines only (retrain to add the dotted lines).
         m = pd.concat(manifests, ignore_index=True).rename(
             columns={"domain": "ft_domain"}
         )
-        m["eval_domain"] = m["ft_domain"]
-        viz.perplexity_grid(m)
+        long = [m.assign(eval_domain=m["ft_domain"])]
+        for d in config.DOMAINS:
+            col = f"perplexity_{d}"
+            if col in m.columns:
+                long.append(
+                    m.assign(eval_domain=d, perplexity=m[col]).dropna(
+                        subset=["perplexity"]
+                    )
+                )
+        viz.perplexity_grid(pd.concat(long, ignore_index=True))
 
     for b in bundles:
-        viz.mean_surprisal_over_steps(
-            b["surp_versions"], b["prompt_surp"], words, b["slug"]
-        )
+        for expert_only in (False, True):
+            viz.mean_surprisal_over_steps(
+                b["surp_versions"], b["prompt_surp"], words, b["slug"],
+                expert_terms_only=expert_only,
+            )
 
     fig_lm = next((b for b in bundles if b["slug"] == FIGURE_LM), bundles[0])
     text_id, sent_index = EXAMPLE_SENTENCE

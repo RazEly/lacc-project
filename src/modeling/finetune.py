@@ -58,8 +58,8 @@ BLOCK_SIZE = 512  # causal-LM block length (tokens)
 VAL_FRAC = 0.05  # doc-level held-out fraction for the perplexity eval
 WARMUP_RATIO = 0.05  # short warmup + low LR: limit catastrophic forgetting
 SEED = 0
-LORA_R = 32  # LoRA rank / alpha / dropout — same adaptation capacity every arch
-LORA_ALPHA = 64
+LORA_R = 16  # LoRA rank / alpha / dropout — same adaptation capacity every arch
+LORA_ALPHA = 32
 LORA_DROPOUT = 0.05
 
 # --- per model (german-gpt2 vs llammlein-1b differ here) ---
@@ -128,6 +128,20 @@ def _prepare_splits(domain, tokenizer, block_size, val_frac, seed, max_docs):
     return split, words_per_epoch
 
 
+def _prepare_eval_split(domain, tokenizer, block_size, val_frac, seed, max_docs=None):
+    """Packed test blocks of ``domain``'s held-out split only (no train tokenize).
+
+    Same doc-level ``train_test_split(val_frac, seed)`` as ``_prepare_splits``,
+    so the blocks are exactly the held-out set that domain's own DAPT run evals
+    on — used for the cross-domain perplexity readout (fig 1 dotted lines).
+    """
+    raw = load_from_disk(str(DOMAIN_DIRS[domain]))
+    if max_docs:
+        raw = raw.select(range(min(max_docs, len(raw))))
+    raw_split = raw.train_test_split(test_size=val_frac, seed=seed)
+    return _tokenize_and_chunk(raw_split["test"], tokenizer, block_size)
+
+
 class _CheckpointSchedule(TrainerCallback):
     """Save the adapter at ``checkpoint_steps`` + record a per-checkpoint perplexity manifest.
 
@@ -148,6 +162,7 @@ class _CheckpointSchedule(TrainerCallback):
         tokens_per_step,
         manifest,
         eval_samples=EVAL_SUBSET_SIZE,
+        cross_eval=None,
     ):
         self.trainer = trainer
         self.out_dir = Path(out_dir)
@@ -160,11 +175,15 @@ class _CheckpointSchedule(TrainerCallback):
             min(int(s), trainer.args.max_steps): i
             for i, s in enumerate(checkpoint_steps, start=1)
         }
+
+        def _subset(ds):
+            return ds.select(range(min(eval_samples, len(ds)))) if eval_samples else ds
+
         # fixed eval subset for the perplexity readout (cheaper than the full split).
-        ds = trainer.eval_dataset
-        self._eval_subset = (
-            ds.select(range(min(eval_samples, len(ds)))) if eval_samples else ds
-        )
+        self._eval_subset = _subset(trainer.eval_dataset)
+        # out-of-domain held-out sets ({domain: packed test blocks}) scored at each
+        # checkpoint into ``perplexity_<domain>`` manifest columns (fig 1 dotted).
+        self._cross_eval = {d: _subset(ds) for d, ds in (cross_eval or {}).items()}
 
     def on_train_begin(self, args, state, control, **kwargs):
         # index 0: the base model, scored before any training step.
@@ -184,20 +203,25 @@ class _CheckpointSchedule(TrainerCallback):
         # tokens_seen: cross-domain-comparable x-axis (depends only on global_step).
         tokens_seen = step * self.tokens_per_step
         words_seen = round(state.epoch * self.words_per_epoch)
-        self.manifest.append(
-            {
-                "checkpoint": str(checkpoint),
-                "index": idx,
-                "epoch": round(state.epoch, 3),
-                "step": step,
-                "tokens_seen": tokens_seen,
-                "words_seen": words_seen,
-                "perplexity": ppl,
-            }
+        row = {
+            "checkpoint": str(checkpoint),
+            "index": idx,
+            "epoch": round(state.epoch, 3),
+            "step": step,
+            "tokens_seen": tokens_seen,
+            "words_seen": words_seen,
+            "perplexity": ppl,
+        }
+        for dom, ds in self._cross_eval.items():
+            m = self.trainer.evaluate(eval_dataset=ds)
+            row[f"perplexity_{dom}"] = math.exp(m["eval_loss"])
+        self.manifest.append(row)
+        extra = " ".join(
+            f"perplexity_{d}={row[f'perplexity_{d}']:.2f}" for d in self._cross_eval
         )
         print(
             f"  [idx {idx:02d}] step={step} tokens_seen={tokens_seen:,} "
-            f"epoch={state.epoch:.2f} perplexity={ppl:.2f}"
+            f"epoch={state.epoch:.2f} perplexity={ppl:.2f} {extra}".rstrip()
         )
 
 
@@ -254,7 +278,9 @@ def finetune_dapt(
 
     Always trains — the skip-if-cached check lives in the caller (``train_all``
     via ``load_cached_run``). Columns: ``domain``, ``checkpoint``, ``index``,
-    ``epoch``, ``step``, ``tokens_seen``, ``words_seen``, ``perplexity``.
+    ``epoch``, ``step``, ``tokens_seen``, ``words_seen``, ``perplexity`` (own
+    held-out split), plus ``perplexity_<domain>`` per other domain (that
+    domain's held-out split — the fig 1 out-of-domain dotted line).
     """
     out_dir = run_dir_for(base_model, domain, out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -292,6 +318,13 @@ def finetune_dapt(
     split, words_per_epoch = _prepare_splits(
         domain, tokenizer, block_size, val_frac, seed, max_docs
     )
+    # Other domains' held-out splits, scored at every checkpoint for the
+    # out-of-domain perplexity curve (manifest ``perplexity_<domain>``, fig 1).
+    cross_eval = {
+        d: _prepare_eval_split(d, tokenizer, block_size, val_frac, seed, max_docs)
+        for d in DOMAINS
+        if d != domain
+    }
 
     # Optimiser steps: from max_steps if set, else derived from the token budget
     # (max_tokens, or one full pass over the packed train blocks).
@@ -349,6 +382,7 @@ def finetune_dapt(
             words_per_epoch,
             tokens_per_step,
             manifest,
+            cross_eval=cross_eval,
         )
     )
     trainer.train()
