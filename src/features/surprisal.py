@@ -53,7 +53,8 @@ def load_cache(slugs, path: Path = SURPRISAL_CACHE_PATH) -> list[dict] | None:
     for slug in slugs:
         m = df[df["model"] == slug]
         sv = m[m["condition"] == "dapt"].drop(columns=["model", "condition"])
-        sv = sv.astype({"index": int, "epoch": int}).reset_index(drop=True)
+        # epoch is fractional (0.001..~2); an int cast would truncate it to 0/1.
+        sv = sv.astype({"index": int, "epoch": float}).reset_index(drop=True)
         ps = (
             m[m["condition"] != "dapt"]
             .pivot(index=WORD_KEY, columns="condition", values="surprisal")

@@ -23,7 +23,7 @@ import numpy as np
 from datasets import concatenate_datasets, load_from_disk
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from transformers import XLMRobertaTokenizer, pipeline
+from transformers import AutoTokenizer, pipeline
 
 from src.config import (
     ARTIFACTS_DIR,
@@ -40,7 +40,7 @@ LABEL_IDS_PATH = ARTIFACTS_DIR / "domain_label_ids.json"
 
 TEXT_CHARS = 2048
 BATCH_SIZE = 128
-TFIDF_THRESHOLD = 0.05
+TFIDF_THRESHOLD = 0.08
 
 # ── document quality gate ─────────────────────────────────────────────────────
 # Applied to the WHOLE corpus before labelling, so physics / biology / neutral
@@ -54,7 +54,7 @@ TFIDF_THRESHOLD = 0.05
 MIN_OCR_SCORE = 90.0  # ocr_score is 0-100
 OCR_REQUIRED_SOURCES = {"openalex"}  # OCR'd corpora: no score → drop
 MIN_DOC_TOKENS = 128
-MAX_DOC_TOKENS = 40_000
+MAX_DOC_TOKENS = 80_000
 
 # Pass-2 token budget per domain: keep the top NLI-agreeing docs (ranked by NLI
 # score) until their num_tokens sum reaches this. Replaces a fixed NLI score
@@ -255,7 +255,7 @@ def _pass2_nli(texts, candidates_idx, pass1_labels, num_tokens):
     classifier = pipeline(
         "zero-shot-classification",
         model=_model_name,
-        tokenizer=XLMRobertaTokenizer.from_pretrained(_model_name),
+        tokenizer=AutoTokenizer.from_pretrained(_model_name),
         device=DEVICE,
     )
 

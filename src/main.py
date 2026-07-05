@@ -28,38 +28,17 @@ from src.modeling import finetune as ft
 from src.modeling import lm
 
 # reading-time measure (TFT); the effect is expected on the late measure.
-MEASURES = ("TFT",)
-# delete the artifacts/ run dirs + surprisal cache by hand to force a retrain
-DAPT_MAX_STEPS = 4_096
-DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4096]
+MEASURE = "TFT"
 SLIM_MODELS = ("baseline", "prompted", "prompt_neutral", "aligned")
-# every checkpoint: indices 1..N pair to DAPT_CHECKPOINT_STEPS (0 = baseline).
-SLIM_INDICES = list(range(1, len(DAPT_CHECKPOINT_STEPS) + 1))
+# every checkpoint: indices 1..N pair to finetune's DAPT_CHECKPOINT_STEPS (0 = baseline).
+SLIM_INDICES = list(range(1, len(ft.DAPT_CHECKPOINT_STEPS) + 1))
 
-# Decoder LMs the pipeline runs over (slug -> HF repo), then compares. Both German:
-# german-gpt2 (124M) + LLäMmlein 1B (German-only, from scratch). Pulled at run time.
-MODELS = {
-    "german-gpt2": "dbmdz/german-gpt2",
-    "llammlein-1b": "LSX-UniWue/LLaMmlein_1B",
-}
-# Per-model DAPT train batch (LoRA + bf16 + block_size=512, ~16 GB VRAM).
-DAPT_BATCH_SIZE = {
-    "german-gpt2": 8,
-    "llammlein-1b": 2,
-}
-# Effective batch = batch_size × grad_accum. Both models MUST land on the same
-# effective batch (8 -> 4096 tokens/step at block_size=512) so a checkpoint step
-# means the same number of training tokens for every model.
-DAPT_GRAD_ACCUM = {
-    "llammlein-1b": 4,  # 2 × 4 = 8 effective — matches german-gpt2's 8 × 1
-}
-# Per-model DAPT learning rate: the 1B model gets a smaller LR than the 124M one.
-DAPT_LEARNING_RATE = {
-    "german-gpt2": 2e-4,
-    "llammlein-1b": 1e-4,
-}
+# Decoder LMs the pipeline runs over (slug -> HF repo), then compares — defined
+# where they are trained (finetune). DAPT checkpoints are expected to already
+# live in artifacts/; train them with `python -m src.modeling.finetune`.
+MODELS = ft.MODELS
 # Context budget (tokens) shared by every prompt condition.
-PRIOR_MAX_TOKENS = 64
+PRIOR_MAX_TOKENS = 256
 
 # Example sentence for the fig-2 surprisal walk-through: (text_id, sent_index).
 # Baseline GPT-2 surprisal + Δ over checkpoints/prompts on one PoTeC sentence.
@@ -68,27 +47,20 @@ EXAMPLE_SENTENCE = ("b0", 1)
 FIGURE_LM = "german-gpt2"
 
 
-def dapt_manifest(slug: str, name: str, domain: str) -> pd.DataFrame:
-    """Resolve one DAPT run: reuse a cached run (local -> Hub) else train it.
+def dapt_manifest(name: str, domain: str) -> pd.DataFrame:
+    """Load one finished DAPT run from ``artifacts/``.
 
-    The skip-if-cached check lives here (not in ``finetune_dapt``), so running
-    finetune directly always trains.
+    The pipeline assumes the models were already fine-tuned; train them with
+    ``python -m src.modeling.finetune``.
     """
     out_dir = ft.run_dir_for(name, domain)
     cached = ft.load_cached_run(out_dir)
-    if cached is not None:
-        print(f"  [{domain}] reusing {len(cached)} cached checkpoints in {out_dir}")
-        return cached
-    return ft.finetune_dapt(
-        domain,
-        base_model=name,
-        out_dir=out_dir,
-        max_steps=DAPT_MAX_STEPS,
-        checkpoint_steps=DAPT_CHECKPOINT_STEPS,
-        batch_size=DAPT_BATCH_SIZE.get(slug, 8),
-        grad_accum=DAPT_GRAD_ACCUM.get(slug, 1),
-        learning_rate=DAPT_LEARNING_RATE.get(slug, 2e-4),
-    )
+    if cached is None:
+        raise FileNotFoundError(
+            f"No DAPT run at {out_dir}. Train first: python -m src.modeling.finetune"
+        )
+    print(f"  [{domain}] {len(cached)} checkpoints in {out_dir}")
+    return cached
 
 
 def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
@@ -119,11 +91,11 @@ def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
         .merge(_prior_surp(priors["neutral"], "s_prompt_neutral"), on=WORD_KEY)
     )
 
-    # Step 4 — DAPT checkpoints, one run per domain (cached / Hub-mirrored)
+    # Step 4 — DAPT checkpoints, one run per domain (loaded from artifacts/)
     print("Step 4 — DAPT checkpoints")
 
     manifest = pd.concat(
-        [dapt_manifest(slug, name, domain) for domain in config.DOMAINS],
+        [dapt_manifest(name, domain) for domain in config.DOMAINS],
         ignore_index=True,
     )
 
@@ -157,7 +129,7 @@ def fit_model(
     # Model comparison — every source scored against the shared no-surprisal
     # baseline (LRT + AIC), plus Vuong tests of the baseline-surprisal model
     # vs the reader-conditioned arms. All checkpoints.
-    cmp, vuong, reader_ll = mc.model_comparison_over_epochs(
+    cmp, vuong, reader_ll = mc.model_comparison_over_steps(
         bundle["surp_versions"],
         rm,
         bundle["prompt_surp"],
@@ -238,14 +210,13 @@ def main() -> None:
     # Phase 2 — mixed models per measure (early + late) per LM.
     all_cmp, all_vuong = [], []
     rm_by_measure = {}
-    for measure in MEASURES:
-        rm = rt.clean_reading_times(rm_raw, measure)
-        rm_by_measure[measure] = rm
-        print(f"\nStep 5 — {measure}: cleaned={len(rm)} ({len(rm) / len(rm_raw):.1%})")
-        for b in bundles:
-            cmp, vuong, _ = fit_model(b, rm, measure)
-            all_cmp.append(cmp)
-            all_vuong.append(vuong)
+    rm = rt.clean_reading_times(rm_raw, MEASURE)
+    rm_by_measure[MEASURE] = rm
+    print(f"\nStep 5 — {MEASURE}: cleaned={len(rm)} ({len(rm) / len(rm_raw):.1%})")
+    for b in bundles:
+        cmp, vuong, _ = fit_model(b, rm, MEASURE)
+        all_cmp.append(cmp)
+        all_vuong.append(vuong)
 
     results = pd.concat(all_cmp, ignore_index=True)
     results_path = config.PROJECT_ROOT / "results_slim.csv"
@@ -259,10 +230,9 @@ def main() -> None:
     # (baseline of FIGURE_LM, first measure only).
     print("\nStep 5b — fit figures -> figures/")
     viz.delta_ll_curves(results)
-    measure = MEASURES[0]
     baseline_surp = fig_lm["surp_versions"].query("index == 0")
     viz.rt_vs_surprisal(
-        rm_by_measure[measure], baseline_surp, measure=measure, slug=fig_lm["slug"]
+        rm_by_measure[MEASURE], baseline_surp, measure=MEASURE, slug=fig_lm["slug"]
     )
 
 

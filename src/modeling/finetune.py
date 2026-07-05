@@ -6,6 +6,12 @@ disjoint from the PoTeC stimuli (no leakage). Physics and biology train
 independently on a shared *token* budget (``max_tokens``), so both see the same
 tokens at the same checkpoint index despite different corpus sizes. Saves
 checkpoints by training step with validation perplexity, for a progress curve.
+
+Run as a module to train every model × domain and save the LoRA adapters under
+``artifacts/`` (the default ``adapters``-library checkpoint layout, reloaded by
+``modeling.lm.load_causal_lm``)::
+
+    python -m src.modeling.finetune
 """
 
 from __future__ import annotations
@@ -15,26 +21,56 @@ from pathlib import Path
 
 import pandas as pd
 import torch
-from adapters import AdapterTrainer, LoRAConfig
-from adapters import init as adapters_init
+from adapters import AdapterTrainer, AutoAdapterModel, LoRAConfig
 from datasets import load_from_disk
-from tqdm.auto import tqdm
 from transformers import (
-    AutoModelForCausalLM,
     AutoTokenizer,
     DataCollatorForLanguageModeling,
     TrainerCallback,
     TrainingArguments,
 )
 
-from src.config import ARTIFACTS_DIR, DEFAULT_MODEL, DEVICE, DOMAIN_DIRS
-from src.modeling import hub
+from src.config import ARTIFACTS_DIR, DEFAULT_MODEL, DEVICE, DOMAIN_DIRS, DOMAINS
 from src.modeling.lm import ADAPTER_NAME, resize_with_mean_init
 
 # Blocks used for the checkpoint perplexity readout. The held-out split is huge
 # (val_frac of a multi-M-token corpus); a fixed subset gives a stable perplexity
 # at a fraction of the eval cost. Set to None to eval on the whole test split.
 EVAL_SUBSET_SIZE = 256
+
+# ---------------------------------------------------------------------------
+# Fine-tuning hyperparameters (every knob `train_all` uses)
+# ---------------------------------------------------------------------------
+# Decoder LMs the study fine-tunes (slug -> HF repo). Both German: german-gpt2
+# (124M) + LLäMmlein 1B (German-only, from scratch). GPT and LLaMA archs supported.
+MODELS = {
+    "german-gpt2": "dbmdz/german-gpt2",
+    "llammlein-1b": "LSX-UniWue/LLaMmlein_1B",
+}
+
+# --- shared across models (identical for german-gpt2 and llammlein-1b) ---
+# Budget + checkpoint schedule: the adapter is saved at exactly DAPT_CHECKPOINT_STEPS
+# (indices 1..); index 0 is the un-fine-tuned base model. Shared so a checkpoint
+# index means the same training-token count for every model.
+DAPT_MAX_STEPS = 4_096
+DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4096]
+BLOCK_SIZE = 512  # causal-LM block length (tokens)
+VAL_FRAC = 0.05  # doc-level held-out fraction for the perplexity eval
+WARMUP_RATIO = 0.05  # short warmup + low LR: limit catastrophic forgetting
+SEED = 0
+LORA_R = 32  # LoRA rank / alpha / dropout — same adaptation capacity every arch
+LORA_ALPHA = 64
+LORA_DROPOUT = 0.05
+
+# --- per model (german-gpt2 vs llammlein-1b differ here) ---
+# Effective batch = BATCH_SIZE × GRAD_ACCUM MUST match across models (= 8, i.e.
+# 4096 tokens/step at BLOCK_SIZE=512) so a checkpoint step is the same #tokens.
+BATCH_SIZE = {
+    "german-gpt2": 8,
+    "llammlein-1b": 2,
+}  # per-device train batch (~16 GB VRAM)
+GRAD_ACCUM = {"german-gpt2": 1, "llammlein-1b": 4}  # 8×1 == 2×4 effective batch
+LEARNING_RATE = {"german-gpt2": 2e-4, "llammlein-1b": 1e-4}  # larger model, smaller LR
 
 
 def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text"):
@@ -93,34 +129,37 @@ def _prepare_splits(domain, tokenizer, block_size, val_frac, seed, max_docs):
 
 
 class _CheckpointSchedule(TrainerCallback):
-    """Save checkpoints by training step.
+    """Save the adapter at ``checkpoint_steps`` + record a per-checkpoint perplexity manifest.
 
-    Default: ``n_checkpoints`` evenly spaced over ``max_steps``. ``checkpoint_steps``
-    saves at exactly those steps (e.g. Škrjanec et al.'s 4ⁿ schedule).
-    ``include_baseline`` makes the step-0 model index 0; listed steps follow as 1, 2, …
+    Flags each target step with ``control.should_save`` so the ``AdapterTrainer``
+    saves the adapter its own default way (``<out_dir>/checkpoint-<step>/<adapter>``)
+    and logs that checkpoint's perplexity. Index 0 is the un-fine-tuned base model
+    (LoRA delta is zero at init, so no adapter is saved) — its manifest row points
+    at ``base_model`` and ``load_causal_lm`` scores it as the plain model.
     """
 
     def __init__(
         self,
         trainer,
         out_dir,
-        n_checkpoints,
+        base_model,
+        checkpoint_steps,
         words_per_epoch,
         tokens_per_step,
         manifest,
-        include_baseline=True,
-        checkpoint_steps=None,
         eval_samples=EVAL_SUBSET_SIZE,
     ):
         self.trainer = trainer
         self.out_dir = Path(out_dir)
-        self.n_checkpoints = n_checkpoints
+        self.base_model = base_model
         self.words_per_epoch = words_per_epoch
         self.tokens_per_step = tokens_per_step
         self.manifest = manifest
-        self.include_baseline = include_baseline
-        self.checkpoint_steps = checkpoint_steps
-        self._targets: dict[int, int] = {}  # global_step -> checkpoint index
+        # step targets (indices 1..), clamped onto the final step.
+        self._index = {
+            min(int(s), trainer.args.max_steps): i
+            for i, s in enumerate(checkpoint_steps, start=1)
+        }
         # fixed eval subset for the perplexity readout (cheaper than the full split).
         ds = trainer.eval_dataset
         self._eval_subset = (
@@ -128,75 +167,38 @@ class _CheckpointSchedule(TrainerCallback):
         )
 
     def on_train_begin(self, args, state, control, **kwargs):
-        if self.checkpoint_steps is not None:
-            # explicit step targets (indices 1..), clamped onto the final step.
-            self._targets = {
-                min(int(s), state.max_steps): i
-                for i, s in enumerate(self.checkpoint_steps, start=1)
-            }
-        else:
-            # evenly spaced; include_baseline puts the first at step 0.
-            lo = 0 if self.include_baseline else 1
-            self._targets = {
-                round(i / (self.n_checkpoints - 1) * state.max_steps): i
-                for i in range(lo, self.n_checkpoints)
-            }
-            collided = (self.n_checkpoints - lo) - len(self._targets)
-            if collided:
-                print(
-                    f"  [warn] {collided} checkpoint step(s) collided in "
-                    f"max_steps={state.max_steps}; some indices dropped "
-                    "(raise max_steps / lower n_checkpoints)."
-                )
-        if self.include_baseline:
-            self._save(state, 0)  # baseline: weights still un-fine-tuned
+        # index 0: the base model, scored before any training step.
+        self._log(state, step=0, idx=0, checkpoint=self.base_model)
 
     def on_step_end(self, args, state, control, **kwargs):
-        idx = self._targets.get(state.global_step)
-        if idx is not None:
-            self._save(state, idx)
+        step = state.global_step
+        if step in self._index:
+            control.should_save = True  # AdapterTrainer saves the adapter (default)
+            self._log(state, step, self._index[step], self.out_dir / f"checkpoint-{step}")
+        return control
 
-    def _save(self, state, idx):
-        ckpt = self.out_dir / f"checkpoint_{idx:02d}"
-        self.trainer.save_model(str(ckpt))
+    def _log(self, state, step, idx, checkpoint):
         # perplexity on the fixed eval subset (not the full held-out split).
         metrics = self.trainer.evaluate(eval_dataset=self._eval_subset)
         ppl = math.exp(metrics["eval_loss"])
         # tokens_seen: cross-domain-comparable x-axis (depends only on global_step).
-        tokens_seen = state.global_step * self.tokens_per_step
+        tokens_seen = step * self.tokens_per_step
         words_seen = round(state.epoch * self.words_per_epoch)
         self.manifest.append(
             {
-                "checkpoint": str(ckpt),
+                "checkpoint": str(checkpoint),
                 "index": idx,
                 "epoch": round(state.epoch, 3),
-                "step": state.global_step,
+                "step": step,
                 "tokens_seen": tokens_seen,
                 "words_seen": words_seen,
                 "perplexity": ppl,
             }
         )
         print(
-            f"  [{ckpt.name}] step={state.global_step} tokens_seen={tokens_seen:,} "
+            f"  [idx {idx:02d}] step={step} tokens_seen={tokens_seen:,} "
             f"epoch={state.epoch:.2f} perplexity={ppl:.2f}"
         )
-
-
-class _StepProgress(TrainerCallback):
-    """tqdm bar over training steps (the run is budgeted by tokens, not epochs)."""
-
-    def __init__(self, domain):
-        self.domain = domain
-        self.bar = None
-
-    def on_train_begin(self, args, state, control, **kwargs):
-        self.bar = tqdm(total=state.max_steps, desc=f"DAPT {self.domain}", unit="step")
-
-    def on_step_end(self, args, state, control, **kwargs):
-        self.bar.update(1)
-
-    def on_train_end(self, args, state, control, **kwargs):
-        self.bar.close()
 
 
 def run_dir_for(base_model: str, domain: str, out_dir=None) -> Path:
@@ -205,38 +207,35 @@ def run_dir_for(base_model: str, domain: str, out_dir=None) -> Path:
 
 
 def load_cached_run(out_dir) -> pd.DataFrame | None:
-    """A finished run's manifest — local ``manifest.csv``, else the Hub, else None.
+    """A finished run's manifest (``manifest.csv``) if present, else None.
 
-    A cached run is trusted as-is. The caller (``main``) decides whether to reuse
-    it or call ``finetune_dapt``; ``finetune_dapt`` itself always trains.
+    A cached run is trusted as-is. The caller decides whether to reuse it or
+    train; ``finetune_dapt`` itself always trains.
     """
-    out_dir = Path(out_dir)
-    manifest_csv = out_dir / "manifest.csv"
+    manifest_csv = Path(out_dir) / "manifest.csv"
     if manifest_csv.exists():
         return pd.read_csv(manifest_csv)
-    return hub.try_download_run(out_dir)
+    return None
 
 
 def finetune_dapt(
     domain: str,
     base_model: str = DEFAULT_MODEL,
     max_tokens: int | None = None,
-    max_steps: int | None = None,
-    checkpoint_steps=None,
-    n_checkpoints: int = 10,
-    include_baseline: bool = True,
-    block_size: int = 512,
-    batch_size: int = 64,
+    max_steps: int | None = DAPT_MAX_STEPS,
+    checkpoint_steps=DAPT_CHECKPOINT_STEPS,
+    block_size: int = BLOCK_SIZE,
+    batch_size: int = 8,
     grad_accum: int = 1,
-    val_frac: float = 0.05,
-    learning_rate: float = 2e-5,
-    warmup_ratio: float = 0.05,
-    seed: int = 0,
+    val_frac: float = VAL_FRAC,
+    learning_rate: float = 2e-4,
+    warmup_ratio: float = WARMUP_RATIO,
+    seed: int = SEED,
     out_dir=None,
     max_docs=None,
-    lora_r: int = 32,
-    lora_alpha: int = 64,
-    lora_dropout: float = 0.05,
+    lora_r: int = LORA_R,
+    lora_alpha: int = LORA_ALPHA,
+    lora_dropout: float = LORA_DROPOUT,
 ) -> pd.DataFrame:
     """DAPT-fine-tune ``base_model`` on one domain; return a checkpoint manifest.
 
@@ -249,12 +248,12 @@ def finetune_dapt(
 
     Budgeted by tokens: ``max_tokens`` (one step = block_size·batch_size·grad_accum
     tokens); the same ``max_tokens`` equalises two domains. ``None`` = one pass.
-    ``max_steps`` overrides with a fixed step count. Checkpoints saved by step
-    (``n_checkpoints`` evenly spaced, or exactly ``checkpoint_steps``).
+    ``max_steps`` overrides with a fixed step count. Adapters are saved at exactly
+    ``checkpoint_steps`` (indices 1..); index 0 is the un-fine-tuned base model.
     ``max_docs`` truncates the corpus (smoke testing).
 
-    Always trains — the skip-if-cached check lives in the caller (``main`` via
-    ``load_cached_run``). Columns: ``domain``, ``checkpoint``, ``index``,
+    Always trains — the skip-if-cached check lives in the caller (``train_all``
+    via ``load_cached_run``). Columns: ``domain``, ``checkpoint``, ``index``,
     ``epoch``, ``step``, ``tokens_seen``, ``words_seen``, ``perplexity``.
     """
     out_dir = run_dir_for(base_model, domain, out_dir)
@@ -263,13 +262,15 @@ def finetune_dapt(
     tokenizer = AutoTokenizer.from_pretrained(base_model)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token or tokenizer.sep_token
-    model = AutoModelForCausalLM.from_pretrained(base_model)
+    # AutoAdapterModel converts the checkpoint's static LM head into a flex
+    # ``causal_lm`` head ("default") carrying the pretrained lm_head weights, so
+    # no separate adapters init/wrap step is needed.
+    model = AutoAdapterModel.from_pretrained(base_model)
     # german-gpt2's eos/pad id sits one past its embedding rows; grow embeddings
     # (deterministic mean-init, frozen under LoRA) to avoid OOB indexing. The
     # surprisal loader applies the same resize, so train and load weights match.
     resize_with_mean_init(model, tokenizer)
 
-    adapters_init(model)
     model.add_adapter(
         ADAPTER_NAME,
         config=LoRAConfig(
@@ -305,7 +306,7 @@ def finetune_dapt(
     use_cuda = DEVICE == "cuda"
     use_bf16 = use_cuda and torch.cuda.is_bf16_supported()
     args = TrainingArguments(
-        output_dir=str(out_dir / "_hf"),
+        output_dir=str(out_dir),
         max_steps=max_steps,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size * 2,
@@ -321,12 +322,13 @@ def finetune_dapt(
         # no automatic epoch evals — the checkpoint callback does the only eval we
         # need (perplexity on a fixed subset), avoiding redundant full-split passes.
         eval_strategy="no",
-        save_strategy="no",  # checkpointing handled by the callback
+        # the callback forces saves at chosen steps via control.should_save.
+        save_strategy="no",
+        save_only_model=True,  # checkpoints hold the adapter only, no optimizer state
         logging_steps=50,
-        disable_tqdm=True,  # _StepProgress replaces the built-in bar
         report_to=[],
     )
-    # AdapterTrainer: save_model writes the active adapter only, not full weights.
+    # AdapterTrainer: each save writes the active adapter only, not full weights.
     trainer = AdapterTrainer(
         model=model,
         args=args,
@@ -335,7 +337,6 @@ def finetune_dapt(
         train_dataset=split["train"],
         eval_dataset=split["test"],
         processing_class=tokenizer,  # saved into each checkpoint dir
-        callbacks=[_StepProgress(domain)],
     )
 
     manifest: list[dict] = []
@@ -343,12 +344,11 @@ def finetune_dapt(
         _CheckpointSchedule(
             trainer,
             out_dir,
-            n_checkpoints,
+            base_model,
+            checkpoint_steps,
             words_per_epoch,
             tokens_per_step,
             manifest,
-            include_baseline=include_baseline,
-            checkpoint_steps=checkpoint_steps,
         )
     )
     trainer.train()
@@ -357,6 +357,35 @@ def finetune_dapt(
     df.insert(0, "domain", domain)
     # Persist manifest so the next run resumes from cache instead of retraining.
     df.to_csv(out_dir / "manifest.csv", index=False)
-    # Mirror to the Hub for future runs. Best effort — never fails the run.
-    hub.upload_run(out_dir)
     return df
+
+
+def train_all() -> None:
+    """DAPT every model × domain; save LoRA checkpoints under ``artifacts/``.
+
+    Shared knobs come from ``finetune_dapt``'s defaults (the module globals); the
+    per-model batch/grad-accum/LR are passed from the ``BATCH_SIZE`` /
+    ``GRAD_ACCUM`` / ``LEARNING_RATE`` tables. Skips a run whose ``manifest.csv``
+    already exists (delete the run dir to force a retrain).
+
+    Entry point: ``python -m src.modeling.finetune``.
+    """
+    for slug, name in MODELS.items():
+        for domain in DOMAINS:
+            out_dir = run_dir_for(name, domain)
+            if load_cached_run(out_dir) is not None:
+                print(f"[{slug}/{domain}] already trained -> {out_dir}")
+                continue
+            print(f"\n=== DAPT {slug} / {domain} ===")
+            finetune_dapt(
+                domain,
+                base_model=name,
+                out_dir=out_dir,
+                batch_size=BATCH_SIZE[slug],
+                grad_accum=GRAD_ACCUM[slug],
+                learning_rate=LEARNING_RATE[slug],
+            )
+
+
+if __name__ == "__main__":
+    train_all()

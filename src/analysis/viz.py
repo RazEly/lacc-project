@@ -6,6 +6,7 @@ fig2  sentence_surprisal_example one sentence: baseline surprisal, Δ per checkp
 fig3  mean_surprisal_over_steps  mean aligned surprisal vs step; prompted arms as intercepts
 fig4  delta_ll_curves            ΔLL vs step per LM; checkpoint-independent arms as intercepts
 fig5  rt_vs_surprisal            log RT vs baseline-GPT-2 surprisal
+fig6  stimuli_similarity_grid    corpus↔stimulus lemma overlap %, 2×2 (domain × pre/post filter)
 
 "aligned" here is text-level (checkpoint / prompt domain matches ``text_domain``);
 the reader-level alignment lives in the mixed models.
@@ -19,8 +20,13 @@ import numpy as np
 import pandas as pd
 
 from src.config import PROJECT_ROOT, WORD_KEY
+from src.modeling.finetune import DAPT_CHECKPOINT_STEPS
 
 FIGURES_DIR = PROJECT_ROOT / "figures"
+# checkpoint index -> optimiser step; index 0 is the un-fine-tuned base model.
+# Surprisal tables carry index/epoch only, and epoch is NOT comparable across
+# domains (corpus sizes differ), so figures plot by index mapped to step.
+STEP_OF_INDEX = {i: s for i, s in enumerate([0, *DAPT_CHECKPOINT_STEPS])}
 MODEL_LABELS = {"german-gpt2": "GPT-2", "llammlein-1b": "Llama"}
 FT_DOMAINS = ("biology", "physics")  # fig1 row order
 PROMPT_COLORS = {"physics": "tab:purple", "biology": "tab:green", "neutral": "gray"}
@@ -39,6 +45,17 @@ def _save(fig, name: str, out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
     fig.savefig(out_dir / f"{name}.png", dpi=150)
+
+
+def _step_ticks(ax, steps) -> None:
+    """Label a log step-axis with the fixed training-step counts themselves.
+
+    Step 0 (base model) is drawn at x=1 (log axis can't show 0) but keeps its
+    "0" label. Ticks are the discrete checkpoint steps, not auto log decades.
+    """
+    vals = sorted({int(s) for s in steps})
+    ax.set_xticks([max(s, 1) for s in vals], [str(s) for s in vals])
+    ax.minorticks_off()
 
 
 def _slugs(df: pd.DataFrame, col: str) -> list[str]:
@@ -79,9 +96,11 @@ def perplexity_grid(manifests: pd.DataFrame, out_dir: Path = FIGURES_DIR) -> pd.
                     color=PROMPT_COLORS.get(ev, "gray"), marker="o", label=f"{ev} test",
                 )
             ax.set_xscale("log")
+            if len(sub):
+                _step_ticks(ax, sub["step"])
             ax.set_title(f"{MODEL_LABELS.get(model, model)} — {ft} fine-tune")
             if i == len(FT_DOMAINS) - 1:
-                ax.set_xlabel("training step (log)")
+                ax.set_xlabel("training steps (log)")
             if j == 0:
                 ax.set_ylabel("held-out perplexity")
     axes[0][0].legend()
@@ -130,9 +149,12 @@ def sentence_surprisal_example(
     ckpts = surp_versions[
         (surp_versions["domain"] == domain) & (surp_versions["index"] > 0)
     ]
-    for (_, step), g in sorted(ckpts.groupby(["index", "epoch"])):
+    for idx, g in sorted(ckpts.groupby("index")):
         axes[1].plot(
-            x, _surp(g, "surprisal") - base, marker="o", label=f"step {int(step)}"
+            x,
+            _surp(g, "surprisal") - base,
+            marker="o",
+            label=f"{STEP_OF_INDEX[int(idx)]} training steps",
         )
     axes[1].axhline(0, color="k", lw=0.5)
     axes[1].set_title(f"Δ surprisal per DAPT checkpoint ({domain} fine-tune)")
@@ -170,12 +192,15 @@ def mean_surprisal_over_steps(
     fine-tune step, plus intercept lines for the (step-independent) aligned and
     neutral prompts."""
     dom = words[WORD_KEY + ["text_domain"]].drop_duplicates(WORD_KEY)
+    # group by index, not epoch: epoch differs across domains at the same
+    # checkpoint, so an epoch groupby would split the paired domains apart.
     aligned = (
         surp_versions.merge(dom, on=WORD_KEY)
         .loc[lambda x: x["domain"] == x["text_domain"]]
-        .groupby("epoch")["surprisal"]
+        .groupby("index")["surprisal"]
         .mean()
         .reset_index()
+        .assign(step=lambda x: x["index"].astype(int).map(STEP_OF_INDEX))
     )
 
     p = prompt_surp.merge(dom, on=WORD_KEY)
@@ -188,7 +213,7 @@ def mean_surprisal_over_steps(
     plt = _plt()
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.plot(
-        aligned["epoch"].clip(lower=1),
+        aligned["step"].clip(lower=1),  # step 0 (base model) shown at x=1
         aligned["surprisal"],
         color="tab:blue",
         marker="o",
@@ -200,7 +225,8 @@ def mean_surprisal_over_steps(
             p["s_prompt_neutral"].mean(), color="gray", ls="--", label="neutral prompt"
         )
     ax.set_xscale("log")
-    ax.set_xlabel("fine-tune step (log)")
+    _step_ticks(ax, aligned["step"])
+    ax.set_xlabel("training steps (log)")
     ax.set_ylabel("mean surprisal (bits)")
     ax.set_title(f"mean surprisal, all texts — {slug}")
     ax.legend()
@@ -213,9 +239,10 @@ def delta_ll_curves(results: pd.DataFrame, out_dir: Path = FIGURES_DIR) -> pd.Da
     """Fig 4 — ΔLL vs training step, one panel per LM (1×2).
 
     ``results`` is the model-comparison table (``model_lm``, ``model``,
-    ``epoch``, ``delta_ll``). Checkpoint-dependent sources plot as curves over
-    ``epoch``; checkpoint-independent ones (baseline / prompted / neutral, NA
-    epoch) as intercept lines. y-limits span the global ΔLL range.
+    ``index``, ``delta_ll``). Checkpoint-dependent sources plot as curves over
+    the step of each checkpoint index; checkpoint-independent ones (baseline /
+    prompted / neutral, NA index) as intercept lines. y-limits span the global
+    ΔLL range.
     """
     plt = _plt()
     slugs = _slugs(results, "model_lm")
@@ -227,16 +254,18 @@ def delta_ll_curves(results: pd.DataFrame, out_dir: Path = FIGURES_DIR) -> pd.Da
     for ax, slug in zip(axes[0], slugs):
         sub = results[results["model_lm"] == slug]
         for model, g in sub.groupby("model"):
-            if g["epoch"].isna().all():  # checkpoint-independent: intercept only
+            if g["index"].isna().all():  # checkpoint-independent: intercept only
                 ax.axhline(g["delta_ll"].iloc[0], ls="--", label=model)
             else:
-                g = g.dropna(subset=["epoch"]).sort_values("epoch")
-                ax.plot(
-                    g["epoch"].clip(lower=1), g["delta_ll"], marker="o", label=model
-                )
+                g = g.dropna(subset=["index"]).sort_values("index")
+                steps = g["index"].astype(int).map(STEP_OF_INDEX)
+                ax.plot(steps.clip(lower=1), g["delta_ll"], marker="o", label=model)
         ax.set_xscale("log")
+        dep_idx = sub["index"].dropna().astype(int)
+        if len(dep_idx):
+            _step_ticks(ax, dep_idx.map(STEP_OF_INDEX))
         ax.set_ylim(lo - pad, hi + pad)
-        ax.set_xlabel("training step (log)")
+        ax.set_xlabel("training steps (log)")
         ax.set_title(MODEL_LABELS.get(slug, slug))
     axes[0][0].set_ylabel("ΔLL vs no-surprisal baseline")
     axes[0][0].legend(fontsize=8)
@@ -284,3 +313,50 @@ def rt_vs_surprisal(
     _save(fig, f"fig5_logrt_surprisal_{slug}", out_dir)
     plt.close(fig)
     return df
+
+
+def stimuli_similarity_grid(
+    overlaps: pd.DataFrame,
+    domains: tuple[str, ...] = FT_DOMAINS,
+    out_dir: Path = FIGURES_DIR,
+) -> pd.DataFrame:
+    """Fig 6 — lemma-vocabulary overlap of the corpus with the PoTeC stimuli,
+    before vs after the domain filter, 2×2 (rows = domain, columns = pre / post).
+
+    Replicates the similarity measure of Škrjanec & Demberg (2026, Fig 2):
+    directional lemma-vocabulary overlap in percent, ``|V_corpus ∩ V_stimulus| /
+    |V_corpus| × 100`` — the proportion of the corpus's (lemmatised, stopword- and
+    punctuation-free) vocabulary that is stimulus vocabulary. ``overlaps`` is long
+    with columns ``domain`` (physics / biology), ``phase`` ("pre-filter" = full
+    german-commons, "post-filter" = the selected domain corpus) and ``overlap_pct``.
+    Each panel is a single bar; the pre→post rise shows the filter concentrating
+    the corpus vocabulary onto stimulus terms.
+    """
+    phases = ("pre-filter", "post-filter")
+    plt = _plt()
+    fig, axes = plt.subplots(
+        len(domains), len(phases),
+        figsize=(4 * len(phases), 3.2 * len(domains)),
+        sharey="row", squeeze=False,
+    )
+    for i, domain in enumerate(domains):
+        color = PROMPT_COLORS.get(domain, "tab:blue")
+        for j, phase in enumerate(phases):
+            ax = axes[i][j]
+            row = overlaps[
+                (overlaps["domain"] == domain) & (overlaps["phase"] == phase)
+            ]
+            pct = float(row["overlap_pct"].iloc[0]) if len(row) else 0.0
+            ax.bar([0], [pct], width=0.6, color=color, alpha=0.8)
+            ax.annotate(
+                f"{pct:.2f}%", (0, pct), ha="center", va="bottom", fontsize=11
+            )
+            ax.set_xticks([])
+            ax.set_ylim(0, None)
+            ax.margins(y=0.15)
+            ax.set_title(f"{domain} — {phase}")
+            if j == 0:
+                ax.set_ylabel("lemma overlap with stimuli (%)")
+    _save(fig, "fig6_stimuli_similarity", out_dir)
+    plt.close(fig)
+    return overlaps

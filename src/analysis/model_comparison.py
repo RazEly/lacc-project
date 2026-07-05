@@ -25,6 +25,12 @@ from scipy.stats import chi2, norm
 from tqdm import tqdm
 
 from src.config import WORD_KEY
+from src.modeling.finetune import DAPT_CHECKPOINT_STEPS
+
+# checkpoint index -> fixed optimiser step (index 0 = un-fine-tuned base model).
+# Reported instead of ``epoch``: epoch is fractional and differs across domains
+# (corpus sizes differ), so it is NOT comparable; the step schedule is shared.
+STEP_OF_INDEX = {i: s for i, s in enumerate([0, *DAPT_CHECKPOINT_STEPS])}
 
 # every source's surprisal column is ``s_<source>``; aligned / prompted are
 # built in _prep_models.
@@ -150,7 +156,8 @@ def build_index_df(surp_versions, rt_df, prompt_surp, index, measure):
     """Reader×word frame with all surprisal columns + covariates at one checkpoint.
 
     Physics/biology checkpoints are paired by ``index`` (0 = baseline), not
-    ``epoch`` (step counts differ). Index 0 supplies ``s_baseline``.
+    ``training_steps`` (which the shared schedule keeps equal, but epoch would
+    differ). Index 0 supplies ``s_baseline``.
     ``prompt_surp`` carries the checkpoint-independent prompted columns.
     """
     base_index = sorted(surp_versions["index"].unique())[0]
@@ -179,7 +186,7 @@ def _coef(m, name, field):
     return float(row[field][0]) if row.height else np.nan
 
 
-def _score_source(d, measure, name, index, epoch, ll_null):
+def _score_source(d, measure, name, index, training_steps, ll_null):
     """Fit Eq. 2 + one surprisal main effect; LRT stats vs the shared
     no-surprisal null. Returns ``(results row, per-reader LL sums)``."""
     col = f"s_{name}"
@@ -188,7 +195,7 @@ def _score_source(d, measure, name, index, epoch, ll_null):
     dll = ll - ll_null
     row = {
         "index": index,
-        "epoch": epoch,
+        "training_steps": training_steps,
         "model": name,
         "n": len(d),
         "ll": ll,
@@ -217,7 +224,7 @@ def _vuong(ll_base: pd.Series, ll_arm: pd.Series) -> tuple[int, float, float]:
     return len(diff), z, float(2.0 * norm.sf(abs(z)))
 
 
-def model_comparison_over_epochs(
+def model_comparison_over_steps(
     surp_versions: pd.DataFrame,
     rt_df: pd.DataFrame,
     prompt_surp: pd.DataFrame,
@@ -229,18 +236,18 @@ def model_comparison_over_epochs(
 
     ``surp_versions`` must hold both domains; ``indices`` restricts the sweep.
     Checkpoint-independent sources (``_CKPT_INDEP``) are fit once (``index`` /
-    ``epoch`` = NA). The no-surprisal reference LL is computed once, on the
+    ``training_steps`` = NA). The no-surprisal reference LL is computed once, on the
     first index's frame, and reused for every checkpoint (valid: the row set is
     checkpoint-independent, asserted per index).
 
     Returns ``(results, vuong, reader_ll)``:
       results — one row per source × checkpoint, every source vs the shared
-        no-surprisal baseline: ``index``, ``epoch``, ``model``, ``n``, ``ll``,
-        ``delta_ll``, ``chisq`` (= 2·ΔLL), ``p_lrt``, ``aic``, plus
+        no-surprisal baseline: ``index``, ``training_steps``, ``model``, ``n``,
+        ``ll``, ``delta_ll``, ``chisq`` (= 2·ΔLL), ``p_lrt``, ``aic``, plus
         ``b_surprisal`` / ``se_surprisal`` (slope estimate).
       vuong — one row per reader-conditioned arm (``_VUONG_ARMS``; aligned per
         checkpoint): baseline-surprisal model vs the arm; ``model``, ``index``,
-        ``epoch``, ``n_readers``, ``vuong_z``, ``p_vuong``.
+        ``training_steps``, ``n_readers``, ``vuong_z``, ``p_vuong``.
       reader_ll — per-reader conditional log-lik sums (``_reader_loglik``) for
         the no-surprisal baseline (``model`` = ``base_ref``) and every source;
         columns ``model``, ``index``, ``reader_id``, ``ll_reader``.
@@ -248,7 +255,7 @@ def model_comparison_over_epochs(
     all_indices = sorted(surp_versions["index"].unique())
     if indices is not None:
         all_indices = [i for i in all_indices if i in set(indices)]
-    epoch_of = surp_versions.groupby("index")["epoch"].first().to_dict()
+    steps_of = {i: STEP_OF_INDEX[int(i)] for i in all_indices}
 
     d0 = build_index_df(surp_versions, rt_df, prompt_surp, all_indices[0], measure)
     dep = [m for m in models if m not in _CKPT_INDEP]
@@ -256,8 +263,8 @@ def model_comparison_over_epochs(
     indep = [m for m in models if m in _CKPT_INDEP and f"s_{m}" in d0.columns]
 
     rows: list[dict] = []
-    # one (model, index, epoch, per-reader LL sums) entry per fit; feeds both
-    # the Vuong table and the reader_ll frame.
+    # one (model, index, training_steps, per-reader LL sums) entry per fit; feeds
+    # both the Vuong table and the reader_ll frame.
     reader_lls: list[tuple] = []
 
     # once: no-surprisal baseline + each indep source; per index: dep sources.
@@ -270,10 +277,10 @@ def model_comparison_over_epochs(
         reader_lls.append(("base_ref", pd.NA, pd.NA, rll_null))
         pbar.update(1)
 
-        def _score(name, d, index, epoch):
-            row, rll = _score_source(d, measure, name, index, epoch, ll_null)
+        def _score(name, d, index, training_steps):
+            row, rll = _score_source(d, measure, name, index, training_steps, ll_null)
             rows.append(row)
-            reader_lls.append((name, index, epoch, rll))
+            reader_lls.append((name, index, training_steps, rll))
             pbar.update(1)
 
         for name in indep:
@@ -291,7 +298,7 @@ def model_comparison_over_epochs(
                 )
             for name in dep:
                 pbar.set_postfix(index=index, model=name)
-                _score(name, d, index, epoch_of[index])
+                _score(name, d, index, steps_of[index])
 
     # Vuong table: baseline-surprisal model vs each reader-conditioned arm
     # (module doc §2). Per-reader LL sums cluster the repeated measures; the
@@ -299,14 +306,14 @@ def model_comparison_over_epochs(
     base_rll = next((r for name, _, _, r in reader_lls if name == "baseline"), None)
     vuong_rows = []
     if base_rll is not None:
-        for name, index, epoch, rll in reader_lls:
+        for name, index, training_steps, rll in reader_lls:
             if name not in _VUONG_ARMS:
                 continue
             n_readers, z, p = _vuong(base_rll, rll)
             vuong_rows.append(
                 {
                     "index": index,
-                    "epoch": epoch,
+                    "training_steps": training_steps,
                     "model": name,
                     "n_readers": n_readers,
                     "vuong_z": z,
@@ -317,7 +324,7 @@ def model_comparison_over_epochs(
     results = pd.DataFrame(rows).sort_values(["model", "index"])
     vuong = pd.DataFrame(
         vuong_rows,
-        columns=["index", "epoch", "model", "n_readers", "vuong_z", "p_vuong"],
+        columns=["index", "training_steps", "model", "n_readers", "vuong_z", "p_vuong"],
     ).sort_values(["model", "index"])
     reader_ll = pd.concat(
         [

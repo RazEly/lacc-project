@@ -31,7 +31,7 @@ from src.config import DOMAIN_DIRS, DOMAIN_OTHER_DIR, N_PRIOR_PASSAGES
 
 # How many leading sentences of a held-out domain doc make one prior passage
 # (token-truncated to the caller's budget at scoring time).
-PRIOR_PASSAGE_SENTENCES = 4
+PRIOR_PASSAGE_SENTENCES = 20
 
 # the two training domains (config) + the off-domain neutral pool.
 _DOMAIN_DIRS = {**DOMAIN_DIRS, "neutral": DOMAIN_OTHER_DIR}

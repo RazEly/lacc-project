@@ -80,6 +80,8 @@ pytest = ">=8.0"
 
 [tool.pixi.tasks]
 main = "python -m src.main"
+prep = "python -m src.acquire.domain_preprocessing"
+tune = "python -m src.modeling.finetune"
 test = "pytest"
 # Data acquisition (see init.sh for the PoTeC clone + HF-token orchestration).
 download-eyetracking = "python -m src.acquire.download_potec"
