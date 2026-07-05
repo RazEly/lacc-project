@@ -40,14 +40,14 @@ def test_fit_returns_loglik(index_df):
     assert "s_baseline" in res.result_fit["term"].to_list()
 
 
-def test_model_comparison_over_epochs_paper(mc_inputs):
+def test_model_comparison_over_steps_paper(mc_inputs):
     # every source scored against the shared no-surprisal baseline (LRT + AIC);
     # Vuong table compares baseline-surprisal vs the reader-conditioned arms.
-    out, vuong, reader_ll = mc.model_comparison_over_epochs(
+    out, vuong, reader_ll = mc.model_comparison_over_steps(
         mc_inputs["surp_versions"], mc_inputs["rt_df"], mc_inputs["prompt_surp"],
         measure="TFT",
     )
-    expected = {"index", "epoch", "model", "n", "ll", "delta_ll", "chisq",
+    expected = {"index", "training_steps", "model", "n", "ll", "delta_ll", "chisq",
                 "p_lrt", "aic", "b_surprisal", "se_surprisal"}
     assert expected <= set(out.columns)
     assert set(out["model"]) == set(mc.SURPRISAL_MODELS)
@@ -57,7 +57,7 @@ def test_model_comparison_over_epochs_paper(mc_inputs):
     # LRT vs the null: p in [0, 1].
     assert out["p_lrt"].between(0, 1).all()
     # Vuong: one row per reader-conditioned arm (aligned per checkpoint).
-    assert {"index", "epoch", "model", "n_readers", "vuong_z", "p_vuong"} <= set(
+    assert {"index", "training_steps", "model", "n_readers", "vuong_z", "p_vuong"} <= set(
         vuong.columns
     )
     assert set(vuong["model"]) == mc._VUONG_ARMS

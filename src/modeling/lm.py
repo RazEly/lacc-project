@@ -22,6 +22,11 @@ from src.config import DEFAULT_MODEL, DEVICE
 ADAPTER_NAME = "dapt"
 
 
+def load_tokenizer(name_or_path: str = DEFAULT_MODEL):
+    """The scoring tokenizer (``add_prefix_space`` matches word-level surprisal)."""
+    return AutoTokenizer.from_pretrained(name_or_path, add_prefix_space=True)
+
+
 def resize_with_mean_init(model, tokenizer) -> bool:
     """Grow embeddings to cover every tokenizer id; new rows = mean embedding.
 
@@ -65,13 +70,13 @@ def load_causal_lm(name_or_path: str = DEFAULT_MODEL):
         base = json.loads((adapter_dir / "adapter_config.json").read_text())[
             "model_name"
         ]
-        tokenizer = AutoTokenizer.from_pretrained(base, add_prefix_space=True)
+        tokenizer = load_tokenizer(base)
         model = AutoAdapterModel.from_pretrained(base)
         resize_with_mean_init(model, tokenizer)
         model.load_adapter(str(adapter_dir), set_active=True)
         model.merge_adapter(ADAPTER_NAME)
     else:
-        tokenizer = AutoTokenizer.from_pretrained(name_or_path, add_prefix_space=True)
+        tokenizer = load_tokenizer(name_or_path)
         model = AutoAdapterModel.from_pretrained(name_or_path)
         resize_with_mean_init(model, tokenizer)
     model.eval()

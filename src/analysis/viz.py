@@ -1,12 +1,11 @@
 """Project figures (see viz.md). Every function saves a PNG under ``figures/``
 (never ``.show()``) and returns the plotted frame.
 
-fig1  perplexity_grid            held-out perplexity vs step, 2×2 (model × ft-domain)
+fig1  perplexity_grid            held-out perplexity vs step, 2×2 (model × ft-domain); optional PoTeC-stimuli lines
 fig2  sentence_surprisal_example one sentence: baseline surprisal, Δ per checkpoint, Δ per prompt
 fig3  mean_surprisal_over_steps  mean surprisal vs step, 2×2 (text domain × ft-domain); prompted arms as intercepts; optional expert-term-only filter
 fig4  delta_ll_curves            ΔLL vs step per LM; checkpoint-independent arms as intercepts
 fig5  rt_vs_surprisal            log RT vs baseline-GPT-2 surprisal
-fig6  stimuli_similarity_grid    corpus↔stimulus lemma overlap %, 2×2 (domain × pre/post filter)
 
 "aligned" here is text-level (checkpoint / prompt domain matches ``text_domain``);
 the reader-level alignment lives in the mixed models.
@@ -68,7 +67,12 @@ def _slugs(df: pd.DataFrame, col: str) -> list[str]:
     )
 
 
-def perplexity_grid(manifests: pd.DataFrame, out_dir: Path = FIGURES_DIR) -> pd.DataFrame:
+def perplexity_grid(
+    manifests: pd.DataFrame,
+    stimuli: pd.DataFrame | None = None,
+    show_stimuli: bool = True,
+    out_dir: Path = FIGURES_DIR,
+) -> pd.DataFrame:
     """Fig 1 — held-out perplexity vs training step.
 
     2×2 grid: columns = LM (GPT-2 / Llama), rows = fine-tune domain (biology /
@@ -76,6 +80,13 @@ def perplexity_grid(manifests: pd.DataFrame, out_dir: Path = FIGURES_DIR) -> pd.
     ``model``, ``ft_domain``, ``eval_domain``, ``step``, ``perplexity``. In-domain
     (``eval_domain == ft_domain``) draws solid, out-of-domain dotted; manifests
     from runs before the cross-domain eval carry the in-domain line only.
+
+    ``stimuli`` (optional, drawn when given unless ``show_stimuli=False``) adds
+    two dotted square-marker lines per panel: the checkpoint's perplexity on the
+    PoTeC stimulus texts of each domain (``surprisal.stimuli_perplexity`` output,
+    columns ``model``, ``ft_domain``, ``index``, ``text_domain``, ``perplexity``).
+    Colors follow the eval domain; markers separate corpus (o = held-out
+    german-commons split, s = PoTeC stimuli).
     """
     plt = _plt()
     models = _slugs(manifests, "model")
@@ -99,15 +110,35 @@ def perplexity_grid(manifests: pd.DataFrame, out_dir: Path = FIGURES_DIR) -> pd.
                     ls="-" if in_domain else ":",
                     label=f"{ev} test" + ("" if in_domain else " (out-of-domain)"),
                 )
+            tick_steps = sub["step"]
+            if show_stimuli and stimuli is not None:
+                st = stimuli[
+                    (stimuli["model"] == model) & (stimuli["ft_domain"] == ft)
+                ].assign(step=lambda x: x["index"].astype(int).map(STEP_OF_INDEX))
+                for td, g in st.groupby("text_domain"):
+                    g = g.sort_values("step")
+                    ax.plot(
+                        g["step"].clip(lower=1), g["perplexity"],
+                        color=PROMPT_COLORS.get(td, "gray"), marker="s", ls=":",
+                        ms=4,
+                        label=f"{td} PoTeC stimuli"
+                        + ("" if td == ft else " (out-of-domain)"),
+                    )
+                tick_steps = pd.concat([tick_steps, st["step"]])
             ax.set_xscale("log")
-            if len(sub):
-                _step_ticks(ax, sub["step"])
+            if len(tick_steps):
+                _step_ticks(ax, tick_steps)
             ax.set_title(f"{MODEL_LABELS.get(model, model)} — {ft} fine-tune")
             ax.legend(fontsize=8)
             if i == len(FT_DOMAINS) - 1:
                 ax.set_xlabel("training steps (log)")
             if j == 0:
-                ax.set_ylabel("held-out perplexity")
+                # stimuli lines are not a held-out split — generalise the label.
+                ax.set_ylabel(
+                    "perplexity"
+                    if show_stimuli and stimuli is not None
+                    else "held-out perplexity"
+                )
     _save(fig, "fig1_perplexity", out_dir)
     plt.close(fig)
     return manifests
@@ -359,50 +390,3 @@ def rt_vs_surprisal(
     _save(fig, f"fig5_logrt_surprisal_{slug}", out_dir)
     plt.close(fig)
     return df
-
-
-def stimuli_similarity_grid(
-    overlaps: pd.DataFrame,
-    domains: tuple[str, ...] = FT_DOMAINS,
-    out_dir: Path = FIGURES_DIR,
-) -> pd.DataFrame:
-    """Fig 6 — lemma-vocabulary overlap of the corpus with the PoTeC stimuli,
-    before vs after the domain filter, 2×2 (rows = domain, columns = pre / post).
-
-    Replicates the similarity measure of Škrjanec & Demberg (2026, Fig 2):
-    directional lemma-vocabulary overlap in percent, ``|V_corpus ∩ V_stimulus| /
-    |V_corpus| × 100`` — the proportion of the corpus's (lemmatised, stopword- and
-    punctuation-free) vocabulary that is stimulus vocabulary. ``overlaps`` is long
-    with columns ``domain`` (physics / biology), ``phase`` ("pre-filter" = full
-    german-commons, "post-filter" = the selected domain corpus) and ``overlap_pct``.
-    Each panel is a single bar; the pre→post rise shows the filter concentrating
-    the corpus vocabulary onto stimulus terms.
-    """
-    phases = ("pre-filter", "post-filter")
-    plt = _plt()
-    fig, axes = plt.subplots(
-        len(domains), len(phases),
-        figsize=(4 * len(phases), 3.2 * len(domains)),
-        sharey="row", squeeze=False,
-    )
-    for i, domain in enumerate(domains):
-        color = PROMPT_COLORS.get(domain, "tab:blue")
-        for j, phase in enumerate(phases):
-            ax = axes[i][j]
-            row = overlaps[
-                (overlaps["domain"] == domain) & (overlaps["phase"] == phase)
-            ]
-            pct = float(row["overlap_pct"].iloc[0]) if len(row) else 0.0
-            ax.bar([0], [pct], width=0.6, color=color, alpha=0.8)
-            ax.annotate(
-                f"{pct:.2f}%", (0, pct), ha="center", va="bottom", fontsize=11
-            )
-            ax.set_xticks([])
-            ax.set_ylim(0, None)
-            ax.margins(y=0.15)
-            ax.set_title(f"{domain} — {phase}")
-            if j == 0:
-                ax.set_ylabel("lemma overlap with stimuli (%)")
-    _save(fig, "fig6_stimuli_similarity", out_dir)
-    plt.close(fig)
-    return overlaps

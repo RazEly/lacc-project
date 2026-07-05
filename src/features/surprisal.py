@@ -213,6 +213,49 @@ def compute_surprisal(
     return pd.DataFrame(rows, columns=WORD_KEY + ["surprisal"])
 
 
+def stimuli_perplexity(
+    surp_versions: pd.DataFrame, words_df: pd.DataFrame, tokenizer
+) -> pd.DataFrame:
+    """Token-level perplexity of every DAPT checkpoint on the PoTeC stimuli.
+
+    Needs no extra forward passes: word surprisal is already the SUM of sub-token
+    bits (``score_words``), so summing it over words and dividing by the matching
+    sub-token count recovers the exact mean per-token surprisal, and
+    ``2 ** mean`` is the same per-token perplexity the training manifest reports
+    as ``exp(eval_loss)`` (perplexity is base-independent). Words absent from
+    ``surp_versions`` (each text's first/last word) drop out of the token count
+    too, keeping numerator and denominator aligned.
+
+    Returns one row per ``domain`` (fine-tune) × ``index`` × ``text_domain``
+    with the ``perplexity`` on that domain's stimulus texts (fig 1 dotted lines).
+    """
+    counts = []
+    for text_id, text in words_df.sort_values(
+        ["text_id", "word_index_in_text"]
+    ).groupby("text_id", sort=False):
+        words = text["word"].fillna("").astype(str).tolist()
+        word_ids = tokenizer(words, is_split_into_words=True).word_ids(0)
+        per_word: dict[int, int] = {}
+        for wid in word_ids:
+            if wid is not None:
+                per_word[wid] = per_word.get(wid, 0) + 1
+        counts += [
+            (text_id, wi, per_word.get(k, 0))
+            for k, wi in enumerate(text["word_index_in_text"])
+        ]
+    n_tok = pd.DataFrame(counts, columns=WORD_KEY + ["n_tokens"])
+    dom = words_df[WORD_KEY + ["text_domain"]].drop_duplicates(WORD_KEY)
+    g = (
+        surp_versions.merge(n_tok, on=WORD_KEY)
+        .merge(dom, on=WORD_KEY)
+        .groupby(["domain", "index", "text_domain"])
+        .agg(bits=("surprisal", "sum"), n_tokens=("n_tokens", "sum"))
+        .reset_index()
+    )
+    g["perplexity"] = 2 ** (g["bits"] / g["n_tokens"])
+    return g[["domain", "index", "text_domain", "perplexity"]]
+
+
 def recompute_surprisal_over_checkpoints(
     words_df: pd.DataFrame, manifest: pd.DataFrame
 ) -> pd.DataFrame:

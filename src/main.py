@@ -198,7 +198,20 @@ def main() -> None:
                         subset=["perplexity"]
                     )
                 )
-        viz.perplexity_grid(pd.concat(long, ignore_index=True))
+        # PoTeC-stimuli lines (perplexity_grid ``show_stimuli`` toggles them,
+        # default on): per-checkpoint token perplexity on the physics/biology
+        # stimulus texts, derived from the cached per-word surprisal — only the
+        # tokenizer is loaded, no extra forward passes.
+        stimuli = pd.concat(
+            [
+                su.stimuli_perplexity(
+                    b["surp_versions"], words, lm.load_tokenizer(MODELS[b["slug"]])
+                ).assign(model=b["slug"])
+                for b in bundles
+            ],
+            ignore_index=True,
+        ).rename(columns={"domain": "ft_domain"})
+        viz.perplexity_grid(pd.concat(long, ignore_index=True), stimuli=stimuli)
 
     for b in bundles:
         for expert_only in (False, True):

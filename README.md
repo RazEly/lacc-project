@@ -24,8 +24,8 @@ pixi run test             # = pytest
 
 ### R backend for the mixed-effects models
 
-The surprisal ↔ reading-time analysis (`src/analysis/model_comparison.py`,
-`src/analysis/stats.py`) fits crossed-random-effect models with **lme4** through
+The surprisal ↔ reading-time analysis (`src/analysis/model_comparison.py`)
+fits crossed-random-effect models with **lme4** through
 [`pymer4`](https://eshinjolly.com/pymer4/), which drives R via `rpy2`. This
 mirrors Škrjanec & Demberg — the exact `(1|reader_id) + (1 + is_expert|word_id)`
 structure and Satterthwaite p-values are not available in pure-Python mixed-model

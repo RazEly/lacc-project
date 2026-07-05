@@ -13,18 +13,6 @@ import pandas as pd
 from src.features import surprisal as su
 
 
-def test_resolve_prompt_variants():
-    assert su._resolve_prompt(None, "physics") is None
-    assert su._resolve_prompt("hi", "physics") == "hi"
-    d = {"physics": "P", "biology": "B"}
-    assert su._resolve_prompt(d, "physics") == "P"
-    assert su._resolve_prompt(d, "biology") == "B"
-    assert su._resolve_prompt(d, "unknown") is None
-    # a list of priors passes through unchanged (shared across domains).
-    assert su._resolve_prompt(["P1", "P2"], "physics") == ["P1", "P2"]
-    assert su._resolve_prompt({"physics": ["P1", "P2"]}, "physics") == ["P1", "P2"]
-
-
 def test_as_prompt_list_normalises():
     assert su._as_prompt_list(None) == []
     assert su._as_prompt_list("") == []
@@ -122,6 +110,29 @@ def test_compute_surprisal_averages_over_prior_list(fake_causal_lm, fake_tokeniz
     )
     merged = single.merge(averaged, on=su.WORD_KEY, suffixes=("_1", "_avg"))
     assert np.allclose(merged["surprisal_1"], merged["surprisal_avg"])
+
+
+def test_stimuli_perplexity_recovers_per_token_mean(
+    fake_causal_lm, fake_tokenizer, words_df
+):
+    # uniform LM: every sub-token costs exactly log2(vocab)=6 bits, so the
+    # per-token perplexity must come out at exactly 2**6 for every checkpoint
+    # and text domain — including with a multi-sub-token word (split on "_"),
+    # which only works if word bits and token counts stay aligned.
+    words_df = words_df.copy()
+    words_df.loc[
+        (words_df["text_id"] == "p1") & (words_df["word_index_in_text"] == 2), "word"
+    ] = "a_b_c"
+    sup = su.compute_surprisal(words_df, fake_causal_lm, fake_tokenizer)
+    sv = pd.concat(
+        [sup.assign(index=0, domain="physics"), sup.assign(index=1, domain="physics")],
+        ignore_index=True,
+    )
+    out = su.stimuli_perplexity(sv, words_df, fake_tokenizer)
+    assert list(out.columns) == ["domain", "index", "text_domain", "perplexity"]
+    # 1 ft-domain × 2 checkpoints × 2 text domains
+    assert len(out) == 4
+    assert np.allclose(out["perplexity"], 2**6)
 
 
 def test_compute_surprisal_handles_empty_words(fake_causal_lm, fake_tokenizer, words_df):

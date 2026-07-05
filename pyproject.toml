@@ -11,7 +11,7 @@ dependencies = [
     "scikit-learn>=1.3.0",
     "pandas>=2.0,<3",
     "numpy>=1.24.0,<2.0",
-    # XLM-RoBERTa tokenizer (SentencePiece) + protobuf for model loading
+    # mDeBERTa-v3 NLI tokenizer (SentencePiece) + protobuf for model loading
     "sentencepiece>=0.1.99",
     "protobuf>=3.20.0",
     # Hugging Face Hub download
@@ -21,7 +21,6 @@ dependencies = [
     "tqdm>=4.65.0",
     # analysis pipeline
     "scipy>=1.10.0",
-    "statsmodels>=0.14.0",
     "pymer4>=0.9",            # lme4/lmerTest mixed models via rpy2 (R comes from pixi, below)
     "rpy2>=3.6",              # pymer4 R bridge; auto-resolves R_HOME from pixi's R on PATH
     "polars>=1.42",          # pymer4 0.9 dataframe backend
@@ -29,9 +28,7 @@ dependencies = [
     "accelerate>=0.26.0",     # Trainer backend for DAPT fine-tuning
     "adapters>=1.3.0",        # AdapterHub LoRA (default DAPT method); built for transformers 4.57.x
     "matplotlib>=3.7.0",
-    "seaborn>=0.13.0",
-    "multimatch-gaze>=0.1.3",
-    "formulae>=0.6.2",
+    "formulae>=0.6.2",       # pymer4 0.9 formula parser (pymer4 declares no deps)
 ]
 
 [tool.uv]
@@ -92,8 +89,3 @@ label-domains = "python -m src.acquire.domain_preprocessing"
 # Run from the project root so `import src.*` resolves; tests are GPU/network-free.
 testpaths = ["tests"]
 addopts = "-q"
-filterwarnings = [
-    # mixedlm on the tiny synthetic frames triggers benign convergence noise.
-    "ignore::statsmodels.tools.sm_exceptions.ConvergenceWarning",
-    "ignore:Random effects covariance is singular:UserWarning",
-]
