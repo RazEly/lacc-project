@@ -25,7 +25,7 @@ import re
 import sys
 import time
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from html.parser import HTMLParser
 
 import wikipediaapi
@@ -46,9 +46,10 @@ ARTICLE_POOL = 2_400  # cap on titles gathered before the word budget cuts the s
 MIN_ARTICLE_CHARS = 200  # drop stubs / disambiguation pages
 REQUEST_DELAY = 0.1  # polite pause between category-listing fetches (s)
 FETCH_WORKERS = (
-    6  # parallel article-text fetches (Wikimedia tolerates modest concurrency)
+    4  # parallel article-text fetches (lower = fewer 429s under Wikimedia throttle)
 )
-FETCH_CHUNK = 30  # pages fetched per batch before the word budget is re-checked
+FETCH_RETRIES = 3  # per-article retries on transient API failure (429/network)
+RETRY_BACKOFF = 1.5  # seconds, exponential base between retries
 
 # Trailing reference/navigation sections — citation lists, not prose. Dropped
 # whole (matched by German Wikipedia heading title, incl. common variants).
@@ -260,9 +261,16 @@ def _fetch_one(page) -> dict | None:
     re-checked: a plain-looking member can redirect to a list/disambig page,
     invisible to the collect-time filter.
     """
-    if not page.exists():
-        return None
-    text = _clean_text(page)  # accessing content resolves any redirect
+    for attempt in range(FETCH_RETRIES):
+        try:
+            if not page.exists():
+                return None
+            text = _clean_text(page)  # accessing content resolves any redirect
+            break
+        except wikipediaapi.WikipediaException:
+            if attempt == FETCH_RETRIES - 1:
+                return None  # give up on this article, keep the scrape alive
+            time.sleep(RETRY_BACKOFF * (2**attempt))
     if len(text) < MIN_ARTICLE_CHARS or not _is_article_title(page.title):
         return None
     return {
@@ -277,27 +285,42 @@ def fetch_texts(pages, max_words) -> list[dict]:
     """Article bodies until the word budget is reached (short/missing dropped).
 
     ``pages`` are the ``WikipediaPage`` stubs from ``collect_articles`` (reused,
-    not re-resolved). Fetched ``FETCH_WORKERS`` at a time in a thread pool, one
-    ``FETCH_CHUNK`` batch per round; after each batch the cumulative ``num_words``
-    is checked and fetching stops once it crosses ``max_words``. The corpus is
-    sized by words (comparable across domains), not article count; the final batch
-    may overshoot the budget by up to one chunk.
+    not re-resolved). Fetched ``FETCH_WORKERS`` at a time in a thread pool; results
+    are consumed with ``as_completed`` so the bar advances per FINISHED article,
+    not in submission order — one slow/large page no longer freezes progress while
+    other workers are done. The word budget is checked as rows land and fetching
+    stops (remaining futures cancelled) once it crosses ``max_words``. The corpus
+    is sized by words (comparable across domains), not article count.
+
+    Also reports ``kept``/``skipped`` so a stalled-looking run is diagnosable: a
+    high skip count with words far below budget means the title pool ran dry
+    (redirects / stubs / list pages), not the network.
     """
-    rows = []
+    rows: list[dict] = []
     total = 0
+    kept = skipped = 0
     bar = tqdm(total=max_words, desc="fetch text", unit="word", unit_scale=True)
     with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
-        for start in range(0, len(pages), FETCH_CHUNK):
-            chunk = pages[start : start + FETCH_CHUNK]
-            for row in pool.map(_fetch_one, chunk):
+        futures = {pool.submit(_fetch_one, p): p for p in pages}
+        try:
+            for fut in as_completed(futures):
+                row = fut.result()
                 if row is None:
+                    skipped += 1
+                    bar.set_postfix(kept=kept, skip=skipped, refresh=False)
                     continue
                 rows.append(row)
+                kept += 1
                 total += row["num_words"]
                 bar.update(row["num_words"])
-            if total >= max_words:
-                break
+                bar.set_postfix(kept=kept, skip=skipped, refresh=False)
+                if total >= max_words:
+                    break
+        finally:
+            for fut in futures:
+                fut.cancel()
     bar.close()
+    print(f"    fetched: kept={kept} skipped={skipped} words={total:,}")
     return rows
 
 
