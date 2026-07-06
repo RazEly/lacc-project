@@ -80,10 +80,6 @@ main = "python -m src.main"
 prep = "python -m src.acquire.domain_preprocessing"
 tune = "python -m src.modeling.finetune"
 test = "pytest"
-# Data acquisition (see init.sh for the PoTeC clone + HF-token orchestration).
-download-eyetracking = "python -m src.acquire.download_potec"
-download-commons = "python -m src.acquire.download_commons"
-label-domains = "python -m src.acquire.domain_preprocessing"
 
 [tool.pytest.ini_options]
 # Run from the project root so `import src.*` resolves; tests are GPU/network-free.

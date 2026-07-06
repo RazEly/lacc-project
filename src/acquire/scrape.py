@@ -25,14 +25,14 @@ import re
 import sys
 import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
+from html.parser import HTMLParser
 
-import requests
 import wikipediaapi
 from datasets import Dataset
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer
 
-from src.config import DATA_DIR, DEFAULT_MODEL, DOMAINS
+from src.config import DATA_DIR, DOMAINS
 from src.features.potec import load_word_features
 
 LANG = "de"
@@ -40,48 +40,90 @@ LANG = "de"
 USER_AGENT = "PoTeC-DAPT-research/0.1 (ely.raz@campus.technion.ac.il)"
 
 # Scrape knobs (paper-scale defaults; --test shrinks them).
-MAX_DEPTH = 2  # sub-category recursion depth from each seed category
-MAX_TOKENS = 5_000_000  # per-domain token budget (DEFAULT_MODEL tokenizer); stop here
-ARTICLE_POOL = 3_500  # cap on titles gathered before the token budget cuts the scrape
+MAX_DEPTH = 3  # sub-category recursion depth from each seed category
+MAX_WORDS = 3_000_000  # per-domain word budget (whitespace words); stop here
+ARTICLE_POOL = 2_400  # cap on titles gathered before the word budget cuts the scrape
 MIN_ARTICLE_CHARS = 200  # drop stubs / disambiguation pages
-REQUEST_DELAY = 0.1  # polite pause between category/article fetches (s)
+REQUEST_DELAY = 0.1  # polite pause between category-listing fetches (s)
+FETCH_WORKERS = (
+    6  # parallel article-text fetches (Wikimedia tolerates modest concurrency)
+)
+FETCH_CHUNK = 30  # pages fetched per batch before the word budget is re-checked
 
 # Trailing reference/navigation sections — citation lists, not prose. Dropped
 # whole (matched by German Wikipedia heading title, incl. common variants).
-DROP_SECTIONS = frozenset({
-    "Einzelnachweise", "Weblinks", "Literatur", "Siehe auch", "Quellen",
-    "Fußnoten", "Anmerkungen", "Belege", "Weblink", "Nachweise",
-})
+DROP_SECTIONS = frozenset(
+    {
+        "Einzelnachweise",
+        "Weblinks",
+        "Literatur",
+        "Siehe auch",
+        "Quellen",
+        "Fußnoten",
+        "Anmerkungen",
+        "Belege",
+        "Weblink",
+        "Nachweise",
+    }
+)
 
-# Math cruft left by the plain-text extractor when it renders <math> blocks
-# (e.g. ``{\displaystyle f(x)=\frac{1}{2}}``). The paper does the same cleaning
-# ("removal of math symbols"). Strip LaTeX control words + the braces they leave.
-_LATEX_CMD_RE = re.compile(r"\\[a-zA-Z]+")
-_MATH_BRACE_RE = re.compile(r"[{}]")
 _WS_RE = re.compile(r"[ \t]{2,}")
 
-_TOKENIZER = None
+
+class _TextExtractor(HTMLParser):
+    """Visible text from TextExtracts HTML, dropping ``<math>``/``<style>`` subtrees.
+
+    With ``extract_format=HTML`` the API renders formulas as ``<math>`` (MathML)
+    blocks; we skip everything inside them — the paper's "removal of math
+    symbols" — so no LaTeX/unicode residue leaks into the corpus.
+    """
+
+    _SKIP = {"math", "style"}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._parts: list[str] = []
+        self._skip = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self._SKIP:
+            self._skip += 1
+
+    def handle_endtag(self, tag):
+        if tag in self._SKIP and self._skip:
+            self._skip -= 1
+
+    def handle_data(self, data):
+        if self._skip == 0:
+            self._parts.append(data)
+
+    def get_text(self) -> str:
+        return "".join(self._parts)
 
 
-def _count_tokens(text: str) -> int:
-    """Sub-token count under the DAPT base tokenizer (matches finetune's budget)."""
-    global _TOKENIZER
-    if _TOKENIZER is None:
-        _TOKENIZER = AutoTokenizer.from_pretrained(DEFAULT_MODEL)
-    return len(_TOKENIZER(text, truncation=False)["input_ids"])
+def _html_to_text(html: str) -> str:
+    parser = _TextExtractor()
+    parser.feed(html)
+    return parser.get_text()
+
+
+def _count_words(text: str) -> int:
+    """Whitespace word count — cheap corpus-size proxy, no tokenizer load needed."""
+    return len(text.split())
 
 
 # Output dirs — SEPARATE from data/domain_<domain> so a scrape never clobbers a
 # corpus the DAPT checkpoints were trained on. Point DOMAIN_DIRS here to use them.
 SCRAPE_DIRS = {d: DATA_DIR / f"wiki_{d}" for d in DOMAINS}
 
-_SESSION = requests.Session()
-_SESSION.headers.update({"User-Agent": USER_AGENT})
-
 
 def _wiki() -> wikipediaapi.Wikipedia:
-    """German-Wikipedia client that returns full plain-text article bodies."""
-    return wikipediaapi.Wikipedia(user_agent=USER_AGENT, language=LANG)
+    """German-Wikipedia client; HTML extracts so ``<math>`` can be dropped cleanly."""
+    return wikipediaapi.Wikipedia(
+        user_agent=USER_AGENT,
+        language=LANG,
+        extract_format=wikipediaapi.ExtractFormat.HTML,
+    )
 
 
 def level2_terms(domain: str) -> list[str]:
@@ -112,29 +154,22 @@ def _is_content_category(cat_title: str) -> bool:
     return not any(tok in body for tok in admin)
 
 
-def _search_title(term: str) -> str | None:
-    """Nearest German-Wikipedia article title for a term (opensearch), or None.
+def _search_title(term: str, wiki) -> str | None:
+    """Nearest German-Wikipedia article title for a term, or None.
 
-    Tolerates transient non-200 / non-JSON responses (rate limits, blips): the
-    term is simply skipped rather than aborting the whole scrape.
+    Uses the package's full-text search, which shares its rate-limit/429 backoff;
+    a transient failure skips the term rather than aborting the whole scrape.
     """
     try:
-        r = _SESSION.get(
-            f"https://{LANG}.wikipedia.org/w/api.php",
-            params={
-                "action": "opensearch",
-                "search": term,
-                "limit": 1,
-                "namespace": 0,
-                "format": "json",
-            },
-            timeout=20,
-        )
-        r.raise_for_status()
-        hits = r.json()[1]
-    except (requests.RequestException, ValueError, IndexError):
+        res = wiki.search(term, limit=1)
+    except wikipediaapi.WikipediaException:
         return None
-    return hits[0] if hits else None
+    return next(iter(res.pages), None)
+
+
+def _is_article_title(title: str) -> bool:
+    """Drop list / disambiguation pages (namespace 0, but not prose articles)."""
+    return not title.startswith("Liste") and "(Begriffsklärung)" not in title
 
 
 def seed_categories(terms: list[str], wiki, max_terms: int | None = None) -> list[str]:
@@ -149,7 +184,7 @@ def seed_categories(terms: list[str], wiki, max_terms: int | None = None) -> lis
     for term in tqdm(picked, desc="seed cats", unit="term"):
         page = wiki.page(term)
         if not page.exists():
-            alt = _search_title(term)
+            alt = _search_title(term, wiki)
             page = wiki.page(alt) if alt else None
         if not page or not page.exists():
             continue
@@ -160,18 +195,20 @@ def seed_categories(terms: list[str], wiki, max_terms: int | None = None) -> lis
     return [c for c, _ in cats.most_common()]
 
 
-def collect_articles(seed_cats, wiki, max_depth, pool_size) -> list[str]:
-    """BFS the seed categories' sub-category tree; return member article titles.
+def collect_articles(seed_cats, wiki, max_depth, pool_size) -> list:
+    """BFS the seed categories' sub-category tree; return member article pages.
 
     Namespace 0 members are articles; namespace 14 members are sub-categories,
-    followed until ``max_depth``. Gathers up to ``pool_size`` titles — the token
-    budget in ``fetch_texts`` is what actually sizes the corpus, so the pool is
-    kept larger than needed. Interleaves members breadth-first so early titles are
-    spread across seed categories, not exhausted from the first one.
+    followed until ``max_depth`` (``cmnamespace="0|14"`` filters the rest out at
+    the API). Returns the ``WikipediaPage`` stubs themselves so ``fetch_texts``
+    reuses them instead of re-resolving each title. Gathers up to ``pool_size`` —
+    the word budget in ``fetch_texts`` is what actually sizes the corpus, so the
+    pool is kept larger than needed. Interleaves members breadth-first so early
+    articles spread across seed categories, not exhausted from the first one.
     """
     seen_cat: set[str] = set()
     seen_art: set[str] = set()
-    articles: list[str] = []
+    articles: list = []
     frontier = [(c, 0) for c in seed_cats]
     bar = tqdm(total=pool_size, desc="pool titles", unit="art")
     while frontier and len(articles) < pool_size:
@@ -179,11 +216,12 @@ def collect_articles(seed_cats, wiki, max_depth, pool_size) -> list[str]:
         if cat in seen_cat:
             continue
         seen_cat.add(cat)
-        for title, member in wiki.page(cat).categorymembers.items():
+        members = wiki.categorymembers(wiki.page(cat), cmnamespace="0|14")
+        for title, member in members.items():
             if member.ns == wikipediaapi.Namespace.MAIN:
-                if title not in seen_art:
+                if title not in seen_art and _is_article_title(title):
                     seen_art.add(title)
-                    articles.append(title)
+                    articles.append(member)
                     bar.update(1)
                     if len(articles) >= pool_size:
                         break
@@ -203,43 +241,62 @@ def _section_text(section) -> str:
 
 
 def _clean_text(page) -> str:
-    """Article prose: lead + body, minus reference sections and math cruft.
+    """Article prose: lead + body, minus reference sections and math.
 
-    ``wikipediaapi.text`` concatenates every section (incl. Einzelnachweise /
-    Weblinks / Literatur — citation noise) and renders <math> as LaTeX residue.
-    We rebuild from ``page.sections`` dropping the reference tail, then strip the
-    LaTeX control words and their leftover braces.
+    ``page.summary``/``sections[].text`` are HTML extracts. We rebuild from the
+    sections dropping the reference tail (Einzelnachweise / Weblinks / Literatur —
+    citation noise), then strip HTML to text with ``<math>`` blocks removed.
     """
     parts = [page.summary, *(_section_text(s) for s in page.sections)]
-    text = "\n\n".join(p for p in parts if p)
-    text = _LATEX_CMD_RE.sub(" ", text)  # \displaystyle, \frac, \mathrm, ...
-    text = _MATH_BRACE_RE.sub(" ", text)  # braces the math blocks leave behind
+    text = _html_to_text("\n\n".join(p for p in parts if p))
     return _WS_RE.sub(" ", text).strip()
 
 
-def fetch_texts(titles, wiki, max_tokens) -> list[dict]:
-    """Article bodies until the token budget is reached (short/missing dropped).
+def _fetch_one(page) -> dict | None:
+    """Resolve + clean one article; return a row dict or None (thread I/O worker).
 
-    Each kept row carries ``num_tokens`` (DEFAULT_MODEL sub-tokens). Fetching stops
-    once the cumulative token count crosses ``max_tokens``, so the corpus is sized
-    by tokens (comparable across domains), not article count.
+    Network-bound (``page.exists()`` and section access hit the API), so these run
+    concurrently in ``fetch_texts``' thread pool. The now-RESOLVED title is
+    re-checked: a plain-looking member can redirect to a list/disambig page,
+    invisible to the collect-time filter.
+    """
+    if not page.exists():
+        return None
+    text = _clean_text(page)  # accessing content resolves any redirect
+    if len(text) < MIN_ARTICLE_CHARS or not _is_article_title(page.title):
+        return None
+    return {
+        "title": page.title,
+        "text": text,
+        "source": "wikipedia",
+        "num_words": _count_words(text),
+    }
+
+
+def fetch_texts(pages, max_words) -> list[dict]:
+    """Article bodies until the word budget is reached (short/missing dropped).
+
+    ``pages`` are the ``WikipediaPage`` stubs from ``collect_articles`` (reused,
+    not re-resolved). Fetched ``FETCH_WORKERS`` at a time in a thread pool, one
+    ``FETCH_CHUNK`` batch per round; after each batch the cumulative ``num_words``
+    is checked and fetching stops once it crosses ``max_words``. The corpus is
+    sized by words (comparable across domains), not article count; the final batch
+    may overshoot the budget by up to one chunk.
     """
     rows = []
     total = 0
-    bar = tqdm(total=max_tokens, desc="fetch text", unit="tok", unit_scale=True)
-    for title in titles:
-        page = wiki.page(title)
-        text = _clean_text(page) if page.exists() else ""
-        if len(text) >= MIN_ARTICLE_CHARS:
-            n = _count_tokens(text)
-            rows.append(
-                {"title": title, "text": text, "source": "wikipedia", "num_tokens": n}
-            )
-            total += n
-            bar.update(n)
-            if total >= max_tokens:
+    bar = tqdm(total=max_words, desc="fetch text", unit="word", unit_scale=True)
+    with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
+        for start in range(0, len(pages), FETCH_CHUNK):
+            chunk = pages[start : start + FETCH_CHUNK]
+            for row in pool.map(_fetch_one, chunk):
+                if row is None:
+                    continue
+                rows.append(row)
+                total += row["num_words"]
+                bar.update(row["num_words"])
+            if total >= max_words:
                 break
-        time.sleep(REQUEST_DELAY)
     bar.close()
     return rows
 
@@ -247,11 +304,11 @@ def fetch_texts(titles, wiki, max_tokens) -> list[dict]:
 def scrape_domain(
     domain: str,
     max_depth: int = MAX_DEPTH,
-    max_tokens: int = MAX_TOKENS,
+    max_words: int = MAX_WORDS,
     pool_size: int = ARTICLE_POOL,
     max_terms: int | None = None,
 ) -> Dataset:
-    """Scrape one domain's Wikipedia corpus (to a token budget) into a ``Dataset``."""
+    """Scrape one domain's Wikipedia corpus (to a word budget) into a ``Dataset``."""
     wiki = _wiki()
     terms = level2_terms(domain)
     print(f"[{domain}] {len(terms)} level-2 seed terms")
@@ -259,27 +316,27 @@ def scrape_domain(
     cats = seed_categories(terms, wiki, max_terms=max_terms)
     print(f"[{domain}] {len(cats)} seed content categories (top: {cats[:8]})")
 
-    titles = collect_articles(cats, wiki, max_depth, pool_size)
-    print(f"[{domain}] {len(titles)} article titles pooled (depth<= {max_depth})")
+    pages = collect_articles(cats, wiki, max_depth, pool_size)
+    print(f"[{domain}] {len(pages)} article titles pooled (depth<= {max_depth})")
 
-    rows = fetch_texts(titles, wiki, max_tokens)
+    rows = fetch_texts(pages, max_words)
     ds = Dataset.from_list([{**r, "domain": domain} for r in rows])
-    total_tokens = sum(r["num_tokens"] for r in rows)
-    print(f"[{domain}] kept {len(ds)} articles, {total_tokens:,} tokens")
+    total_words = sum(r["num_words"] for r in rows)
+    print(f"[{domain}] kept {len(ds)} articles, {total_words:,} words")
     return ds
 
 
 def main() -> None:
     test = "--test" in sys.argv
     depth = 1 if test else MAX_DEPTH
-    tokens = 30_000 if test else MAX_TOKENS
+    words = 30_000 if test else MAX_WORDS
     pool = 15 if test else ARTICLE_POOL
     terms = 4 if test else None
     doms = ("physics",) if test else DOMAINS
 
     for domain in doms:
         ds = scrape_domain(
-            domain, max_depth=depth, max_tokens=tokens, pool_size=pool, max_terms=terms
+            domain, max_depth=depth, max_words=words, pool_size=pool, max_terms=terms
         )
         if not test:
             out = SCRAPE_DIRS[domain]

@@ -40,7 +40,7 @@ LABEL_IDS_PATH = ARTIFACTS_DIR / "domain_label_ids.json"
 
 TEXT_CHARS = 2048
 BATCH_SIZE = 128
-TFIDF_THRESHOLD = 0.1
+TFIDF_THRESHOLD = 0.08
 
 # ── document quality gate ─────────────────────────────────────────────────────
 # Applied to the WHOLE corpus before labelling, so physics / biology / neutral

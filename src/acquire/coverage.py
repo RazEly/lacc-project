@@ -37,7 +37,12 @@ def analyze(path: str, terms: list[str]) -> dict:
     """Coverage stats for one corpus dir against a term list."""
     d = load_from_disk(path)
     corpus = "\n".join(list(d["text"])).lower()
-    tokens = sum(list(d["num_tokens"])) if "num_tokens" in d.column_names else len(corpus) // 4
+    if "num_words" in d.column_names:
+        tokens = sum(list(d["num_words"]))
+    elif "num_tokens" in d.column_names:
+        tokens = sum(list(d["num_tokens"]))
+    else:
+        tokens = len(corpus) // 4
     exact = sum(1 for t in terms if re.search(rf"\b{re.escape(t.lower())}\b", corpus))
     stem = sum(1 for t in terms if _stem(t) in corpus or _stem(t)[:7] in corpus)
     hits = sum(len(re.findall(rf"\b{re.escape(t.lower())}\b", corpus)) for t in terms)
