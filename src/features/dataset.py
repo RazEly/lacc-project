@@ -32,7 +32,7 @@ def clean_reading_times(
         & rm[measure].gt(0)
     ]
 
-    # per-reader fence: keep RTs within sd_k·SD of that reader's mean
+    # per-reader cleaning: keep RTs within sd_k·SD of that reader's mean
     grp = df.groupby("reader_id")[measure]
     dev = (df[measure] - grp.transform("mean")).abs()
     sd = grp.transform("std")
@@ -54,42 +54,38 @@ def _prep_models(df, measure):
     ``s_prompt_biology`` in the model comparison).
     """
     raw_cols = [
-        "s_baseline", "s_physics", "s_biology", "s_prompt_physics", "s_prompt_biology"
+        "s_baseline",
+        "s_physics",
+        "s_biology",
+        "s_prompt_physics",
+        "s_prompt_biology",
     ]
 
     # reader_discipline_numeric: 1 = physicist, 0 = biologist.
     def is_physicist(x):
         return x["reader_discipline_numeric"] == 1
 
-    return (
-        # skips (measure == 0) are owned by clean_reading_times; re-applied here
-        # only as a guard for callers passing uncleaned frames.
-        df.loc[lambda x: x[measure] > 0]
-        .dropna(
-            subset=[measure, "word_length", "lemma_frequency_normalized", *raw_cols]
-        )
-        .loc[lambda x: x["word_length"] > 0]
-        .assign(
-            # dlexDB lemma freq: +1 smoothing then log (paper).
-            log_word_freq=lambda x: np.log1p(x["lemma_frequency_normalized"]),
-            # Position IN TEXT (paper: "Word position in text").
-            word_position=lambda x: x["word_index_in_text"].astype(float),
-            # reader-conditioned sources: pick the discipline-matched column.
-            s_aligned=lambda x: x["s_physics"].where(is_physicist(x), x["s_biology"]),
-            s_prompted=lambda x: x["s_prompt_physics"].where(
-                is_physicist(x), x["s_prompt_biology"]
-            ),
-            # terminology merges general + expert technical (paper).
-            is_technical=lambda x: _sum_code(
-                (x["is_expert_technical_term"] == 1)
-                | (x["is_general_technical_term"] == 1)
-            ),
-            is_expert=lambda x: _sum_code(x["is_expert"]),
-            # single grouping key for the by-word random effect (lme4 word_id).
-            word_id=lambda x: (
-                x["text_id"].astype(str) + "_" + x["word_index_in_text"].astype(str)
-            ),
-        )
+    return df.dropna(
+        subset=[measure, "word_length", "lemma_frequency_normalized", *raw_cols]
+    ).assign(
+        # dlexDB lemma freq: +1 smoothing then log (paper).
+        log_word_freq=lambda x: np.log1p(x["lemma_frequency_normalized"]),
+        # Position IN TEXT (paper: "Word position in text").
+        word_position=lambda x: x["word_index_in_text"].astype(float),
+        # reader-conditioned sources: pick the discipline-matched column.
+        s_aligned=lambda x: x["s_physics"].where(is_physicist(x), x["s_biology"]),
+        s_prompted=lambda x: x["s_prompt_physics"].where(
+            is_physicist(x), x["s_prompt_biology"]
+        ),
+        # terminology merges general + expert technical (paper).
+        is_technical=lambda x: _sum_code(
+            (x["is_expert_technical_term"] == 1) | (x["is_general_technical_term"] == 1)
+        ),
+        is_expert=lambda x: _sum_code(x["is_expert"]),
+        # single grouping key for the by-word random effect (lme4 word_id).
+        word_id=lambda x: (
+            x["text_id"].astype(str) + "_" + x["word_index_in_text"].astype(str)
+        ),
     )
 
 

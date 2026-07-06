@@ -62,6 +62,8 @@ r-performance = "*"
 r-report = "*"
 protobuf = ">=7.35.1,<8"
 sentencepiece = ">=0.2.1,<0.3"
+scikit-learn = ">=1.9.0,<2"
+joblib = ">=1.5.3,<2"
 
 [tool.pixi.pypi-dependencies]
 # Run-only repo (package = false): install the pinned runtime deps directly

@@ -27,6 +27,16 @@ DOMAINS = ("physics", "biology")
 # approach. Built by `python -m src.acquire.scrape`.
 DOMAIN_DIRS = {domain: DATA_DIR / f"wiki_{domain}" for domain in DOMAINS}
 
+# Per-domain doc-level cutoff for acquire.cluster_filter: a scraped article whose
+# SBERT embedding scores below this cosine to the domain's curriculum-term anchor
+# is dropped as off-domain. Per domain BY NECESSITY — the anchor-cosine baseline
+# differs (physics docs sit at median ~0.43, biology ~0.35), so one global cut
+# means different things in each. Physics contamination is small but diffuse
+# (~3%, doesn't form droppable clusters), so a low cut catches its tail; biology
+# contamination is large and clustered (~18%), so its cut runs higher. Tuned off
+# the inspect-pass cosine table — re-judge if the scrape or EMBED_MODEL changes.
+DOMAIN_COS_THRESHOLD = {"physics": 0.12, "biology": 0.20}
+
 # Default decoder LM; loaders are model-agnostic within the decoder family.
 DEFAULT_MODEL = "dbmdz/german-gpt2"
 
@@ -42,10 +52,5 @@ SURPRISAL_CACHE_PATH = ARTIFACTS_DIR / "surprisal.csv"
 WORD_KEY = ["text_id", "word_index_in_text"]
 
 # Prompts averaged per prior condition. Each condition's surprisal is the mean
-# per-word surprisal across this many DISTINCT priors (K distinct held-out docs
-# per domain) so no single idiosyncratic passage drives the estimate. 5 sits at
-# the variance-reduction elbow (1/sqrt(K) shrinks fast to K≈5, then flattens);
-# raise for the final run if a K-sensitivity check still drifts. Each domain's
-# held-out split (features.priors) needs >= this many docs.
+# per-word surprisal across this many distinct priors
 N_PRIOR_PASSAGES = 20
-

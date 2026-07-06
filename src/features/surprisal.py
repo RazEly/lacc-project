@@ -189,17 +189,24 @@ def compute_surprisal(
     ).groupby("text_id", sort=False):
         words = text["word"].fillna("").astype(str).tolist()
         if len(prompts) > 1:
-            bits = _mean_bits([
-                score_words(
-                    words, model, tokenizer, prompt=p,
-                    max_prompt_tokens=max_prompt_tokens,
-                )
-                for p in prompts
-            ])
+            bits = _mean_bits(
+                [
+                    score_words(
+                        words,
+                        model,
+                        tokenizer,
+                        prompt=p,
+                        max_prompt_tokens=max_prompt_tokens,
+                    )
+                    for p in prompts
+                ]
+            )
         else:
             # None / single prior: score once (keeps the no-prompt path unchanged).
             bits = score_words(
-                words, model, tokenizer,
+                words,
+                model,
+                tokenizer,
                 prompt=prompts[0] if prompts else None,
                 max_prompt_tokens=max_prompt_tokens,
             )

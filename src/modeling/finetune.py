@@ -52,8 +52,8 @@ MODELS = {
 # Budget + checkpoint schedule: the adapter is saved at exactly DAPT_CHECKPOINT_STEPS
 # (indices 1..); index 0 is the un-fine-tuned base model. Shared so a checkpoint
 # index means the same training-token count for every model.
-DAPT_MAX_STEPS = 16_384
-DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 16384]
+DAPT_MAX_STEPS = 4_096
+DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4_096]
 BLOCK_SIZE = 512  # causal-LM block length (tokens)
 VAL_FRAC = 0.05  # doc-level held-out fraction for the perplexity eval
 WARMUP_RATIO = 0.05  # short warmup + low LR: limit catastrophic forgetting
@@ -290,10 +290,8 @@ def finetune_dapt(
     tokenizer = AutoTokenizer.from_pretrained(base_model)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token or tokenizer.sep_token
-    # AutoAdapterModel converts the checkpoint's static LM head into a flex
-    # ``causal_lm`` head ("default") carrying the pretrained lm_head weights, so
-    # no separate adapters init/wrap step is needed.
     model = AutoAdapterModel.from_pretrained(base_model)
+
     # german-gpt2's eos/pad id sits one past its embedding rows; grow embeddings
     # (deterministic mean-init, frozen under LoRA) to avoid OOB indexing. The
     # surprisal loader applies the same resize, so train and load weights match.
@@ -312,9 +310,7 @@ def finetune_dapt(
             output_lora=True,
         ),
     )
-    model.train_adapter(
-        ADAPTER_NAME
-    )  # freeze everything but the adapter; sets it active
+    model.train_adapter(ADAPTER_NAME)
     print(model.adapter_summary())
 
     split, words_per_epoch = _prepare_splits(
@@ -330,14 +326,7 @@ def finetune_dapt(
 
     # Optimiser steps: from max_steps if set, else derived from the token budget
     # (max_tokens, or one full pass over the packed train blocks).
-    tokens_per_step = block_size * batch_size * grad_accum
-    if max_steps is None:
-        budget = (
-            max_tokens if max_tokens is not None else len(split["train"]) * block_size
-        )
-        max_steps = max(1, math.ceil(budget / tokens_per_step))
 
-    # bf16 on Ampere+, else fp16; tf32 matmuls free on Ampere+.
     use_cuda = DEVICE == "cuda"
     use_bf16 = use_cuda and torch.cuda.is_bf16_supported()
     args = TrainingArguments(
@@ -346,7 +335,6 @@ def finetune_dapt(
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size * 2,
         gradient_accumulation_steps=grad_accum,
-        # low LR + short warmup: avoid catastrophic forgetting from the base weights.
         learning_rate=learning_rate,
         warmup_ratio=warmup_ratio,
         seed=seed,
@@ -354,24 +342,19 @@ def finetune_dapt(
         fp16=use_cuda and not use_bf16,
         tf32=use_cuda,
         dataloader_num_workers=4,
-        # no automatic epoch evals — the checkpoint callback does the only eval we
-        # need (perplexity on a fixed subset), avoiding redundant full-split passes.
         eval_strategy="no",
-        # the callback forces saves at chosen steps via control.should_save.
         save_strategy="no",
-        save_only_model=True,  # checkpoints hold the adapter only, no optimizer state
+        save_only_model=True,
         logging_steps=50,
         report_to=[],
     )
-    # AdapterTrainer: each save writes the active adapter only, not full weights.
     trainer = AdapterTrainer(
         model=model,
         args=args,
-        # mlm=False: labels = inputs with pad(=eos) loss-masked
         data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
         train_dataset=split["train"],
         eval_dataset=split["test"],
-        processing_class=tokenizer,  # saved into each checkpoint dir
+        processing_class=tokenizer,
     )
 
     manifest: list[dict] = []
@@ -391,7 +374,6 @@ def finetune_dapt(
 
     df = pd.DataFrame(manifest)
     df.insert(0, "domain", domain)
-    # Persist manifest so the next run resumes from cache instead of retraining.
     df.to_csv(out_dir / "manifest.csv", index=False)
     return df
 

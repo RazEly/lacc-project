@@ -37,21 +37,12 @@ from src.config import DATA_DIR, DOMAINS
 from src.features.potec import load_word_features
 
 LANG = "de"
-# Wikimedia blocks the default urllib/requests UA; a descriptive UA is required.
 USER_AGENT = "PoTeC-DAPT-research/0.1 (ely.raz@campus.technion.ac.il)"
 
 # Scrape knobs (paper-scale defaults; --test shrinks them).
 MAX_DEPTH = 2  # sub-category recursion depth from each seed category
 MAX_WORDS = 3_000_000  # per-domain word budget (whitespace words); stop here
-# Pool must exceed (word budget / prose-words-per-article) so the WORD budget cuts
-# the scrape, not the pool cap. At ~575 prose words/article (post-filter) the 3M
-# budget needs ~5.2k kept; with fetch-time attrition (redirects/stubs/short pages)
-# 9k titles gives headroom. Both domains were previously pool-capped (physics 2398,
-# biology 2274) well short of the budget; physics still hits the word budget first.
 ARTICLE_POOL = 9_000  # cap on titles gathered before the word budget cuts the scrape
-# Prose-character floor. 200 let infobox stubs through — the biology corpus came
-# out at 127 words/article. 1000 (~150 prose words) drops chemical/protein DB
-# stubs that slip past the category filter while keeping genuinely short articles.
 MIN_ARTICLE_CHARS = 1000  # drop stubs / disambiguation / infobox-only pages
 REQUEST_DELAY = 0.1  # polite pause between category-listing fetches (s)
 FETCH_WORKERS = 4  # parallel article-text fetches; lower = fewer 429s under throttle
@@ -209,11 +200,7 @@ CURRICULUM_TERMS = {
 
 
 def level2_terms(domain: str) -> list[str]:
-    """The PoTeC level-2 (expert) technical terms for one domain.
-
-    Read from the stimulus word features (``is_expert_technical_term``), the exact
-    seed the paper used. Deduplicated, longest first (specific compounds first).
-    """
+    """The PoTeC expert technical terms for one domain."""
     wf = load_word_features()
     exp = wf[(wf["is_expert_technical_term"] == 1) & (wf["text_domain"] == domain)]
     terms = {
@@ -238,11 +225,7 @@ def _is_content_category(cat_title: str) -> bool:
 
 
 def _search_title(term: str, wiki) -> str | None:
-    """Nearest German-Wikipedia article title for a term, or None.
-
-    Uses the package's full-text search, which shares its rate-limit/429 backoff;
-    a transient failure skips the term rather than aborting the whole scrape.
-    """
+    """Nearest German-Wikipedia article title for a term"""
     try:
         res = wiki.search(term, limit=1)
     except wikipediaapi.WikipediaException:
@@ -336,13 +319,7 @@ def _clean_text(page) -> str:
 
 
 def _fetch_one(page) -> dict | None:
-    """Resolve + clean one article; return a row dict or None (thread I/O worker).
-
-    Network-bound (``page.exists()`` and section access hit the API), so these run
-    concurrently in ``fetch_texts``' thread pool. The now-RESOLVED title is
-    re-checked: a plain-looking member can redirect to a list/disambig page,
-    invisible to the collect-time filter.
-    """
+    """Resolve + clean one article and return a row dict"""
     for attempt in range(FETCH_RETRIES):
         try:
             if not page.exists():
@@ -436,12 +413,8 @@ def scrape_domain(
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Scrape German Wikipedia domain corpora.")
-    ap.add_argument(
-        "--domain", choices=DOMAINS, help="scrape only this domain (default: all)"
-    )
-    ap.add_argument(
-        "--test", action="store_true", help="tiny smoke run (few terms, depth 1)"
-    )
+    ap.add_argument("--domain", choices=DOMAINS)
+    ap.add_argument("--test", action="store_true")
     args = ap.parse_args()
 
     test = args.test

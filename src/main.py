@@ -39,7 +39,7 @@ SLIM_INDICES = list(range(1, len(ft.DAPT_CHECKPOINT_STEPS) + 1))
 # live in artifacts/; train them with `python -m src.modeling.finetune`.
 MODELS = ft.MODELS
 # Context budget (tokens) shared by every prompt condition.
-PRIOR_MAX_TOKENS = 256
+PRIOR_MAX_TOKENS = 128
 
 # Example sentence for the fig-2 surprisal walk-through: (text_id, sent_index).
 # Baseline GPT-2 surprisal + Δ over checkpoints/prompts on one PoTeC sentence.
@@ -162,7 +162,7 @@ def main() -> None:
         priors = pr.load_prior_passages()
         print(
             f"  priors: {config.N_PRIOR_PASSAGES}× physics/biology from each "
-            f"domain's held-out Wikipedia split, averaged per word "
+            f"domain's Wikipedia corpus, averaged per word "
             f"(budget {PRIOR_MAX_TOKENS} tokens)"
         )
         bundles = [
@@ -215,7 +215,10 @@ def main() -> None:
     for b in bundles:
         for expert_only in (False, True):
             viz.mean_surprisal_over_steps(
-                b["surp_versions"], b["prompt_surp"], words, b["slug"],
+                b["surp_versions"],
+                b["prompt_surp"],
+                words,
+                b["slug"],
                 expert_terms_only=expert_only,
             )
 

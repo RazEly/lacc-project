@@ -56,17 +56,9 @@ def resize_with_mean_init(model, tokenizer) -> bool:
 
 
 def load_causal_lm(name_or_path: str = DEFAULT_MODEL):
-    """Load a causal LM + tokenizer for surprisal.
-
-    Accepts an HF model id, a full fine-tuned checkpoint, or a LoRA adapter
-    checkpoint (``adapters`` library) — the latter is detected by its
-    ``ADAPTER_NAME`` subdirectory and merged onto its base model so callers get
-    a plain model either way.
-    """
+    """Load a causal LM + tokenizer for surprisal."""
     adapter_dir = Path(name_or_path) / ADAPTER_NAME
     if (adapter_dir / "adapter_config.json").is_file():
-        # LoRA checkpoint: load the adapter's base model, match embedding size,
-        # then merge the adapter so the forward carries no LoRA overhead.
         base = json.loads((adapter_dir / "adapter_config.json").read_text())[
             "model_name"
         ]
@@ -80,10 +72,6 @@ def load_causal_lm(name_or_path: str = DEFAULT_MODEL):
         model = AutoAdapterModel.from_pretrained(name_or_path)
         resize_with_mean_init(model, tokenizer)
     model.eval()
-    # fp16 on GPU: halves VRAM, inference-safe (log_softmax upcasts via .float()).
-    # Cast only after the adapter merge: `adapters` builds its LoRA modules in
-    # fp32 regardless of the base model's dtype, so an fp16 base + adapter load
-    # leaves mixed Half/Float weights and the forward crashes.
     if DEVICE == "cuda":
         model.to(dtype=torch.float16)
     model.to(DEVICE)
