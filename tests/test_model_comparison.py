@@ -3,12 +3,13 @@ import numpy as np
 import pytest
 
 from src.analysis import model_comparison as mc
+from src.features import dataset as ds
 
 
 @pytest.fixture
 def index_df(mc_inputs):
     """Prepared reader×word frame at checkpoint index 1."""
-    return mc.build_index_df(
+    return ds.build_index_df(
         mc_inputs["surp_versions"], mc_inputs["rt_df"], mc_inputs["prompt_surp"],
         index=1, measure="TFT",
     )

@@ -1,11 +1,11 @@
 """Reading-time cleaning (step 1)."""
 import pandas as pd
 
-from src.features import reading_time as rt
+from src.features import dataset as ds
 
 
 def test_clean_drops_sentence_edges_and_skips(rm):
-    out = rt.clean_reading_times(rm, measure="TFT")
+    out = ds.clean_reading_times(rm, measure="TFT")
     # sentence-initial / final words gone.
     assert (out["is_sent_beginning"] != 1).all()
     assert (out["is_sent_end"] != 1).all()
@@ -26,7 +26,7 @@ def test_clean_sd_fence_removes_outlier():
             "TFT": tft,
         }
     )
-    out = rt.clean_reading_times(df, measure="TFT")
+    out = ds.clean_reading_times(df, measure="TFT")
     assert 100000 not in out["TFT"].values
     assert len(out) == n - 3  # first + last text word + the outlier
 
@@ -41,11 +41,11 @@ def test_clean_sd_fence_keeps_single_observation():
             "TFT": [200, 99999, 210],
         }
     )
-    out = rt.clean_reading_times(df, measure="TFT")
+    out = ds.clean_reading_times(df, measure="TFT")
     assert out["TFT"].tolist() == [99999]
 
 
 def test_clean_does_not_mutate_input(rm):
     before = rm.copy()
-    rt.clean_reading_times(rm, measure="TFT")
+    ds.clean_reading_times(rm, measure="TFT")
     pd.testing.assert_frame_equal(rm, before)

@@ -54,7 +54,6 @@ TFIDF_THRESHOLD = 0.1
 MIN_OCR_SCORE = 80.0  # ocr_score is 0-100
 OCR_REQUIRED_SOURCES = {"openalex"}  # OCR'd corpora: no score → drop
 MIN_DOC_TOKENS = 128
-MAX_DOC_TOKENS = 1_000_000
 
 # Pass-2 token budget per domain: keep the top TF-IDF-ranked docs (among those
 # that clear the NLI floor and agree with pass 1) until their num_tokens sum
@@ -111,7 +110,7 @@ def apply_quality_filter(ds):
 
     def _keep(src, ocr, ntok):
         ntok = ntok or 0
-        return _ocr_ok(src, ocr) and MIN_DOC_TOKENS <= ntok <= MAX_DOC_TOKENS
+        return _ocr_ok(src, ocr) and MIN_DOC_TOKENS <= ntok
 
     idx = [
         i

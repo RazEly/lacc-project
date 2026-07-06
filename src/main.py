@@ -20,9 +20,9 @@ from src import config
 from src.analysis import model_comparison as mc
 from src.analysis import viz
 from src.config import WORD_KEY
+from src.features import dataset as ds
 from src.features import potec
 from src.features import priors as pr
-from src.features import reading_time as rt
 from src.features import surprisal as su
 from src.modeling import finetune as ft
 from src.modeling import lm
@@ -234,7 +234,7 @@ def main() -> None:
     # Phase 2 — mixed models per measure (early + late) per LM.
     all_cmp, all_vuong = [], []
     rm_by_measure = {}
-    rm = rt.clean_reading_times(rm_raw, MEASURE)
+    rm = ds.clean_reading_times(rm_raw, MEASURE)
     rm_by_measure[MEASURE] = rm
     print(f"\nStep 5 — {MEASURE}: cleaned={len(rm)} ({len(rm) / len(rm_raw):.1%})")
     for b in bundles:

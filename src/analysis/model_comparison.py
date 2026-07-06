@@ -25,6 +25,7 @@ from scipy.stats import chi2, norm
 from tqdm import tqdm
 
 from src.config import WORD_KEY
+from src.features.dataset import build_index_df
 from src.modeling.finetune import DAPT_CHECKPOINT_STEPS
 
 # checkpoint index -> fixed optimiser step (index 0 = un-fine-tuned base model).
@@ -33,7 +34,7 @@ from src.modeling.finetune import DAPT_CHECKPOINT_STEPS
 STEP_OF_INDEX = {i: s for i, s in enumerate([0, *DAPT_CHECKPOINT_STEPS])}
 
 # every source's surprisal column is ``s_<source>``; aligned / prompted are
-# built in _prep_models.
+# built by features.dataset.build_index_df.
 SURPRISAL_MODELS = (
     "baseline",
     "physics",
@@ -52,60 +53,6 @@ _VUONG_ARMS = {"aligned", "prompted", "prompt_neutral"}
 # (richer structures did not converge in the paper).
 _BASE_TERMS = "word_length + log_word_freq + word_position + is_expert * is_technical"
 _RANDOM_EFFECTS = "(1|reader_id) + (1 + is_expert|word_id)"
-
-
-def _sum_code(flag: int):
-    """0/1 flag -> −1/+1."""
-    return 2 * flag - 1
-
-
-def _prep_models(df, measure):
-    """One row per reader×word with every surprisal column + covariates.
-
-    ``df`` must carry ``s_baseline`` / ``s_physics`` / ``s_biology`` /
-    ``s_prompt_*`` plus the reading measures; ``s_prompt_neutral`` is optional
-    (older caches predate it).
-    """
-    raw_cols = [
-        "s_baseline", "s_physics", "s_biology", "s_prompt_physics", "s_prompt_biology"
-    ]
-    if "s_prompt_neutral" in df.columns:
-        raw_cols.append("s_prompt_neutral")
-
-    # reader_discipline_numeric: 1 = physicist, 0 = biologist.
-    def is_physicist(x):
-        return x["reader_discipline_numeric"] == 1
-
-    return (
-        # skips (measure == 0) are owned by reading_time.clean_reading_times;
-        # re-applied here only as a guard for callers passing uncleaned frames.
-        df.loc[lambda x: x[measure] > 0]
-        .dropna(
-            subset=[measure, "word_length", "lemma_frequency_normalized", *raw_cols]
-        )
-        .loc[lambda x: x["word_length"] > 0]
-        .assign(
-            # dlexDB lemma freq: +1 smoothing then log (paper).
-            log_word_freq=lambda x: np.log1p(x["lemma_frequency_normalized"]),
-            # Position IN TEXT (paper: "Word position in text").
-            word_position=lambda x: x["word_index_in_text"].astype(float),
-            # reader-conditioned sources: pick the discipline-matched column.
-            s_aligned=lambda x: x["s_physics"].where(is_physicist(x), x["s_biology"]),
-            s_prompted=lambda x: x["s_prompt_physics"].where(
-                is_physicist(x), x["s_prompt_biology"]
-            ),
-            # terminology merges general + expert technical (paper).
-            is_technical=lambda x: _sum_code(
-                (x["is_expert_technical_term"] == 1)
-                | (x["is_general_technical_term"] == 1)
-            ),
-            is_expert=lambda x: _sum_code(x["is_expert"]),
-            # single grouping key for the by-word random effect (lme4 word_id).
-            word_id=lambda x: (
-                x["text_id"].astype(str) + "_" + x["word_index_in_text"].astype(str)
-            ),
-        )
-    )
 
 
 def _fit(d, measure, surprisal_cols=None):
@@ -150,32 +97,6 @@ def _reader_loglik(m, d) -> pd.Series:
         raise ValueError(f"resid length {len(resid)} != data rows {len(d)}")
     dens = -0.5 * np.log(2 * np.pi * sigma**2) - resid**2 / (2 * sigma**2)
     return pd.Series(dens).groupby(d["reader_id"].to_numpy()).sum()
-
-
-def build_index_df(surp_versions, rt_df, prompt_surp, index, measure):
-    """Reader×word frame with all surprisal columns + covariates at one checkpoint.
-
-    Physics/biology checkpoints are paired by ``index`` (0 = baseline), not
-    ``training_steps`` (which the shared schedule keeps equal, but epoch would
-    differ). Index 0 supplies ``s_baseline``.
-    ``prompt_surp`` carries the checkpoint-independent prompted columns.
-    """
-    base_index = sorted(surp_versions["index"].unique())[0]
-
-    def _surp(idx, domain, name):
-        sel = surp_versions[
-            (surp_versions["index"] == idx) & (surp_versions["domain"] == domain)
-        ]
-        return sel[WORD_KEY + ["surprisal"]].rename(columns={"surprisal": name})
-
-    surp = (
-        _surp(base_index, "physics", "s_baseline")
-        .merge(_surp(index, "physics", "s_physics"), on=WORD_KEY)
-        .merge(_surp(index, "biology", "s_biology"), on=WORD_KEY)
-        .merge(prompt_surp, on=WORD_KEY)
-    )
-    merged = surp.merge(rt_df, on=WORD_KEY, how="inner")
-    return _prep_models(merged, measure).reset_index(drop=True)
 
 
 def _coef(m, name, field):

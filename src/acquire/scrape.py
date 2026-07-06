@@ -21,6 +21,7 @@ Run:
 
 from __future__ import annotations
 
+import re
 import sys
 import time
 from collections import Counter
@@ -28,6 +29,7 @@ from collections import Counter
 import requests
 import wikipediaapi
 from datasets import Dataset
+from tqdm.auto import tqdm
 from transformers import AutoTokenizer
 
 from src.config import DATA_DIR, DEFAULT_MODEL, DOMAINS
@@ -35,14 +37,28 @@ from src.features.potec import load_word_features
 
 LANG = "de"
 # Wikimedia blocks the default urllib/requests UA; a descriptive UA is required.
-USER_AGENT = "PoTeC-DAPT-research/0.1"
+USER_AGENT = "PoTeC-DAPT-research/0.1 (ely.raz@campus.technion.ac.il)"
 
 # Scrape knobs (paper-scale defaults; --test shrinks them).
 MAX_DEPTH = 2  # sub-category recursion depth from each seed category
-MAX_TOKENS = 1_000_000  # per-domain token budget (DEFAULT_MODEL tokenizer); stop here
-ARTICLE_POOL = 6_000  # cap on titles gathered before the token budget cuts the scrape
+MAX_TOKENS = 5_000_000  # per-domain token budget (DEFAULT_MODEL tokenizer); stop here
+ARTICLE_POOL = 3_500  # cap on titles gathered before the token budget cuts the scrape
 MIN_ARTICLE_CHARS = 200  # drop stubs / disambiguation pages
 REQUEST_DELAY = 0.1  # polite pause between category/article fetches (s)
+
+# Trailing reference/navigation sections — citation lists, not prose. Dropped
+# whole (matched by German Wikipedia heading title, incl. common variants).
+DROP_SECTIONS = frozenset({
+    "Einzelnachweise", "Weblinks", "Literatur", "Siehe auch", "Quellen",
+    "Fußnoten", "Anmerkungen", "Belege", "Weblink", "Nachweise",
+})
+
+# Math cruft left by the plain-text extractor when it renders <math> blocks
+# (e.g. ``{\displaystyle f(x)=\frac{1}{2}}``). The paper does the same cleaning
+# ("removal of math symbols"). Strip LaTeX control words + the braces they leave.
+_LATEX_CMD_RE = re.compile(r"\\[a-zA-Z]+")
+_MATH_BRACE_RE = re.compile(r"[{}]")
+_WS_RE = re.compile(r"[ \t]{2,}")
 
 _TOKENIZER = None
 
@@ -97,19 +113,27 @@ def _is_content_category(cat_title: str) -> bool:
 
 
 def _search_title(term: str) -> str | None:
-    """Nearest German-Wikipedia article title for a term (opensearch), or None."""
-    r = _SESSION.get(
-        f"https://{LANG}.wikipedia.org/w/api.php",
-        params={
-            "action": "opensearch",
-            "search": term,
-            "limit": 1,
-            "namespace": 0,
-            "format": "json",
-        },
-        timeout=20,
-    )
-    hits = r.json()[1]
+    """Nearest German-Wikipedia article title for a term (opensearch), or None.
+
+    Tolerates transient non-200 / non-JSON responses (rate limits, blips): the
+    term is simply skipped rather than aborting the whole scrape.
+    """
+    try:
+        r = _SESSION.get(
+            f"https://{LANG}.wikipedia.org/w/api.php",
+            params={
+                "action": "opensearch",
+                "search": term,
+                "limit": 1,
+                "namespace": 0,
+                "format": "json",
+            },
+            timeout=20,
+        )
+        r.raise_for_status()
+        hits = r.json()[1]
+    except (requests.RequestException, ValueError, IndexError):
+        return None
     return hits[0] if hits else None
 
 
@@ -121,7 +145,8 @@ def seed_categories(terms: list[str], wiki, max_terms: int | None = None) -> lis
     by how many terms land in it (shared categories = the domain's core topics).
     """
     cats: Counter[str] = Counter()
-    for term in terms[: max_terms or len(terms)]:
+    picked = terms[: max_terms or len(terms)]
+    for term in tqdm(picked, desc="seed cats", unit="term"):
         page = wiki.page(term)
         if not page.exists():
             alt = _search_title(term)
@@ -148,6 +173,7 @@ def collect_articles(seed_cats, wiki, max_depth, pool_size) -> list[str]:
     seen_art: set[str] = set()
     articles: list[str] = []
     frontier = [(c, 0) for c in seed_cats]
+    bar = tqdm(total=pool_size, desc="pool titles", unit="art")
     while frontier and len(articles) < pool_size:
         cat, depth = frontier.pop(0)
         if cat in seen_cat:
@@ -158,12 +184,37 @@ def collect_articles(seed_cats, wiki, max_depth, pool_size) -> list[str]:
                 if title not in seen_art:
                     seen_art.add(title)
                     articles.append(title)
+                    bar.update(1)
                     if len(articles) >= pool_size:
                         break
             elif member.ns == wikipediaapi.Namespace.CATEGORY and depth < max_depth:
                 frontier.append((title, depth + 1))
         time.sleep(REQUEST_DELAY)
+    bar.close()
     return articles
+
+
+def _section_text(section) -> str:
+    """Recursive plain text of a section, minus ``DROP_SECTIONS`` subtrees."""
+    if section.title in DROP_SECTIONS:
+        return ""
+    parts = [section.text, *(_section_text(sub) for sub in section.sections)]
+    return "\n".join(p for p in parts if p)
+
+
+def _clean_text(page) -> str:
+    """Article prose: lead + body, minus reference sections and math cruft.
+
+    ``wikipediaapi.text`` concatenates every section (incl. Einzelnachweise /
+    Weblinks / Literatur — citation noise) and renders <math> as LaTeX residue.
+    We rebuild from ``page.sections`` dropping the reference tail, then strip the
+    LaTeX control words and their leftover braces.
+    """
+    parts = [page.summary, *(_section_text(s) for s in page.sections)]
+    text = "\n\n".join(p for p in parts if p)
+    text = _LATEX_CMD_RE.sub(" ", text)  # \displaystyle, \frac, \mathrm, ...
+    text = _MATH_BRACE_RE.sub(" ", text)  # braces the math blocks leave behind
+    return _WS_RE.sub(" ", text).strip()
 
 
 def fetch_texts(titles, wiki, max_tokens) -> list[dict]:
@@ -175,18 +226,21 @@ def fetch_texts(titles, wiki, max_tokens) -> list[dict]:
     """
     rows = []
     total = 0
+    bar = tqdm(total=max_tokens, desc="fetch text", unit="tok", unit_scale=True)
     for title in titles:
         page = wiki.page(title)
-        text = page.text if page.exists() else ""
+        text = _clean_text(page) if page.exists() else ""
         if len(text) >= MIN_ARTICLE_CHARS:
             n = _count_tokens(text)
             rows.append(
                 {"title": title, "text": text, "source": "wikipedia", "num_tokens": n}
             )
             total += n
+            bar.update(n)
             if total >= max_tokens:
                 break
         time.sleep(REQUEST_DELAY)
+    bar.close()
     return rows
 
 
