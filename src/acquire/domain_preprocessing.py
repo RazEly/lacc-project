@@ -56,10 +56,15 @@ OCR_REQUIRED_SOURCES = {"openalex"}  # OCR'd corpora: no score → drop
 MIN_DOC_TOKENS = 128
 MAX_DOC_TOKENS = 1_000_000
 
-# Pass-2 token budget per domain: keep the top NLI-agreeing docs (ranked by NLI
-# score) until their num_tokens sum reaches this. Replaces a fixed NLI score
-# threshold — sizes each DAPT domain corpus directly. Tuned hyperparameter.
+# Pass-2 token budget per domain: keep the top TF-IDF-ranked docs (among those
+# that clear the NLI floor and agree with pass 1) until their num_tokens sum
+# reaches this. Sizes each DAPT domain corpus directly. Tuned hyperparameter.
 DOMAIN_TOKEN_BUDGET = 700_000
+
+# Pass-2 NLI floor: a candidate must score at least this on its NLI top label to
+# survive, on top of agreeing with the pass-1 label. Selection ORDER is then by
+# TF-IDF similarity, not NLI score.
+NLI_MIN_SCORE = 0.5
 
 # ── neutral (off-domain) pool ────────────────────────────────────────────────
 # The neutral pool is exactly the pass-1 "other" set: docs whose TF-IDF
@@ -240,14 +245,17 @@ def _pass1_tfidf(texts, physics_seed, biology_seed):
     return sim_physics, sim_biology, pass1_labels, candidates_idx
 
 
-def _pass2_nli(texts, candidates_idx, pass1_labels, num_tokens):
-    """Pass 2 — NLI, then a per-domain token-budget cut instead of a threshold.
+def _pass2_nli(
+    texts, candidates_idx, pass1_labels, num_tokens, sim_physics, sim_biology
+):
+    """Pass 2 — NLI floor, then a per-domain TF-IDF-ordered token-budget cut.
 
     Runs zero-shot NLI on the pass-1 candidates. A candidate survives only if the
-    NLI top label agrees with its pass-1 label. Within each domain the survivors
-    are ranked by NLI score and kept from the top down until their ``num_tokens``
-    sum reaches ``DOMAIN_TOKEN_BUDGET`` — so each domain corpus is sized to the
-    same token budget and holds its most confidently on-domain docs.
+    NLI top label agrees with its pass-1 label AND its NLI score clears
+    ``NLI_MIN_SCORE``. Within each domain the survivors are ranked by TF-IDF
+    similarity (to that domain's seed bag) and kept from the top down until their
+    ``num_tokens`` sum reaches ``DOMAIN_TOKEN_BUDGET`` — so each domain corpus is
+    sized to the same token budget, NLI-gated, TF-IDF-ordered.
     """
     print(f"\nLoading NLI model (device={DEVICE})...")
 
@@ -273,19 +281,21 @@ def _pass2_nli(texts, candidates_idx, pass1_labels, num_tokens):
         batch_size=BATCH_SIZE,
     )
 
-    # Keep docs where NLI agrees with the pass-1 label, grouped per domain.
+    # Keep docs where NLI agrees with pass 1 and clears the floor, per domain.
+    domain_sim = {"physics": sim_physics, "biology": sim_biology}
     agree = {key: [] for key in keys}
     for idx, result in zip(candidates_idx, results):
         top_label = keys[hyps.index(result["labels"][0])]
-        if top_label == pass1_labels[idx]:
-            agree[top_label].append((idx, result["scores"][0]))
+        score = result["scores"][0]
+        if top_label == pass1_labels[idx] and score >= NLI_MIN_SCORE:
+            agree[top_label].append((idx, score))
 
     final_labels = ["other"] * len(texts)
     nli_scores = [0.0] * len(texts)
 
-    # Per domain: take the highest-NLI docs until the token budget is reached.
+    # Per domain: take the highest-TF-IDF docs until the token budget is reached.
     for domain, scored in agree.items():
-        scored.sort(key=lambda t: t[1], reverse=True)
+        scored.sort(key=lambda t: domain_sim[domain][t[0]], reverse=True)
         tokens = kept = 0
         for idx, score in scored:
             if tokens >= DOMAIN_TOKEN_BUDGET:
@@ -295,7 +305,7 @@ def _pass2_nli(texts, candidates_idx, pass1_labels, num_tokens):
             tokens += num_tokens[idx] or 0
             kept += 1
         print(
-            f"  {domain}: kept {kept:,} of {len(scored):,} NLI-agreeing docs "
+            f"  {domain}: kept {kept:,} of {len(scored):,} NLI-passing docs "
             f"({tokens:,} tokens, budget {DOMAIN_TOKEN_BUDGET:,})"
         )
 
@@ -317,7 +327,7 @@ def main():
         texts, physics_seed, biology_seed
     )
     final_labels, nli_scores = _pass2_nli(
-        texts, candidates_idx, pass1_labels, ds["num_tokens"]
+        texts, candidates_idx, pass1_labels, ds["num_tokens"], sim_physics, sim_biology
     )
 
     # ── results ──────────────────────────────────────────────────────────────

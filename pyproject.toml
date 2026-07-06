@@ -28,7 +28,7 @@ dependencies = [
     "accelerate>=0.26.0",     # Trainer backend for DAPT fine-tuning
     "adapters>=1.3.0",        # AdapterHub LoRA (default DAPT method); built for transformers 4.57.x
     "matplotlib>=3.7.0",
-    "formulae>=0.6.2",       # pymer4 0.9 formula parser (pymer4 declares no deps)
+    "formulae>=0.6.2", "wikipedia-api>=0.15.0,<0.16",       # pymer4 0.9 formula parser (pymer4 declares no deps)
 ]
 
 [tool.uv]
