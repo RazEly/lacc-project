@@ -15,14 +15,15 @@ Differences from the paper, kept deliberately simple:
     site-specific HTML parsing.
 
 Run:
-    python -m src.acquire.scrape            # full scrape, both domains
-    python -m src.acquire.scrape --test     # tiny smoke run (few terms, depth 1)
+    python -m src.acquire.scrape                    # full scrape, both domains
+    python -m src.acquire.scrape --domain biology   # one domain only
+    python -m src.acquire.scrape --test             # tiny smoke run (few terms, depth 1)
 """
 
 from __future__ import annotations
 
+import argparse
 import re
-import sys
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -40,14 +41,20 @@ LANG = "de"
 USER_AGENT = "PoTeC-DAPT-research/0.1 (ely.raz@campus.technion.ac.il)"
 
 # Scrape knobs (paper-scale defaults; --test shrinks them).
-MAX_DEPTH = 3  # sub-category recursion depth from each seed category
+MAX_DEPTH = 2  # sub-category recursion depth from each seed category
 MAX_WORDS = 3_000_000  # per-domain word budget (whitespace words); stop here
-ARTICLE_POOL = 2_400  # cap on titles gathered before the word budget cuts the scrape
-MIN_ARTICLE_CHARS = 200  # drop stubs / disambiguation pages
+# Pool must exceed (word budget / prose-words-per-article) so the WORD budget cuts
+# the scrape, not the pool cap. At ~575 prose words/article (post-filter) the 3M
+# budget needs ~5.2k kept; with fetch-time attrition (redirects/stubs/short pages)
+# 9k titles gives headroom. Both domains were previously pool-capped (physics 2398,
+# biology 2274) well short of the budget; physics still hits the word budget first.
+ARTICLE_POOL = 9_000  # cap on titles gathered before the word budget cuts the scrape
+# Prose-character floor. 200 let infobox stubs through — the biology corpus came
+# out at 127 words/article. 1000 (~150 prose words) drops chemical/protein DB
+# stubs that slip past the category filter while keeping genuinely short articles.
+MIN_ARTICLE_CHARS = 1000  # drop stubs / disambiguation / infobox-only pages
 REQUEST_DELAY = 0.1  # polite pause between category-listing fetches (s)
-FETCH_WORKERS = (
-    4  # parallel article-text fetches (lower = fewer 429s under Wikimedia throttle)
-)
+FETCH_WORKERS = 4  # parallel article-text fetches; lower = fewer 429s under throttle
 FETCH_RETRIES = 3  # per-article retries on transient API failure (429/network)
 RETRY_BACKOFF = 1.5  # seconds, exponential base between retries
 
@@ -69,6 +76,23 @@ DROP_SECTIONS = frozenset(
 )
 
 _WS_RE = re.compile(r"[ \t]{2,}")
+# Category-body substrings that mark a NON-content grouping: admin/maintenance,
+# disambiguation, and chemical hazard/regulatory classes (infobox-stub farms).
+DROP_CAT_TOKENS = (
+    "Wikipedia",
+    "Versteckte",
+    "Vorlage",
+    "Navigationsleiste",
+    "Liste",
+    "Begriffsklärung",
+    "CLP",
+    "REACH",
+    "SVHC",
+    "CMR",
+)
+# Standalone word "Stoff" — the chemical hazard cats (Gefährlicher Stoff, CMR-Stoff,
+# …). Word boundary spares "Stoffwechsel…"/"Stoffgruppe" (metabolism prose we keep).
+_STOFF_RE = re.compile(r"\bStoff\b")
 
 
 class _TextExtractor(HTMLParser):
@@ -127,6 +151,63 @@ def _wiki() -> wikipediaapi.Wikipedia:
     )
 
 
+# Standard German BSc curriculum subjects per domain — added to the PoTeC level-2
+# seeds so the scrape also anchors on whole-course topics (each is a real German
+# Wikipedia article whose categories are broad, prose-rich domain cores, not the
+# molecule/substance stub-farms the expert terms land in). Sourced from the Goethe-
+# Uni Frankfurt B.Sc. Physik and Uni Bonn B.Sc. Biologie module handbooks.
+CURRICULUM_TERMS = {
+    "physics": [
+        "Experimentalphysik",
+        "Theoretische Physik",
+        "Klassische Mechanik",
+        "Elektrodynamik",
+        "Thermodynamik",
+        "Statistische Physik",
+        "Quantenmechanik",
+        "Optik",
+        "Atomphysik",
+        "Kernphysik",
+        "Teilchenphysik",
+        "Festkörperphysik",
+        "Kondensierte Materie",
+        "Astrophysik",
+        "Kosmologie",
+        "Relativitätstheorie",
+        "Elektromagnetismus",
+        "Plasmaphysik",
+        "Biophysik",
+        "Quantenfeldtheorie",
+        "Spektroskopie",
+        "Halbleiterphysik",
+    ],
+    "biology": [
+        "Zellbiologie",
+        "Zoologie",
+        "Botanik",
+        "Genetik",
+        "Mikrobiologie",
+        "Biochemie",
+        "Ökologie",
+        "Evolution",
+        "Physiologie",
+        "Molekularbiologie",
+        "Entwicklungsbiologie",
+        "Neurobiologie",
+        "Immunbiologie",
+        "Verhaltensbiologie",
+        "Biodiversität",
+        "Anatomie",
+        "Pflanzenphysiologie",
+        "Tierphysiologie",
+        "Bioinformatik",
+        "Paläontologie",
+        "Biologische Systematik",
+        "Histologie",
+    ],
+}
+
+
 def level2_terms(domain: str) -> list[str]:
     """The PoTeC level-2 (expert) technical terms for one domain.
 
@@ -142,17 +223,18 @@ def level2_terms(domain: str) -> list[str]:
 
 
 def _is_content_category(cat_title: str) -> bool:
-    """Keep topical categories; drop admin/maintenance ones.
+    """Keep topical categories; drop admin/maintenance and substance-stub ones.
 
-    wikipediaapi yields keys like ``Kategorie:Quantenmechanik``. Maintenance
-    categories carry a second colon (``Kategorie:Wikipedia:…``) or known admin
-    tokens — those are not domain content.
+    wikipediaapi yields keys like ``Kategorie:Quantenmechanik``. A nested namespace
+    (``Kategorie:Wikipedia:…``) or a ``DROP_CAT_TOKENS`` / ``_STOFF_RE`` hit marks a
+    non-content grouping — maintenance, disambiguation, or a chemical hazard class
+    whose members are infobox-only substance stubs (~40 words of prose). Biology's
+    seed terms are molecules, so their articles sit in exactly those stub-farms.
     """
     body = cat_title.split(":", 1)[-1]
-    if ":" in body:  # e.g. Kategorie:Wikipedia:Redundanz
+    if ":" in body:  # nested namespace, e.g. Kategorie:Wikipedia:Redundanz
         return False
-    admin = ("Wikipedia", "Versteckte", "Vorlage", "Navigationsleiste", "Liste")
-    return not any(tok in body for tok in admin)
+    return not (any(tok in body for tok in DROP_CAT_TOKENS) or _STOFF_RE.search(body))
 
 
 def _search_title(term: str, wiki) -> str | None:
@@ -307,12 +389,11 @@ def fetch_texts(pages, max_words) -> list[dict]:
                 row = fut.result()
                 if row is None:
                     skipped += 1
-                    bar.set_postfix(kept=kept, skip=skipped, refresh=False)
-                    continue
-                rows.append(row)
-                kept += 1
-                total += row["num_words"]
-                bar.update(row["num_words"])
+                else:
+                    rows.append(row)
+                    kept += 1
+                    total += row["num_words"]
+                    bar.update(row["num_words"])
                 bar.set_postfix(kept=kept, skip=skipped, refresh=False)
                 if total >= max_words:
                     break
@@ -333,8 +414,12 @@ def scrape_domain(
 ) -> Dataset:
     """Scrape one domain's Wikipedia corpus (to a word budget) into a ``Dataset``."""
     wiki = _wiki()
-    terms = level2_terms(domain)
-    print(f"[{domain}] {len(terms)} level-2 seed terms")
+    expert = level2_terms(domain)
+    terms = expert + CURRICULUM_TERMS[domain]
+    print(
+        f"[{domain}] {len(terms)} seed terms "
+        f"({len(expert)} level-2 + {len(CURRICULUM_TERMS[domain])} curriculum)"
+    )
 
     cats = seed_categories(terms, wiki, max_terms=max_terms)
     print(f"[{domain}] {len(cats)} seed content categories (top: {cats[:8]})")
@@ -350,12 +435,24 @@ def scrape_domain(
 
 
 def main() -> None:
-    test = "--test" in sys.argv
+    ap = argparse.ArgumentParser(description="Scrape German Wikipedia domain corpora.")
+    ap.add_argument(
+        "--domain", choices=DOMAINS, help="scrape only this domain (default: all)"
+    )
+    ap.add_argument(
+        "--test", action="store_true", help="tiny smoke run (few terms, depth 1)"
+    )
+    args = ap.parse_args()
+
+    test = args.test
     depth = 1 if test else MAX_DEPTH
     words = 30_000 if test else MAX_WORDS
     pool = 15 if test else ARTICLE_POOL
     terms = 4 if test else None
-    doms = ("physics",) if test else DOMAINS
+    if args.domain:
+        doms = (args.domain,)
+    else:
+        doms = ("physics",) if test else DOMAINS
 
     for domain in doms:
         ds = scrape_domain(

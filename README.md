@@ -1,6 +1,6 @@
 # lang-comp-cog-domain
 
-Domain labelling of german-commons + PoTeC reading-time analysis.
+Term-targeted Wikipedia DAPT corpora + PoTeC reading-time analysis.
 
 ## Setup
 
@@ -17,7 +17,7 @@ curl -fsSL https://pixi.sh/install.sh | bash   # then restart your shell
 pixi install
 
 # 3. fetch data + run
-./init.sh                 # clone PoTeC, download corpora (add --no-eyetracking to skip the large OSF pull)
+./init.sh                 # clone PoTeC, download eye-tracking data, scrape the domain corpora
 pixi run main             # = python -m src.main
 pixi run test             # = pytest
 ```

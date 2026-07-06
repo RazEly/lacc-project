@@ -48,6 +48,13 @@ def _plt():
     return plt
 
 
+def _grid(plt, nrows: int, ncols: int, **kwargs):
+    """2-D subplot grid, ~5×3.5in per panel; always returns a 2-D axes array."""
+    return plt.subplots(
+        nrows, ncols, figsize=(5 * ncols, 3.5 * nrows), squeeze=False, **kwargs
+    )
+
+
 def _save(fig, name: str, out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
@@ -96,14 +103,10 @@ def perplexity_grid(
     """
     plt = _plt()
     models = _slugs(manifests, "model")
-    fig, axes = plt.subplots(
-        len(FT_DOMAINS), len(models),
-        figsize=(5 * len(models), 3.5 * len(FT_DOMAINS)),
-        sharex=True, squeeze=False,
-    )
+    fig, axes = _grid(plt, len(FT_DOMAINS), len(models), sharex=True)
     for j, model in enumerate(models):
         for i, ft in enumerate(FT_DOMAINS):
-            ax = axes[i][j]
+            ax = axes[i, j]
             sub = manifests[
                 (manifests["model"] == model) & (manifests["ft_domain"] == ft)
             ]
@@ -266,14 +269,12 @@ def mean_surprisal_over_steps(
     model_domains = ("physics", "biology")  # grid columns
     text_domains = ("physics", "biology")  # grid rows
     plt = _plt()
-    fig, axes = plt.subplots(
-        len(text_domains), len(model_domains),
-        figsize=(5 * len(model_domains), 3.5 * len(text_domains)),
-        sharex=True, sharey=True, squeeze=False,
+    fig, axes = _grid(
+        plt, len(text_domains), len(model_domains), sharex=True, sharey=True
     )
     for j, md in enumerate(model_domains):
         for i, td in enumerate(text_domains):
-            ax = axes[i][j]
+            ax = axes[i, j]
             g = means[
                 (means["domain"] == md) & (means["text_domain"] == td)
             ].sort_values("step")
@@ -348,8 +349,8 @@ def delta_ll_curves(results: pd.DataFrame, out_dir: Path = FIGURES_DIR) -> pd.Da
         ax.set_ylim(lo - pad, hi + pad)
         ax.set_xlabel("training steps (log)")
         ax.set_title(MODEL_LABELS.get(slug, slug))
-    axes[0][0].set_ylabel("ΔLL vs no-surprisal baseline")
-    axes[0][0].legend(fontsize=8)
+    axes[0, 0].set_ylabel("ΔLL vs no-surprisal baseline")
+    axes[0, 0].legend(fontsize=8)
     _save(fig, "fig4_delta_ll", out_dir)
     plt.close(fig)
     return results

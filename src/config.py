@@ -24,8 +24,7 @@ DOMAINS = ("physics", "biology")
 
 # Fine-tuning corpora: the term-targeted German-Wikipedia scrape (acquire.scrape),
 # one per domain — seeded from the PoTeC level-2 expert terms, the paper's own
-# approach. Replaces the german-commons doc-classification selection (which lacked
-# the expert terms DAPT needs; see notes). Built by `python -m src.acquire.scrape`.
+# approach. Built by `python -m src.acquire.scrape`.
 DOMAIN_DIRS = {domain: DATA_DIR / f"wiki_{domain}" for domain in DOMAINS}
 
 # Default decoder LM; loaders are model-agnostic within the decoder family.

@@ -2,7 +2,7 @@
 #
 # One-shot project setup for a fresh (remote) machine.
 #   - builds the pixi env from pixi.lock (Python deps + R + lme4/lmerTest)
-#   - clones PoTeC and downloads PoTeC eye-tracking + german-commons corpora
+#   - clones PoTeC, downloads PoTeC eye-tracking data, scrapes the domain corpora
 #
 # Usage:
 #   ./init.sh                 # full setup incl. PoTeC eye-tracking data
@@ -36,11 +36,8 @@ fi
 echo "==> Downloading PoTeC eye-tracking data ..."
 $PY -m src.acquire.download_potec
 
-echo "==> Downloading german-commons (scientific) ..."
-$PY -m src.acquire.download_commons
-
-echo "==> Labelling corpus by domain (physics / biology) ..."
-$PY -m src.acquire.domain_preprocessing
+echo "==> Scraping the domain corpora (physics / biology) from Wikipedia ..."
+$PY -m src.acquire.scrape
 
 echo
 echo "Setup complete."

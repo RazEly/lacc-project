@@ -32,7 +32,6 @@ from src.config import DOMAIN_DIRS, N_PRIOR_PASSAGES
 PRIOR_PASSAGE_SENTENCES = 20
 
 # the two training domains (config); each supplies a prior pool.
-_DOMAIN_DIRS = DOMAIN_DIRS
 
 
 def _first_sentences(text: str, n: int) -> str:
@@ -53,7 +52,7 @@ def _held_out_passages(
     not ``k`` neighbours, so the average samples the domain broadly. Raises if the
     split holds fewer than ``k`` docs (widen ``val_frac`` or lower ``k``).
     """
-    raw = load_from_disk(str(_DOMAIN_DIRS[domain]))
+    raw = load_from_disk(str(DOMAIN_DIRS[domain]))
     test = raw.train_test_split(test_size=val_frac, seed=seed)["test"]
     if len(test) < k:
         raise ValueError(
@@ -78,5 +77,5 @@ def load_prior_passages(
     """
     return {
         domain: _held_out_passages(domain, val_frac, seed, n_sent, k)
-        for domain in _DOMAIN_DIRS
+        for domain in DOMAIN_DIRS
     }

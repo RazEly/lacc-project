@@ -24,25 +24,19 @@ def clean_reading_times(
     ``sd_k`` = number of standard deviations around each reader's mean RT beyond
     which a data point is dropped (paper uses 3).
     """
-    df = rm
-
-    # first / last word of each text (no preceding / following context)
-    grp_idx = df.groupby("text_id")["word_index_in_text"]
-    df = df[
-        (df["word_index_in_text"] != grp_idx.transform("min"))
-        & (df["word_index_in_text"] != grp_idx.transform("max"))
+    # drop text-edge words (no preceding / following context) and skips (RT 0)
+    edge = rm.groupby("text_id")["word_index_in_text"].transform
+    df = rm[
+        rm["word_index_in_text"].ne(edge("min"))
+        & rm["word_index_in_text"].ne(edge("max"))
+        & rm[measure].gt(0)
     ]
 
-    # skipped words (RT 0)
-    df = df[df[measure] > 0]
-
-    # per-reader ±sd_k·SD fence around that reader's mean RT
+    # per-reader fence: keep RTs within sd_k·SD of that reader's mean
     grp = df.groupby("reader_id")[measure]
-    mean = grp.transform("mean")
+    dev = (df[measure] - grp.transform("mean")).abs()
     sd = grp.transform("std")
-    lo, hi = mean - sd_k * sd, mean + sd_k * sd
-    keep = sd.isna() | ((df[measure] >= lo) & (df[measure] <= hi))
-    return df[keep].copy()
+    return df[sd.isna() | dev.le(sd_k * sd)].copy()
 
 
 def _sum_code(flag: int):
@@ -107,7 +101,7 @@ def build_index_df(surp_versions, rt_df, prompt_surp, index, measure):
     differ). Index 0 supplies ``s_baseline``.
     ``prompt_surp`` carries the checkpoint-independent prompted columns.
     """
-    base_index = sorted(surp_versions["index"].unique())[0]
+    base_index = surp_versions["index"].min()
 
     def _surp(idx, domain, name):
         sel = surp_versions[
