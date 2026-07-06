@@ -1,0 +1,3301 @@
+title	topic	topic_relevance	num_words
+Theoretische Mechanik	2	0.6162	1531
+Experimentalphysik	-1	0.8150	128
+Akustik	7	0.5450	1741
+Angewandte Physik	-1	0.8150	211
+Ballistik	2	0.6162	548
+Atomphysik	5	0.6795	452
+Astrophysik	4	0.6571	1287
+Beschleunigerphysik	12	0.6693	235
+Biophysik	-1	0.8150	1237
+Elektrodynamik	8	0.5638	1160
+Festkörperphysik	0	0.7204	807
+Forschung mit Neutronen	5	0.6795	498
+Computerphysik	-1	0.8150	765
+Fluiddynamik	17	0.5868	239
+Allgemeine Relativitätstheorie	2	0.6162	6900
+Gravitation	2	0.6162	4057
+Halbleiter	8	0.5638	3540
+Gasdynamik	-1	0.8150	328
+Halbleiter	8	0.5638	3540
+Hochenergiedichtephysik	-1	0.8150	286
+Kernphysik	5	0.6795	3619
+Kinetische Gastheorie	16	0.6784	342
+Klassische Mechanik	2	0.6162	1301
+Klassische Physik	-1	0.8150	1428
+Kosmologie	4	0.6571	3654
+Geophysik	4	0.6571	2760
+Mechanik	2	0.6162	1178
+Medizinische Physik	-1	0.8150	373
+Metrologie	-1	0.8150	391
+Nichtlineare Dynamik	2	0.6162	121
+Mathematische Physik	-1	0.8150	1120
+Neutronenstreuung	5	0.6795	652
+Molekülphysik	-1	0.8150	1427
+Photonik	11	0.6067	831
+Oberflächenphysik	17	0.5868	518
+Optik	11	0.6067	1121
+Ökonophysik	-1	0.8150	2445
+Quantenchromodynamik	0	0.7204	2771
+Plasma (Physik)	-1	0.8150	3328
+Quantenoptik	0	0.7204	486
+Quantengravitation	0	0.7204	1318
+Quantenfeldtheorie	0	0.7204	4569
+Quantenphysik	0	0.7204	1766
+Soziophysik	-1	0.8150	846
+Raumflugmechanik	2	0.6162	2466
+Statistische Mechanik	-1	0.8150	479
+Statistische Physik	-1	0.8150	3758
+Strahlenphysik	12	0.6693	148
+Strömungsmechanik	-1	0.8150	3042
+Reaktorphysik	5	0.6795	2910
+Technische Optik	-1	0.8150	261
+Technische Physik	2	0.6162	670
+Technische Mechanik	2	0.6162	1754
+Physik	-1	0.8150	4697
+Teilchenphysik	-1	0.8150	733
+Tieftemperaturphysik	13	0.6241	287
+Thermodynamik	13	0.6241	6935
+Vielteilchentheorie	0	0.7204	440
+Verkehrsphysik	-1	0.8150	255
+Amplituhedron	-1	0.8150	280
+Anomalie (Quantenfeldtheorie)	0	0.7204	273
+Anyon	0	0.7204	399
+Asymptotisch sichere Gravitation	0	0.7204	407
+Asymptotische Freiheit	-1	0.8150	191
+Axiomatische Quantenfeldtheorie	0	0.7204	1331
+B − L	0	0.7204	316
+BCFW-Rekursionsrelationen	0	0.7204	268
+Bethe-Salpeter-Gleichung	10	0.7557	417
+Bethe-Heitler-Formel	10	0.7557	187
+Bi-Yang-Mills-Gleichungen	-1	0.8150	252
+Bhabha-Streuung	-1	0.8150	525
+Bornsche Näherung	-1	0.8150	398
+Boson	0	0.7204	736
+Bottomness	0	0.7204	152
+BPST-Instantone	0	0.7204	136
+BPS-Grenze	-1	0.8150	369
+Callan-Symanzik-Gleichung	0	0.7204	168
+BRST-Symmetrie	0	0.7204	1161
+Casimir-Effekt	-1	0.8150	1249
+Casimirs Trick	-1	0.8150	355
+Chirale Symmetrie	0	0.7204	350
+CPT-Theorem	-1	0.8150	517
+Delbrück-Streuung	-1	0.8150	575
+Dirac-Spinor	-1	0.8150	237
+Dirac-Kähler-Gleichung	-1	0.8150	226
+Dirac-Gleichung	-1	0.8150	1705
+Dirac-Operator	-1	0.8150	530
+Drell-Yan-Prozess	0	0.7204	194
+Dyson-Gleichung	0	0.7204	169
+Dunkles Photon	-1	0.8150	586
+Eichboson	0	0.7204	643
+Eightfold Way	0	0.7204	183
+Dyson-Schwinger-Gleichungen	0	0.7204	785
+Dyson-Reihe	0	0.7204	291
+Elektrisches Dipolmoment des Neutrons	-1	0.8150	956
+Elektromagnetische Wechselwirkung	8	0.5638	689
+ER=EPR	-1	0.8150	335
+Faddejew-Popow-Geister	0	0.7204	288
+Fabri-Picasso-Theorem	0	0.7204	241
+F-Yang-Mills-Gleichungen	-1	0.8150	483
+Fano-Resonanz	10	0.7557	130
+Farbsupraleitung	0	0.7204	426
+Fermi-Wechselwirkung	-1	0.8150	226
+Erzeugungs- und Vernichtungsoperator	0	0.7204	1912
+Farbladung	0	0.7204	1002
+Feynman-Diagramm	0	0.7204	1455
+Feynman-Parameter	0	0.7204	257
+Flavour changing neutral current	-1	0.8150	383
+Flavour	0	0.7204	569
+Fockraum	0	0.7204	175
+FQFT	0	0.7204	512
+Fock-Zustand	0	0.7204	151
+Gell-Mann-Matrizen	0	0.7204	180
+Elektroschwache Wechselwirkung	10	0.7557	1397
+Gittereichtheorie	0	0.7204	1556
+Gluonenfeld	0	0.7204	248
+Goldstone-Boson-Äquivalenztheorem	0	0.7204	148
+Gluonenfeldstärketensor	0	0.7204	273
+Grundzustand	-1	0.8150	344
+Graßmann-Zahl	0	0.7204	359
+Gebundener Zustand	0	0.7204	507
+Haagsches Theorem	0	0.7204	591
+Gupta-Bleuler-Formalismus	0	0.7204	471
+Halpern-Streuung	-1	0.8150	380
+Holografisches Prinzip	0	0.7204	802
+Hyperladung	-1	0.8150	159
+Hawking-Strahlung	-1	0.8150	2586
+Infrarotproblem	0	0.7204	306
+Instanton	0	0.7204	298
+Virtuelles Teilchen	0	0.7204	588
+Kinoshita-Lee-Nauenberg-Theorem	0	0.7204	139
+Källén-Lehmann-Darstellung	0	0.7204	284
+Klein-Gordon-Gleichung	0	0.7204	572
+Kausalmenge	0	0.7204	6047
+Konforme Feldtheorie	0	0.7204	522
+Kohärenter Zustand	0	0.7204	1217
+Ladungskonjugation	-1	0.8150	678
+Kritisches Phänomen	16	0.6784	1020
+Kopplungskonstante	0	0.7204	1097
+Landau-Yang-Theorem	0	0.7204	164
+Lee-Quigg-Thacker-Bound	-1	0.8150	221
+Lamb-Verschiebung	10	0.7557	693
+Lepton	0	0.7204	299
+LSZ-Reduktionsformel	0	0.7204	153
+N = 1 supersymmetrische Yang-Mills-Theorie	-1	0.8150	207
+Viererimpuls	2	0.6162	1014
+N = 4 supersymmetrische Yang-Mills-Theorie	-1	0.8150	294
+Nielsen-Ninomiya-Theorem	0	0.7204	233
+Nullpunktsenergie	-1	0.8150	1076
+Oberflächlicher Divergenzgrad	0	0.7204	314
+Observable	0	0.7204	407
+Normalordnung	0	0.7204	390
+OZI-Regel	0	0.7204	187
+Optisches Theorem	0	0.7204	443
+Pinguin-Diagramm	0	0.7204	402
+Parke-Taylor-Formel	0	0.7204	551
+Photon	-1	0.8150	2314
+Primonengas	16	0.6784	308
+Propagator	0	0.7204	505
+Proca-Gleichung	0	0.7204	908
+Quantengeometrie	0	0.7204	371
+Quantenelektrodynamik	0	0.7204	2807
+Pfadintegral	0	0.7204	1305
+Quark-Gluon-Plasma	0	0.7204	961
+Reeh-Schlieder-Theorem	0	0.7204	195
+Renormierung	0	0.7204	608
+Josef Rothleitner	-1	0.8150	343
+Reiner Zustand und Zustandsgemisch	0	0.7204	1310
+S-Matrix	0	0.7204	266
+Rξ-Eichung	0	0.7204	672
+Scharnhorst-Effekt	10	0.7557	337
+Renormierungsgruppe	0	0.7204	3068
+Schleifenquantengravitation	0	0.7204	1738
+Schwache Hyperladung	0	0.7204	374
+Schwingers Quantenwirkungsprinzip	0	0.7204	301
+Schwinger-Effekt	-1	0.8150	688
+Sechsdimensionale holomorphe Chern-Simons-Theorie	0	0.7204	295
+Seiberg-Witten-Theorie	-1	0.8150	390
+Selbstenergie	13	0.6241	319
+Semiklassische Näherung	0	0.7204	580
+Slawnow-Taylor-Identität	0	0.7204	153
+Spin-Schaum	-1	0.8150	249
+Spin-Statistik-Theorem	-1	0.8150	674
+Stabiles Yang-Mills-Higgs-Paar	-1	0.8150	231
+Spinor-Helizitäts-Formalismus	0	0.7204	567
+Spinor	-1	0.8150	1566
+Stabiler Yang-Mills-Zusammenhang	-1	0.8150	500
+Störungstheorie (Quantenfeldtheorie)	0	0.7204	186
+Starke Wechselwirkung	0	0.7204	769
+Stochastische Quantisierung	0	0.7204	474
+Strangeness	0	0.7204	339
+Stromalgebra	8	0.5638	393
+Tetronmodell	0	0.7204	323
+Streutheorie	0	0.7204	861
+Thermische Quantenfeldtheorie	16	0.6784	151
+Truncated-Wigner-Approximation	0	0.7204	255
+Topologische Quantenfeldtheorie	0	0.7204	1408
+Twistor-Theorie	0	0.7204	688
+Uehling-Potential	-1	0.8150	543
+Unterscheidbarkeit	3	0.4698	162
+Unruh-Effekt	10	0.7557	851
+Vakuumpolarisation	-1	0.8150	631
+Vakuumerwartungswert	0	0.7204	138
+Vierdimensionale Chern-Simons-Theorie	0	0.7204	507
+Vierdimensionale Yang-Mills-Theorie	-1	0.8150	438
+Virtuelles Teilchen	0	0.7204	588
+Wahrscheinlichkeitsstromdichte	0	0.7204	563
+Ward-Takahashi-Identität	-1	0.8150	181
+Weinberg-Witten-Theorem	0	0.7204	215
+Wilson-Loop	-1	0.8150	440
+Wick-Theorem	0	0.7204	412
+Wick-Rotation	-1	0.8150	682
+Wightman-Axiome	0	0.7204	934
+Yang-Mills-Existenz- und Massenlückeproblem	-1	0.8150	258
+Yang-Mills-Gleichungen	-1	0.8150	502
+Yang-Mills-Higgs-Gleichungen	-1	0.8150	525
+Yukawa-Wechselwirkung	10	0.7557	332
+Yang-Mills-Theorie	-1	0.8150	1556
+Zentrumsvortex	0	0.7204	507
+Propagator	0	0.7204	505
+Zitterbewegung	0	0.7204	313
+Zetafunktions-Regularisierung	0	0.7204	508
+Zweidimensionale Yang-Mills-Theorie	-1	0.8150	416
+Festkörper	13	0.6241	1939
+Kondensierte Materie	-1	0.8150	527
+Zweite Quantisierung	0	0.7204	1525
+Absorptionsspektrum	12	0.6693	709
+Altermagnetismus	14	0.5864	680
+Amorphe Halbleiter	-1	0.8150	254
+Amorphes Material	6	0.3364	720
+Anisotroper magnetoresistiver Effekt	14	0.5864	538
+ANNNI-Modell	-1	0.8150	180
+Anderson-Lokalisierung	-1	0.8150	347
+Antiferromagnetismus	14	0.5864	643
+Austrittsarbeit	-1	0.8150	474
+Bändermodell	-1	0.8150	1520
+Austauschwechselwirkung	-1	0.8150	2509
+Bandlücke	-1	0.8150	951
+Bandstruktur	-1	0.8150	1017
+Bethe-Ansatz	10	0.7557	531
+Bloch-Gleichungen	-1	0.8150	220
+Bloch-Oszillationen	-1	0.8150	406
+Bloch-Funktion	10	0.7557	499
+Bloch-Wand	-1	0.8150	461
+Blume-Capel-Modell	-1	0.8150	318
+Bohr-van-Leeuwen-Theorem	-1	0.8150	323
+Boolesches Netzwerk	-1	0.8150	313
+Born-von-Kármán-Modell	10	0.7557	178
+Brillouin-Zone	-1	0.8150	323
+Born-Landé-Gleichung	-1	0.8150	243
+Davydov-Aufspaltung	-1	0.8150	249
+CMR-Effekt	14	0.5864	162
+De-Haas-van-Alphen-Effekt	-1	0.8150	482
+Debye-Modell	16	0.6784	765
+Deconfinement	0	0.7204	175
+Defektkonzentration	13	0.6241	179
+Dember-Effekt	-1	0.8150	244
+Dichroismus	11	0.6067	1414
+Diffusion	-1	0.8150	3508
+Diffusionsspannung	8	0.5638	154
+Driftgeschwindigkeit	2	0.6162	403
+Dotierung	-1	0.8150	3075
+Drude-Theorie	-1	0.8150	742
+Druck (Physik)	2	0.6162	3213
+Dulong-Petit-Gesetz	16	0.6784	535
+Dünne Schichten	-1	0.8150	1836
+Durchschlagfestigkeit	8	0.5638	719
+Early-Effekt	10	0.7557	211
+Edelmetalle	-1	0.8150	1662
+Edison-Richardson-Effekt	-1	0.8150	613
+Effektiv-Medium-Theorie	0	0.7204	1058
+Eigenleitung	8	0.5638	695
+Effektive Masse	17	0.5868	868
+Eigenleitungsdichte	8	0.5638	506
+Elastokalorischer Effekt	-1	0.8150	188
+Einsteinmodell	16	0.6784	546
+Elektrokalorischer Effekt	8	0.5638	422
+Elektrische Leitfähigkeit	8	0.5638	2047
+Elektrischer Feldgradient	8	0.5638	186
+Elektrolumineszenz	-1	0.8150	453
+Elektronendichte	10	0.7557	347
+Elektronengas	-1	0.8150	728
+Elektromigration	8	0.5638	2149
+Elektrostriktion	8	0.5638	204
+Elementare Anregung	-1	0.8150	274
+Embedded-Atom-Methode	10	0.7557	193
+Entartete Materie	0	0.7204	306
+EP2DS	19	0.6482	243
+Ettingshausen-Effekt	-1	0.8150	209
+Epitaxie	5	0.6795	887
+Extrinsische Leitfähigkeit	-1	0.8150	263
+Exchange Bias	14	0.5864	2855
+Feldgradienten-NMR	-1	0.8150	474
+Fermi-Energie	-1	0.8150	1433
+Fermi-Dirac-Statistik	-1	0.8150	1334
+Fermi-Dirac-Statistik	-1	0.8150	1334
+Fermi-Fläche	-1	0.8150	474
+Fermi-Dirac-Statistik	-1	0.8150	1334
+Fermi-Flüssigkeits-Theorie	-1	0.8150	1409
+Festkörperionik	-1	0.8150	396
+Ferroelektrikum	-1	0.8150	938
+Festkörperlaser	-1	0.8150	1337
+Feuchteabsolutbestimmer	-1	0.8150	250
+Flachbandspannung	-1	0.8150	425
+Flexoelektrizität	-1	0.8150	183
+Ferromagnetismus	14	0.5864	3180
+Fluoreszenzlöschung	-1	0.8150	619
+Flüssigphasenepitaxie	13	0.6241	469
+Franz-Keldysh-Effekt	-1	0.8150	378
+Fundamentalabsorption	12	0.6693	214
+Galvanomagnetische Effekte	14	0.5864	319
+Förster-Resonanzenergietransfer	12	0.6693	2960
+Gitterenergie	13	0.6241	188
+Geometrische Frustration	2	0.6162	832
+GMR-Effekt	14	0.5864	567
+Granulare Materie	-1	0.8150	413
+Gestörte Gamma-Gamma-Winkelkorrelation	5	0.6795	2918
+Goldstonetheorem	0	0.7204	756
+Grenzflächenstreuung	-1	0.8150	152
+Graphen	5	0.6795	3600
+Größenquantisierungseffekt	0	0.7204	396
+Grüneisen-Parameter	-1	0.8150	451
+Gunn-Effekt	-1	0.8150	264
+Halbleiterdetektor	-1	0.8150	682
+Heteroübergang	-1	0.8150	340
+Heuslersche Legierung	-1	0.8150	368
+Halbleitertechnik	-1	0.8150	2810
+Holstein-Herring-Methode	-1	0.8150	787
+Hubbard-Modell	10	0.7557	266
+Quanten-Hall-Effekt	10	0.7557	2268
+Inversion (Halbleiter)	-1	0.8150	221
+Isolator (Elektrotechnik)	8	0.5638	2350
+Ising-Modell	-1	0.8150	1734
+Kohler-Regel	14	0.5864	133
+Kondo-Effekt	-1	0.8150	255
+Kibble-Zurek-Mechanismus	0	0.7204	1067
+Kondo-Modell	-1	0.8150	262
+Kosterlitz-Thouless-Übergang	0	0.7204	180
+Kristallisationsenthalpie	-1	0.8150	337
+Kristallstruktur	5	0.6795	507
+K·p-Methode	0	0.7204	490
+Kronig-Penney-Modell	10	0.7557	239
+Kryostat	13	0.6241	366
+Ladungsdichtewelle	-1	0.8150	576
+KTHNY-Theorie	0	0.7204	1950
+Lawinendurchbruch	-1	0.8150	486
+Laserdiode	9	0.5271	1697
+Landau-Lifschitz-Gilbert-Gleichung	14	0.5864	1866
+Landau-Niveau	-1	0.8150	1552
+Leiter (Physik)	8	0.5638	1219
+Leitungsband	-1	0.8150	171
+Lennard-Jones-Potential	10	0.7557	303
+Lineare Kette	10	0.7557	191
+Lokale Struktur	5	0.6795	355
+Lokalisierung (Physik)	7	0.5450	1099
+Magnesiumdiborid	-1	0.8150	301
+Lorentz-Oszillator	-1	0.8150	360
+Magnetische Ordnung	14	0.5864	303
+Magnetoresistiver Effekt	14	0.5864	546
+Magnetischer Tunnelwiderstand	14	0.5864	506
+Magnonik	14	0.5864	176
+Magnetismus	14	0.5864	3429
+Matthiessensche Regel	-1	0.8150	128
+Metall-Isolator-Übergang	5	0.6795	645
+Metall-Halbleiter-Kontakt	-1	0.8150	127
+Modell der quasifreien Elektronen	10	0.7557	159
+Mott-Isolator	-1	0.8150	567
+Multiphononenabsorption	12	0.6693	187
+Nanodraht	-1	0.8150	385
+Mott-Schottky-Diagramm	-1	0.8150	588
+Myonenspinspektroskopie	-1	0.8150	1329
+Néel-Wand	14	0.5864	441
+Nernst-Effekt	-1	0.8150	394
+Neutronensuperspiegel	-1	0.8150	136
+Nukleare Festkörperphysik	5	0.6795	1518
+Nukleare Pasta	5	0.6795	226
+Ohmscher Kontakt	-1	0.8150	305
+Nullpunktsentropie	16	0.6784	820
+Oberflächenplasmon	-1	0.8150	633
+Optische Leitfähigkeit	8	0.5638	384
+Partikelplasmon	-1	0.8150	121
+Orbitalordnung	-1	0.8150	658
+Peierls-Instabilität	-1	0.8150	205
+Photoakustischer Effekt	-1	0.8150	185
+Permeation	-1	0.8150	1013
+Permeabilität (Materie)	-1	0.8150	207
+Photoelektrischer Effekt	-1	0.8150	2155
+Photoelektrochemischer Prozess	-1	0.8150	1185
+Photoelektromagnetischer Effekt	-1	0.8150	225
+Photogalvanischer Effekt	-1	0.8150	381
+Piezoelektrischer Transformator	-1	0.8150	754
+Piezoresistiver Effekt	8	0.5638	287
+Piezoelektrizität	-1	0.8150	2207
+Plasmakante	-1	0.8150	218
+Plasmaresonanz	-1	0.8150	231
+Potentialbarriere	-1	0.8150	236
+P-n-Übergang	8	0.5638	1145
+Punktladungsmodell	10	0.7557	219
+Quantendraht	0	0.7204	439
+Quantenmaterial	0	0.7204	260
+Quantenkaskadenlaser	0	0.7204	450
+Quantenmaterie	0	0.7204	208
+Quanten-Hall-Effekt	10	0.7557	2268
+Quantenpunkt-Spinventil	0	0.7204	196
+Quantenphasenübergang	0	0.7204	594
+Quantenpunkt	0	0.7204	1599
+Quantentopf	0	0.7204	212
+Raman-Laser	-1	0.8150	350
+Randkanalmodell	10	0.7557	500
+Rashba-Effekt	-1	0.8150	272
+Raumladungszone	8	0.5638	593
+Restwiderstandsverhältnis	8	0.5638	171
+Righi-Leduc-Effekt	-1	0.8150	230
+RKKY-Wechselwirkung	-1	0.8150	160
+Rekombination (Physik)	-1	0.8150	1032
+Scheibenlaser	9	0.5271	297
+Schubnikow-de-Haas-Effekt	10	0.7557	291
+Schottky-Anomalie	16	0.6784	159
+Schottky-Effekt	-1	0.8150	294
+Schwache Lokalisierung	-1	0.8150	274
+Shockley-Gleichung	-1	0.8150	166
+Selbstenergiefunktionaltheorie	-1	0.8150	497
+Shockley-Queisser-Grenze	-1	0.8150	1204
+Schwerpunktsatz	-1	0.8150	506
+Silicen	0	0.7204	600
+Sommerfeld-Theorie der Metalle	-1	0.8150	349
+Spannungsdurchschlag	-1	0.8150	430
+Spin-Eis	-1	0.8150	448
+Spin-Gitter-Relaxation	-1	0.8150	296
+Spin-Glas	-1	0.8150	746
+Spin-Hall-Effekt	-1	0.8150	353
+Spin-Ladungs-Trennung	-1	0.8150	225
+Spin-Nernst-Effekt	-1	0.8150	143
+Spin-Strom	-1	0.8150	158
+Spindichtewelle	-1	0.8150	332
+Spintronik	-1	0.8150	357
+Stillinger-Weber-Potential	0	0.7204	182
+Störstellenerschöpfung	8	0.5638	319
+Störstelle	5	0.6795	837
+Suhl-Effekt	-1	0.8150	140
+Störstellenreserve	8	0.5638	213
+Superisolator	-1	0.8150	382
+Superzähigkeit	17	0.5868	190
+Supraschmierfähigkeit	-1	0.8150	233
+Tanabe-Sugano-Diagramm	10	0.7557	463
+Teilchenmodell	-1	0.8150	824
+Teilkristallin	-1	0.8150	370
+Temperaturleitfähigkeit	13	0.6241	475
+Thermoelektrizität	-1	0.8150	1679
+Thermomagnetische Effekte	-1	0.8150	209
+Toda-Gitter	5	0.6795	155
+Tomonaga-Luttinger-Flüssigkeit	10	0.7557	560
+Topologischer Isolator	8	0.5638	1170
+Trägerstaueffekt	8	0.5638	154
+Übergitter	-1	0.8150	239
+Valenzband	-1	0.8150	704
+Vakuumtechnik	-1	0.8150	491
+Valley-Entartung	-1	0.8150	219
+Van-Hove-Singularität	-1	0.8150	349
+Verallgemeinerte Gradientennäherung	-1	0.8150	164
+Vielteilchenlokalisierung	0	0.7204	204
+Van-Vleck-Paramagnetismus	-1	0.8150	885
+Festkörperphysik	0	0.7204	807
+Von-Klitzing-Konstante	0	0.7204	153
+Walter-Schottky-Preis	-1	0.8150	135
+Wannier-Darstellung	-1	0.8150	135
+Warme dichte Materie	-1	0.8150	390
+Wärmeausdehnung	13	0.6241	834
+Wigner-Kristall	10	0.7557	132
+Wigner-Seitz-Zelle	-1	0.8150	179
+Wiedemann-Franzsches Gesetz	-1	0.8150	295
+Yb:YAG-Laser	9	0.5271	213
+Zeitkristall	-1	0.8150	495
+Zener-Effekt	-1	0.8150	217
+Zener-Preis	-1	0.8150	187
+Roland Zimmermann (Physiker)	-1	0.8150	400
+Zweidimensionales Elektronengas	-1	0.8150	208
+Zustandsgleichung von Birch-Murnaghan	-1	0.8150	200
+Zustandsdichte	0	0.7204	824
+Zyklotronresonanz	-1	0.8150	448
+Alphastrahlung	-1	0.8150	1731
+Chamäleon-Teilchen	0	0.7204	474
+Deuteron	5	0.6795	602
+Exziton	-1	0.8150	503
+Graviton	-1	0.8150	944
+Gluon	0	0.7204	690
+Higgs-Boson	-1	0.8150	2442
+Pomeron	-1	0.8150	372
+Phonon	7	0.5450	784
+Z-Boson	0	0.7204	404
+W-Boson	0	0.7204	837
+Atom-Chip	5	0.6795	393
+Atomlaser	-1	0.8150	138
+COLTRIMS	19	0.6482	736
+Autler-Townes-Effekt	10	0.7557	349
+Bell-Zustand	0	0.7204	1254
+Doppelspaltexperiment	11	0.6067	1692
+Fluoreszenz	-1	0.8150	2112
+Frequency Pulling	9	0.5271	453
+Gain Clamping	9	0.5271	187
+Gequetschtes Licht	-1	0.8150	3409
+Hanbury-Brown-Twiss-Effekt	4	0.6571	502
+Intensitätsinterferometer	-1	0.8150	1095
+Hong-Ou-Mandel-Effekt	10	0.7557	501
+Evaporative Kühlung	13	0.6241	226
+Laserkühlung	9	0.5271	1453
+Laserkühlung	9	0.5271	1453
+Lumineszenz	12	0.6693	554
+Jaynes-Cummings-Modell	10	0.7557	664
+Optisches Gitter (Quantenoptik)	-1	0.8150	500
+Phosphoreszenz	-1	0.8150	1253
+Markow-Näherung	0	0.7204	684
+Photon Bunching	-1	0.8150	352
+Rabi-Methode	-1	0.8150	331
+Photon Antibunching	-1	0.8150	390
+Rabi-Oszillation	-1	0.8150	545
+Lumineszenz	12	0.6693	554
+Relaxationsschwingung	9	0.5271	319
+Rückstoßtemperatur	-1	0.8150	195
+Sisyphuskühlung	9	0.5271	471
+Stoffeigenschaft	-1	0.8150	752
+Rotating Wave Approximation	-1	0.8150	574
+Verstärkungssättigung	-1	0.8150	218
+Addukt	-1	0.8150	257
+Abriebfestigkeit	13	0.6241	569
+Alexandrit-Effekt	-1	0.8150	715
+Asterismus (Mineralogie)	-1	0.8150	245
+Aggregatzustand	-1	0.8150	2625
+Azentrischer Faktor	16	0.6784	166
+Balaban-J-Index	10	0.7557	226
+Biologische Abbaubarkeit	13	0.6241	1150
+Ausdehnungskoeffizient	13	0.6241	2755
+Brillanz (Schmuckstein)	-1	0.8150	287
+Brechungsindex	-1	0.8150	2967
+Chatoyance	-1	0.8150	300
+Cloudpoint	13	0.6241	223
+Dampfdruck	-1	0.8150	1084
+Dehnviskosität	-1	0.8150	465
+Deliqueszenz	-1	0.8150	1832
+Dilatanz (granulare Materie)	-1	0.8150	430
+Dilatanz (Fluid)	-1	0.8150	1249
+Dimensionsstabilität	-1	0.8150	185
+Dichte	17	0.5868	942
+Elastische Grenzflächenspannung	17	0.5868	225
+Elektronenakzeptor	-1	0.8150	144
+Elektrophilie	-1	0.8150	264
+Elektrische Suszeptibilität	8	0.5638	548
+Enantioselektivität	-1	0.8150	339
+Feuer (Schmuckstein)	-1	0.8150	207
+Exzessvolumen	17	0.5868	309
+Freezing Point	13	0.6241	323
+Glanz	-1	0.8150	615
+Grenzflächenspannung	-1	0.8150	845
+Hydrotropie	13	0.6241	136
+Härte	2	0.6162	3794
+Enthalpie	13	0.6241	7372
+Härte	2	0.6162	3794
+Hygroskopie	13	0.6241	1089
+Inerte Substanz	13	0.6241	233
+Kanzerogenitätsindex	-1	0.8150	269
+Klärpunkt	13	0.6241	155
+Kolligative Eigenschaft	13	0.6241	132
+Leitfähigkeit	-1	0.8150	234
+Lagerungsdichte	17	0.5868	449
+Löslichkeit	13	0.6241	2251
+Längenbezogene Masse	17	0.5868	353
+Lyotropie	13	0.6241	398
+Massenexplosion	-1	0.8150	651
+Merck Index	-1	0.8150	141
+Mesomorpher Zustand	2	0.6162	182
+Magnetische Suszeptibilität	14	0.5864	1366
+Mischschmelzpunkt	13	0.6241	153
+Molares Volumen	17	0.5868	198
+Nukleophilie	5	0.6795	541
+Nukleofugie	5	0.6795	159
+Opazität	-1	0.8150	679
+Oxidationsmittel	-1	0.8150	306
+Optische Aktivität	11	0.6067	1247
+Oberflächenspannung	-1	0.8150	2847
+Peptidmustercharakterisierung	13	0.6241	108
+Magnetische Permeabilität	14	0.5864	903
+Polarimetrie	-1	0.8150	425
+Potentielle Dichte	17	0.5868	342
+Magnetische Permeabilität	14	0.5864	903
+Permittivität	8	0.5638	1354
+Pourpoint	13	0.6241	443
+Pyrophor	13	0.6241	575
+Tripelpunkt	13	0.6241	1215
+Randić-Index	-1	0.8150	148
+Reaktivität (Chemie)	13	0.6241	190
+Reduktionsmittel	-1	0.8150	194
+Reibempfindlichkeit	-1	0.8150	187
+Rekalzitranz	-1	0.8150	127
+Ausdehnungskoeffizient	13	0.6241	2755
+Relative Dichte	17	0.5868	342
+Röntgenopazität	-1	0.8150	667
+Säurebeständigkeit	-1	0.8150	192
+Sättigungsdampfdruck	-1	0.8150	1711
+Schlagempfindlichkeit	-1	0.8150	322
+Schmelzpunkt	13	0.6241	922
+Schwelleneffekt (Chemie)	-1	0.8150	140
+Schmelzenthalpie	-1	0.8150	335
+Schmelzintervall	13	0.6241	213
+Siedepunkt	13	0.6241	3050
+Sofortschmelzpunkt	13	0.6241	215
+Spezifisches Volumen	17	0.5868	150
+Sprengkraft	-1	0.8150	238
+Spezifischer Widerstand	8	0.5638	709
+Stahlhülsentest	13	0.6241	426
+Spezifische Wärmekapazität	13	0.6241	2176
+Stockpunkt	13	0.6241	219
+Strukturviskosität	17	0.5868	419
+Thixotropie	-1	0.8150	853
+Transluzenz	11	0.6067	219
+Superelektrophile Anionen	-1	0.8150	2915
+Viskositätsindex	13	0.6241	255
+Tripelpunkt	13	0.6241	1215
+Viskosität	-1	0.8150	2259
+Wärmeleitfähigkeit	13	0.6241	903
+Wichte	17	0.5868	322
+Volumenviskosität	17	0.5868	978
+Wiener-Index	10	0.7557	285
+Präon	0	0.7204	809
+Rishonen-Modell	10	0.7557	680
+Elementarteilchen	0	0.7204	5306
+Sphaleron	-1	0.8150	788
+Admittanz	8	0.5638	408
+Blindarbeit	8	0.5638	240
+Elastanz	8	0.5638	207
+Elektrische Energie	8	0.5638	948
+Elektrische Flussdichte	8	0.5638	447
+Elektrische Leistung	8	0.5638	577
+Elektrische Ladung	8	0.5638	4247
+Elektrische Energie	8	0.5638	948
+Elektrische Stromdichte	8	0.5638	743
+Elektrische Spannung	8	0.5638	2709
+Elektrischer Fluss	-1	0.8150	425
+Elektrischer Leitwert	8	0.5638	284
+Elektrischer Strom	8	0.5638	2207
+Elektrisches Potential	-1	0.8150	680
+Leistungsgröße	-1	0.8150	263
+Leistungsgröße	-1	0.8150	263
+Elektrischer Widerstand	8	0.5638	2554
+Elektrische Feldstärke	8	0.5638	297
+Magnetische Feldstärke	14	0.5864	714
+Elektrolytische Leitfähigkeit	8	0.5638	1036
+Kurzschlussinduktivität	8	0.5638	180
+Induktivität	8	0.5638	4041
+Elektrische Kapazität	8	0.5638	966
+Ladungsdichte	8	0.5638	492
+Magnetischer Fluss	14	0.5864	1081
+Leistungsgröße	-1	0.8150	263
+Magnetischer Widerstand	14	0.5864	263
+Schirmdämpfung	8	0.5638	915
+Magnetisches Dipolmoment	-1	0.8150	789
+Phasenverschiebung	18	0.5326	1056
+Polarisierbarkeit	-1	0.8150	712
+Spannungspegel	-1	0.8150	255
+AVLIS	-1	0.8150	458
+Airborne Laserscanning	9	0.5271	2189
+BepiColombo Laser Altimeter	-1	0.8150	185
+Biophotonik	12	0.6693	393
+BOLT-117	9	0.5271	387
+Bremer Institut für angewandte Strahltechnik	-1	0.8150	386
+Bridgescout	-1	0.8150	247
+Cavity-Enhanced-Absorption-Spektroskopie	19	0.6482	369
+Cavity-Ring-Down-Spektroskopie	19	0.6482	219
+Computer to Plate	-1	0.8150	1032
+Continuous Liquid Interface Production	-1	0.8150	334
+Coulomb-Explosion	-1	0.8150	370
+Elektrooptische Entfernungsmessung	9	0.5271	980
+Dopplerfreie Sättigungsspektroskopie	19	0.6482	644
+Enforcement Trailer	1	0.4168	359
+Faserkreisel	11	0.6067	405
+Femtochemie	-1	0.8150	406
+Fraktionierte CO2-Laserbehandlung der Haut	9	0.5271	730
+Frequenzkamm	7	0.5450	509
+Glasinnengravur	1	0.4168	738
+Handgeführter 3D-Laserscanner	9	0.5271	916
+Holografisches Visier	-1	0.8150	628
+Hartmann-Shack-Sensor	11	0.6067	679
+Holotomographie	-1	0.8150	176
+Holografie	-1	0.8150	5477
+KAB-500	9	0.5271	1092
+KAB-1500	9	0.5271	984
+Khet (Spiel)	9	0.5271	832
+KTP-Laser	9	0.5271	338
+Kollineare Laserspektroskopie	9	0.5271	309
+Künstlicher Leitstern	9	0.5271	483
+Laser Communication Terminal	9	0.5271	839
+Laser Speckle Extensometer	9	0.5271	190
+Laser surface velocimeter	9	0.5271	680
+Laser Tag	9	0.5271	2170
+Laser-Isotopen-Trennung	-1	0.8150	154
+Laser-Doppler-Anemometrie	9	0.5271	1156
+Laser-Scanning-Mikroskop	9	0.5271	383
+Laser-Scanning-Vibrometrie	9	0.5271	215
+Laser-TV	9	0.5271	268
+Mikrotom	-1	0.8150	3022
+Laser-Wolkenhöhenmesser	9	0.5271	214
+Laserablation	9	0.5271	636
+Peeling	6	0.3364	559
+Laseraufsatz	9	0.5271	257
+Laserauftragschweißen	9	0.5271	460
+Laserbeschriftung	9	0.5271	980
+Laserbohren	9	0.5271	380
+Laserdrucker	9	0.5271	3225
+Laserextensometer	9	0.5271	124
+Laserdurchstrahlschweißen	9	0.5271	970
+Laserharfe	9	0.5271	160
+Laserinduzierte Fluoreszenz	9	0.5271	156
+Laserkreisel	11	0.6067	1074
+Laserinduzierte Plasmaspektroskopie	9	0.5271	263
+Laserinduziertes Gitter	9	0.5271	239
+Laserinduzierte Thermotherapie	9	0.5271	654
+Laserkoagulation	9	0.5271	940
+Laserkreisel	-1	0.8150	1074
+Künstlicher Leitstern	9	0.5271	483
+Optischer Richtfunk	-1	0.8150	915
+Lasermarkierer	9	0.5271	205
+Lasermaus	9	0.5271	446
+Lasermikrofon	9	0.5271	661
+Lasermikrodissektion	9	0.5271	1370
+Lasermikrometer	9	0.5271	469
+Laserpistole	9	0.5271	362
+Laserprofilometrie	9	0.5271	157
+Laserprojektor	9	0.5271	616
+Laserpointer	9	0.5271	1293
+Laserscanning	9	0.5271	3955
+Laserschneiden	9	0.5271	2280
+Laserpolieren	9	0.5271	159
+Laserstrahlverdampfen	9	0.5271	452
+Laserschweißen im Vakuum	9	0.5271	961
+Laserteleskop	9	0.5271	201
+Lasershow	9	0.5271	1014
+Laserspektroskopie	9	0.5271	1018
+Elektrooptische Entfernungsmessung	9	0.5271	980
+Lasertrimmen	9	0.5271	822
+Lichtschranke	11	0.6067	728
+Lichtscheibenmikroskopie	19	0.6482	1242
+Wasserwaage	-1	0.8150	1039
+Lidar	9	0.5271	1353
+Linienlaser	9	0.5271	164
+Litening	9	0.5271	349
+Lunar Laser Ranging	9	0.5271	754
+Magneto-optische Falle	-1	0.8150	769
+Matrix-unterstützte Laser-Desorption/Ionisation	9	0.5271	535
+MLIS	-1	0.8150	271
+Multiple Integrated Laser Engagement System	9	0.5271	190
+Nichtlineare Raman-Spektroskopie	-1	0.8150	391
+Multiphotonenmikroskop	9	0.5271	2270
+Northrop Grumman Guardian	9	0.5271	444
+Optical Ground Station	4	0.6571	1062
+Optische Pinzette	-1	0.8150	684
+Optischer Datenspeicher	11	0.6067	344
+Optische Kohärenztomographie	-1	0.8150	2794
+Optischer Richtfunk	-1	0.8150	915
+Optisches Band	-1	0.8150	176
+Pereswet (Laserwaffe)	9	0.5271	164
+Paveway	9	0.5271	2313
+Perkutane Laser-Diskus-Dekompression	9	0.5271	719
+Photodynamische Therapie	9	0.5271	1589
+Photorefraktive Keratektomie	-1	0.8150	2521
+Poliscan Speed	9	0.5271	169
+Punktwolke	11	0.6067	1544
+Raman-Spektroskopie	-1	0.8150	581
+Refraktive Chirurgie	-1	0.8150	2744
+Scannerkasse	-1	0.8150	574
+Satellite Laser Ranging	9	0.5271	2177
+Selektives Laserschmelzen	9	0.5271	1779
+Selektives Lasersintern	9	0.5271	968
+Shearografie	6	0.3364	483
+Small Incision Lenticule Extraction	-1	0.8150	402
+Speckle-Interferometrie	-1	0.8150	515
+STED-Mikroskop	-1	0.8150	1251
+Stereolithografie	1	0.4168	1065
+Supercritical Angle Fluorescence	-1	0.8150	283
+Terrestrisches Laserscanning	9	0.5271	1793
+ThuLEP	9	0.5271	715
+Time-Shift (Messverfahren)	-1	0.8150	401
+Tracking-Interferometer	-1	0.8150	263
+Tunable Diode Laser Absorption Spectroscopy	9	0.5271	190
+Andreas Ullrich	-1	0.8150	249
+Trägheitsfusion	5	0.6795	2656
+Vibrometer	9	0.5271	427
+Xolographie	11	0.6067	736
+Wasserstoff-Maser-Uhr	5	0.6795	530
+Absorptionskante	12	0.6693	244
+Abschirmung (Atomphysik)	-1	0.8150	185
+Anregungsenergie	-1	0.8150	142
+Antiwasserstoff	5	0.6795	751
+Atomabsorptionsspektrometrie	19	0.6482	4170
+Landé-Faktor	14	0.5864	1383
+Atomar	5	0.6795	244
+Atom	5	0.6795	7477
+Atomemissionsspektrometrie	19	0.6482	1015
+Atomare Einheiten	5	0.6795	335
+Atomic Clock Ensemble in Space	4	0.6571	437
+Atomkern	5	0.6795	3578
+Atomhülle	5	0.6795	4176
+Atommasse	17	0.5868	1331
+Atomorbital	-1	0.8150	1751
+Atomsonde	5	0.6795	464
+Atomradius	5	0.6795	1042
+Atomspektroskopie	19	0.6482	778
+Aufbauprinzip	10	0.7557	715
+Auger-Meitner-Effekt	-1	0.8150	864
+Atomuhr	-1	0.8150	1838
+Augerelektronenspektroskopie	19	0.6482	322
+Autoionisation	-1	0.8150	257
+Auswahlregel	0	0.7204	1089
+Balmer-Serie	12	0.6693	1502
+Drehimpuls	2	0.6162	1971
+Bindungsenergie	13	0.6241	933
+Bindungswinkel	10	0.7557	229
+Bethe-Formel	-1	0.8150	783
+Bohrscher Radius	5	0.6795	617
+Bohrsches Magneton	14	0.5864	372
+Bohrsches Atommodell	10	0.7557	2502
+Bohr-sommerfeldsches Atommodell	10	0.7557	1348
+Charakteristische Röntgenstrahlung	12	0.6693	553
+Breit-Rabi-Formel	10	0.7557	342
+Bremsvermögen	-1	0.8150	856
+Compton-Wellenlänge	-1	0.8150	399
+Cotton-Effekt	-1	0.8150	130
+Coupled Cluster	0	0.7204	719
+Rutherford-Streuung	5	0.6795	869
+Atomorbital	-1	0.8150	1751
+Darwin-Term	-1	0.8150	180
+Dynamidenmodell	10	0.7557	150
+Effekt des inerten Elektronenpaares	-1	0.8150	260
+Diwasserstoff-Kation	5	0.6795	854
+Druckverbreiterung	12	0.6693	370
+Ein-Elektron-System	-1	0.8150	316
+Einstein-de-Haas-Effekt	-1	0.8150	521
+Elektronenkonfiguration	-1	0.8150	428
+Electron Beam Ion Trap	-1	0.8150	1443
+Elektronischer Übergang	-1	0.8150	625
+Elektrostatische Ionenstrahlfalle	-1	0.8150	273
+Emissionsspektrum	12	0.6693	479
+Energieniveau	-1	0.8150	309
+Excimer	-1	0.8150	319
+Exotische Atome	5	0.6795	454
+Feinstruktur (Physik)	10	0.7557	458
+Faraday-Konstante	-1	0.8150	477
+Atomorbital	-1	0.8150	1751
+Fock-Operator	0	0.7204	211
+Feldelektronenmikroskop	19	0.6482	315
+Formfaktor (Physik)	-1	0.8150	572
+Gyromagnetisches Verhältnis	14	0.5864	357
+Atomorbital	-1	0.8150	1751
+H-alpha	4	0.6571	204
+Hanle-Effekt	10	0.7557	541
+Hartree-Energie	-1	0.8150	178
+Highly Charged Ion	-1	0.8150	260
+Hohe Harmonische	7	0.5450	412
+Hartree-Fock-Methode	0	0.7204	1723
+Heliumatom	5	0.6795	734
+Hohenberg-Kohn-Theorem	0	0.7204	447
+Hydrodynamischer Radius	17	0.5868	238
+Hybridorbital	-1	0.8150	679
+Hundsche Regeln	10	0.7557	1723
+Hyperpolarisation (Physik)	-1	0.8150	527
+Hyperfeinstruktur	-1	0.8150	464
+Innere Konversion	5	0.6795	565
+Ionenfalle	-1	0.8150	354
+Ionenradius	-1	0.8150	439
+Ionisation	-1	0.8150	954
+Ionisierungsenergie	-1	0.8150	726
+Isotopeneffekt	5	0.6795	592
+Isomerieverschiebung	5	0.6795	955
+Isotopieverschiebung	5	0.6795	164
+Isotopenverhältnis	5	0.6795	238
+Jahn-Teller-Effekt	0	0.7204	459
+Kation	-1	0.8150	420
+Kernladung	5	0.6795	170
+Koinzidenzmessung	0	0.7204	603
+Kernspin	5	0.6795	849
+Klassischer Elektronenradius	-1	0.8150	495
+Kugelwolkenmodell	10	0.7557	532
+Landésche Intervallregel	-1	0.8150	213
+Langmuir-Taylor-Detektor	-1	0.8150	200
+Landé-Faktor	14	0.5864	1383
+Larmorpräzession	-1	0.8150	1333
+Lenard-Fenster	10	0.7557	181
+Larmorpräzession	-1	0.8150	1333
+Linienspektrum	12	0.6693	607
+Linienbreite	12	0.6693	432
+Lyman-Serie	-1	0.8150	293
+Massenzahl	5	0.6795	175
+Moseleysches Gesetz	12	0.6693	180
+Myonentomografie	4	0.6571	348
+Maser	9	0.5271	1464
+Molare Masse	17	0.5868	553
+Myonischer Wasserstoff	5	0.6795	331
+Natrium-D-Linie	12	0.6693	234
+Myonium	5	0.6795	356
+Nukleon	5	0.6795	360
+Nuklid	5	0.6795	595
+Ordnungszahl	5	0.6795	619
+PARCS	-1	0.8150	198
+Paschen-Back-Effekt	-1	0.8150	317
+Atomorbital	-1	0.8150	1751
+Paul-Falle	-1	0.8150	744
+Pauling-Schreibweise	-1	0.8150	179
+Penning-Ionisation	-1	0.8150	203
+Pauli-Prinzip	-1	0.8150	1120
+Penning-Falle	-1	0.8150	1053
+Pickering-Serie	5	0.6795	260
+Pseudopotential	0	0.7204	376
+Quantenobjekt	0	0.7204	442
+Positronium	5	0.6795	504
+Reichweite (Teilchenstrahlung)	12	0.6693	420
+Relativistische Effekte in der Chemie	10	0.7557	712
+Quantenzahl	0	0.7204	1246
+Richtungsquantelung	0	0.7204	296
+Rubidium-Oszillator	-1	0.8150	374
+Relativistisches Wasserstoffproblem	-1	0.8150	1672
+Rutherfordsches Atommodell	10	0.7557	698
+Rydberg-Konstante	10	0.7557	225
+Rydberg-Formel	10	0.7557	319
+Rutherford-Streuung	5	0.6795	869
+Rydberg-Zustand	10	0.7557	765
+Schalenmodell (Atomphysik)	10	0.7557	690
+Sargent-Regel	5	0.6795	341
+Atomorbital	-1	0.8150	1751
+Spezifische Ladung	17	0.5868	161
+Spektrallinie	12	0.6693	767
+Spinpolarisation	-1	0.8150	1107
+Spontane Emission	12	0.6693	343
+Spin-Bahn-Kopplung	-1	0.8150	1839
+Stark-Effekt	10	0.7557	503
+Stern-Gerlach-Versuch	-1	0.8150	1649
+Stefan-Boltzmann-Gesetz	-1	0.8150	1050
+Stimulierte Emission	12	0.6693	559
+Stoß (Physik)	2	0.6162	1783
+Stoß zweiter Art	10	0.7557	197
+Szilárd-Chalmers-Effekt	5	0.6795	184
+Sympathetische Kühlung	-1	0.8150	261
+Termschema	-1	0.8150	292
+Thomas-Fermi-Modell	10	0.7557	671
+Thomsonsches Atommodell	10	0.7557	321
+TOP-Falle	-1	0.8150	207
+Thomson-Problem	-1	0.8150	253
+Totzeit (Teilchenmesstechnik)	-1	0.8150	1015
+Tunnelionisation	-1	0.8150	295
+Vakuumfluktuation	0	0.7204	1233
+Vakuumniveau	-1	0.8150	209
+Valenzschale	5	0.6795	141
+Wirkungsquerschnitt	-1	0.8150	1941
+Wasserstoffatom	5	0.6795	2372
+Zeeman-Effekt	-1	0.8150	2193
+Zeeman-Effekt	-1	0.8150	2193
+Zugeordnete Legendrepolynome	0	0.7204	298
+Zeeman-Slower	-1	0.8150	1085
+Absoluter Raum	-1	0.8150	326
+Geschichte der Klassischen Mechanik	2	0.6162	2451
+Angelpunkt	2	0.6162	238
+Actio und Reactio	2	0.6162	1160
+Axialkraft	2	0.6162	134
+Archimedisches Prinzip	17	0.5868	1194
+Arbeit (Physik)	2	0.6162	3413
+Baryzentrum	-1	0.8150	397
+Bewegungszustand	2	0.6162	286
+Beweglichkeit (Physik)	2	0.6162	1270
+Bewegung (Physik)	2	0.6162	1500
+Bewegungsgleichung	2	0.6162	615
+Bistabilität	-1	0.8150	282
+Calogero-Moser-Sutherland-Modell	-1	0.8150	188
+Brachistochrone	2	0.6162	650
+Cauchy-Relationen	-1	0.8150	482
+Dehnrate	-1	0.8150	768
+Doppelball-Versuch	2	0.6162	925
+Drehimpuls	2	0.6162	1971
+Dreikörperproblem	-1	0.8150	500
+Drehmoment	2	0.6162	4203
+Dschanibekow-Effekt	2	0.6162	527
+Dynamik (Physik)	2	0.6162	424
+Corioliskraft	2	0.6162	9230
+Dynamisches System	2	0.6162	1687
+Effektives Potential	-1	0.8150	668
+Einteilchenproblem	-1	0.8150	496
+Eikonal	11	0.6067	2018
+Erstarrungsprinzip	2	0.6162	300
+Energie-Impuls-Tensor	-1	0.8150	1153
+Eulerkraft	2	0.6162	438
+Euklidische Transformation	2	0.6162	1739
+Euler-Kreisel	2	0.6162	2970
+Variationsrechnung	0	0.7204	1665
+Eulersche Winkel	2	0.6162	2432
+Eötvös-Effekt	2	0.6162	702
+Fall mit Luftwiderstand	2	0.6162	983
+Fallschnur	2	0.6162	314
+Federkonstante	2	0.6162	638
+Formschwerpunkt	17	0.5868	190
+Fradkin-Tensor	0	0.7204	291
+Freier Fall	2	0.6162	1342
+Freier Kreisel	2	0.6162	144
+Freiheitsgrad	2	0.6162	1422
+Generalisierte Koordinate	0	0.7204	232
+Generalisierter Impuls	2	0.6162	210
+Galilei-Transformation	2	0.6162	1502
+Gesamtenergie	-1	0.8150	166
+Gewichtskraft	2	0.6162	744
+Goldene Regel der Mechanik	2	0.6162	192
+Gravitationsverlust	2	0.6162	494
+Gleichgewicht (Systemtheorie)	-1	0.8150	1716
+Hauptträgheitsachse	2	0.6162	731
+Gyroskopischer Effekt	2	0.6162	601
+Hangabtriebskraft	2	0.6162	176
+Impetustheorie	2	0.6162	750
+Hebel (Physik)	2	0.6162	907
+Holonom	-1	0.8150	216
+Impuls	2	0.6162	1468
+Integral der Bewegung	0	0.7204	875
+Kettenfontäne	-1	0.8150	870
+Impulserhaltungssatz	2	0.6162	836
+Kippachse	2	0.6162	165
+Kippmoment (Mechanik)	2	0.6162	167
+Kinetische Energie	-1	0.8150	1086
+Körper (Physik)	2	0.6162	875
+Konservative Kraft	2	0.6162	1213
+Kräfteparallelogramm	2	0.6162	794
+Kräftepolygon	2	0.6162	223
+Kräftesystem	2	0.6162	2075
+Kreisel	2	0.6162	1324
+Lagrange-Dichte	-1	0.8150	190
+Kraft	2	0.6162	6401
+Kreiseltheorie	2	0.6162	3020
+Lagrangesche Untermannigfaltigkeit	0	0.7204	189
+Leistungssatz	-1	0.8150	455
+Lock-in-Effekt (Physik)	18	0.5326	308
+Laplace-Runge-Lenz-Vektor	-1	0.8150	1293
+Massenmittelpunkt	2	0.6162	1545
+Lorentzkurve	-1	0.8150	382
+Massenpunkt	-1	0.8150	1262
+Liouville-Gleichung	0	0.7204	317
+Mechanik fester Körper	2	0.6162	200
+Mechanisches Gleichgewicht	2	0.6162	790
+Mehrkörperdynamik	2	0.6162	448
+N-Körper-Problem	0	0.7204	683
+Mehrkörpersystem	2	0.6162	920
+Niveaufläche	-1	0.8150	231
+Newtonsche Gesetze	2	0.6162	2593
+Normalkraft	2	0.6162	142
+Ortsraum	-1	0.8150	259
+Paranuss-Effekt	-1	0.8150	222
+Nutation (Physik)	2	0.6162	389
+Nutation (Astronomie)	4	0.6571	641
+Phasenraum	-1	0.8150	884
+Pirouetteneffekt	2	0.6162	574
+Poisson-Klammer	-1	0.8150	371
+Potentialtopf	-1	0.8150	148
+Poissonzahl	-1	0.8150	1218
+Präzession	2	0.6162	1586
+Raum (Physik)	-1	0.8150	1094
+Prinzip der virtuellen Leistung	2	0.6162	374
+Raketengrundgleichung	2	0.6162	674
+Punktmechanik	2	0.6162	2299
+Rayleighsche Dissipationsfunktion	-1	0.8150	198
+Resultierende Kraft	2	0.6162	389
+Rückstellkraft	2	0.6162	266
+Rotationsenergie	-1	0.8150	682
+Rückstoß	2	0.6162	640
+Scheinlot	2	0.6162	195
+Schiefe Ebene	-1	0.8150	1698
+Schnittprinzip	2	0.6162	1299
+Schraubentheorie	-1	0.8150	596
+Schwerefeld	2	0.6162	2038
+Schwerelosigkeit	2	0.6162	1414
+Schwimmstabilität	17	0.5868	421
+Spannenergie	-1	0.8150	152
+Sitnikov-Problem	2	0.6162	297
+Standfestigkeit	-1	0.8150	600
+Spezifischer Impuls	2	0.6162	572
+Statik (Mechanik)	2	0.6162	147
+Stehaufkreisel	2	0.6162	426
+Statische Äquivalenz	2	0.6162	336
+Starrer Körper	2	0.6162	1827
+Stevinsches Gedankenexperiment	-1	0.8150	598
+Stoßparameter	-1	0.8150	175
+Starrer Körper	2	0.6162	1827
+Superintegrables hamiltonsches System	0	0.7204	249
+Symplektische Mannigfaltigkeit	-1	0.8150	368
+Tangentialkraft	2	0.6162	861
+Trägheit	2	0.6162	1935
+Torricelli-Prinzip	2	0.6162	1161
+Transiente	18	0.5326	444
+Trägheitsellipsoid	2	0.6162	1710
+Trägheitskraft	2	0.6162	4693
+Trägheitstensor	2	0.6162	1092
+Turmargument	2	0.6162	222
+Vektorielle Größe	17	0.5868	721
+Verformungsenergie	-1	0.8150	464
+Waagerechter Wurf	2	0.6162	389
+Wirkungslinie	2	0.6162	242
+Wirbelring	-1	0.8150	3557
+Wirkung (Physik)	2	0.6162	431
+Zentralkraft	2	0.6162	606
+Zentralkraft	2	0.6162	606
+Wurfparabel	2	0.6162	1535
+Zentrifugalkraft	2	0.6162	3098
+Zugkraftdiagramm	-1	0.8150	174
+Zugkraft	2	0.6162	302
+Zentripetalkraft	2	0.6162	1425
+Zwangskraft	2	0.6162	478
+Zwangsbedingung	2	0.6162	576
+Abstandsgesetz	12	0.6693	320
+Airy-Formel	-1	0.8150	243
+Zweikörperproblem	2	0.6162	3106
+Anpassung (Elektrotechnik)	8	0.5638	432
+Ampèresches Kraftgesetz	8	0.5638	689
+Atmosphärische Störungen	7	0.5450	1601
+Beschleunigungsspannung	-1	0.8150	262
+Elektromagnetische Induktion	-1	0.8150	6445
+Bragg-Spiegel	-1	0.8150	1684
+Biot-Savart-Gesetz	-1	0.8150	976
+Bremsstrahlung	12	0.6693	677
+CMA-Diagramm	-1	0.8150	428
+Coulomb-Eichung	8	0.5638	320
+D’Alembert-Operator	0	0.7204	311
+Brewster-Winkel	11	0.6067	767
+Dielektrische Absorption	-1	0.8150	647
+Dielektrische Erwärmung	8	0.5638	634
+Differenzstrom	8	0.5638	150
+Debye-Relaxation	-1	0.8150	155
+Drahtgitterpolarisator	-1	0.8150	336
+Dispersion (Physik)	-1	0.8150	552
+Drei-Finger-Regel	2	0.6162	650
+Dirac-String	-1	0.8150	577
+Duane-Hunt-Gesetz	12	0.6693	194
+Dynamoelektrisches Prinzip	8	0.5638	295
+Eindringtiefe	-1	0.8150	389
+Earnshaw-Theorem	-1	0.8150	857
+Elektrodynamischer Auftrieb	8	0.5638	236
+Elektrizität	8	0.5638	2099
+Elektrisches Feld	8	0.5638	1441
+Elektromagnetische Maßeinheiten	17	0.5868	1419
+Ettingshausen-Nernst-Effekt	-1	0.8150	315
+Elektromagnetisches Feld	8	0.5638	944
+Faradaysches Paradoxon	-1	0.8150	353
+Feldstärketensor	-1	0.8150	138
+Finite Difference Time Domain	-1	0.8150	166
+Fluss (Physik)	17	0.5868	186
+Finite-Integral-Methode	-1	0.8150	360
+Elektromagnetischer Feldstärketensor	-1	0.8150	1052
+Graviphoton	2	0.6162	230
+Geschwindigkeitsfilter	-1	0.8150	410
+Grenzfläche	13	0.6241	532
+Grenzbedingungen (Elektrodynamik)	8	0.5638	202
+Hall-Konstante	-1	0.8150	510
+Fresnelsche Formeln	7	0.5450	1309
+Hall-Winkel	-1	0.8150	242
+Impulsstromdichte	-1	0.8150	172
+Ionenwind	-1	0.8150	271
+Hertzscher Dipol	-1	0.8150	1190
+Helmholtz-Gleichung	-1	0.8150	1052
+Jefimenko-Gleichungen	8	0.5638	363
+Kaluza-Klein-Christoffel-Symbol	-1	0.8150	260
+Jones-Formalismus	-1	0.8150	678
+Kaluza-Klein-Einstein-Feldgleichungen	-1	0.8150	364
+Kaluza-Klein-Metrik	-1	0.8150	166
+Kaluza-Klein-Riemann-Krümmungstensor	-1	0.8150	126
+Kaluza-Klein-Theorie	2	0.6162	204
+Kaluza-Klein-Teilchen	-1	0.8150	225
+Konvektionsstrom	-1	0.8150	177
+Kerr-Effekt	-1	0.8150	403
+Kirchhoffsches Strahlungsgesetz	12	0.6693	1861
+Korkenzieherregel	2	0.6162	818
+Kugelwelle	7	0.5450	521
+Ladungsträger (Physik)	8	0.5638	277
+Ladungserhaltung	8	0.5638	357
+Elektromagnetisches Spektrum	12	0.6693	253
+Larmor-Formel	-1	0.8150	197
+Lilienfeldstrahlung	12	0.6693	124
+Liénard-Wiechert-Potential	8	0.5638	646
+Lorenz-Eichung	-1	0.8150	323
+Magnetisches Vektorpotential	14	0.5864	501
+Lorentzkraft	14	0.5864	1785
+Maxwellscher Spannungstensor	-1	0.8150	279
+Materialgleichungen der Elektrodynamik	8	0.5638	1502
+Müller-Matrix	-1	0.8150	208
+Minimale Kopplung	0	0.7204	2139
+Multipolentwicklung	-1	0.8150	672
+Nahfeld und Fernfeld (Antennen)	-1	0.8150	1064
+Maxwell-Gleichungen	8	0.5638	4943
+Panofsky-Phillips-Gleichungen	8	0.5638	1312
+Pinch-Effekt (Elektrodynamik)	-1	0.8150	285
+Plummer-Potential	-1	0.8150	259
+Pauli-Gleichung	-1	0.8150	443
+Ponderomotorische Kraft	2	0.6162	490
+Polarisation	-1	0.8150	2525
+Potentialtheorie	-1	0.8150	507
+Quelle und Senke	-1	0.8150	211
+Poynting-Vektor	-1	0.8150	1464
+Raumladung	8	0.5638	522
+Raumladungsgesetz	8	0.5638	392
+Rückwärtsdämpfung	7	0.5450	127
+Runaway-Breakdown	-1	0.8150	367
+Rugate-Spiegel	11	0.6067	520
+Satz von Poynting	-1	0.8150	666
+Stokes-Parameter	-1	0.8150	291
+Skin-Effekt	-1	0.8150	2544
+Strömungsfeld	-1	0.8150	860
+Strahlungsrückwirkung	12	0.6693	2269
+Taylor-Kegel	2	0.6162	149
+Stromwärmegesetz	8	0.5638	555
+Telegraphengleichung	7	0.5450	218
+Übergangsstrahlung	12	0.6693	425
+Transversalelektromagnetische Welle	7	0.5450	582
+Thomsonsche Schwingungsgleichung	-1	0.8150	268
+Totalreflexion	7	0.5450	1845
+Vakuumlösung	-1	0.8150	142
+Wasserbrücke (Physik)	-1	0.8150	170
+Verschiebungsstrom	8	0.5638	1063
+Weber-Kohlrausch-Experiment	-1	0.8150	290
+Weber-Elektrodynamik	-1	0.8150	1323
+Wechselfeld	8	0.5638	147
+Wellenwiderstand des Vakuums	-1	0.8150	253
+Wirbelstrom	8	0.5638	860
+Wirbelstrombremse	-1	0.8150	2240
+Wellengleichung	7	0.5450	748
+Zeta-Potential	-1	0.8150	729
+Polarisation	-1	0.8150	2525
+Antistatikband	8	0.5638	378
+Ablenkplatte	-1	0.8150	230
+Elektrostatik	8	0.5638	1249
+Äquipotentialfläche	-1	0.8150	376
+Balloelektrizität	8	0.5638	225
+Atmosphärische Elektrizität	8	0.5638	1700
+Biefeld-Brown-Effekt	10	0.7557	299
+Barlow-Rad	8	0.5638	338
+Boltzmann-Ladungsverteilung	-1	0.8150	261
+Coulomb-Blockade	-1	0.8150	331
+Coulombsches Gesetz	-1	0.8150	768
+Diffusionsaufladung	-1	0.8150	183
+Depolarisierungsfaktor	-1	0.8150	784
+Dielektrikum	8	0.5638	624
+Elektret	8	0.5638	328
+Dipolkraft	-1	0.8150	268
+Elektrische Feldkonstante	8	0.5638	349
+Dipol (Physik)	-1	0.8150	1039
+Elektrischer Wind	8	0.5638	229
+Elektrische Polarisation	-1	0.8150	919
+Elektrisches Dipolmoment	-1	0.8150	524
+Elektrofeldmeter	-1	0.8150	340
+Elektrische Polarisation	-1	0.8150	919
+Elektrofilter	8	0.5638	1473
+Elektroskop	-1	0.8150	1299
+Elektrostatisches Feld der Erde	8	0.5638	516
+ESD-Simulationsmodelle	8	0.5638	807
+Elektrostatisches Spannungsmessgerät	-1	0.8150	331
+Elektrostatische Entladung	-1	0.8150	3918
+Faraday Cup Electrometer	-1	0.8150	154
+Faradayscher Käfig	-1	0.8150	595
+Feldaufladung	8	0.5638	262
+Feldemission	-1	0.8150	467
+Hüllfläche	17	0.5868	183
+Feldlinie	-1	0.8150	1078
+Gaußsches Gesetz	8	0.5638	1327
+Johnsen-Rahbek-Effekt	-1	0.8150	189
+Influenz	8	0.5638	2039
+Kapillarelektrometer	-1	0.8150	452
+Ionisator	-1	0.8150	1410
+Kontaktelektrizität	8	0.5638	248
+Kirlianfotografie	1	0.4168	628
+Kristallfeld- und Ligandenfeldtheorie	0	0.7204	2270
+Kristallfeld- und Ligandenfeldtheorie	0	0.7204	2270
+Leidener Flasche	-1	0.8150	688
+Kristallfeld- und Ligandenfeldtheorie	0	0.7204	2270
+Laplace-Gleichung	-1	0.8150	1709
+Monopol (Physik)	8	0.5638	185
+Millikan-Versuch	-1	0.8150	1881
+Paraelektrikum	8	0.5638	231
+Partikelaufladung	-1	0.8150	404
+Orientierungspolarisation	-1	0.8150	370
+Poisson-Boltzmann-Gleichung	-1	0.8150	281
+Punktladung	8	0.5638	143
+Paschen-Gesetz	-1	0.8150	1203
+Poisson-Gleichung	-1	0.8150	465
+Rayleigh-Limit	-1	0.8150	145
+Reibungselektrizität	8	0.5638	963
+Quadrupol	14	0.5864	595
+Rogowski-Profil	8	0.5638	167
+Spannungswaage	-1	0.8150	450
+Spiegelladung	-1	0.8150	601
+Spitzenentladung	8	0.5638	582
+Verschiebungspolarisation	-1	0.8150	215
+Versorium	-1	0.8150	301
+Aktivität (Physik)	5	0.6795	821
+Physikalische Größe	17	0.5868	4634
+Äquivalentdosis	-1	0.8150	1565
+Äquivalentdosis	-1	0.8150	1565
+Elektrische Stromstärke	8	0.5638	594
+Beschleunigung	2	0.6162	1890
+Energiedichte	-1	0.8150	287
+Energie	-1	0.8150	5798
+Energiedosis	-1	0.8150	373
+Flächeninhalt	-1	0.8150	1897
+Entropie	16	0.6784	6243
+Frequenz	7	0.5450	614
+Ionendosis	-1	0.8150	294
+Intensität (Physik)	12	0.6693	474
+Länge (Physik)	17	0.5868	152
+Leistungsdichte	-1	0.8150	559
+Leistung (Physik)	8	0.5638	1007
+Lichtstärke (Photometrie)	-1	0.8150	800
+Geschwindigkeit	2	0.6162	3065
+Magnetische Flussdichte	14	0.5864	699
+Magnetische Spannung	14	0.5864	547
+Magnetisierung	14	0.5864	437
+Masse (Physik)	17	0.5868	4624
+Mechanische Spannung	2	0.6162	1749
+Ruck	2	0.6162	1462
+Stoffmenge	17	0.5868	455
+Strahldichte	12	0.6693	632
+Magnetostatik	14	0.5864	2885
+Thermodynamische Temperatur	13	0.6241	936
+Thermodynamisches Beta	-1	0.8150	588
+Temperatur	13	0.6241	4026
+Volumen	17	0.5868	653
+Volumenstrom	17	0.5868	419
+Trägheitsmoment	2	0.6162	2379
+Winkelbeschleunigung	2	0.6162	225
+Weg (Physik)	-1	0.8150	621
+Winkelgeschwindigkeit	2	0.6162	1961
+Zeit	2	0.6162	5364
+Quantenmechanik	0	0.7204	8271
+Interpretationen der Quantenmechanik	0	0.7204	5270
+6j-Symbol	0	0.7204	239
+3j-Symbol	0	0.7204	467
+9j-Symbol	0	0.7204	153
+Austauschentartung	-1	0.8150	345
+Adiabatisches Theorem der Quantenmechanik	0	0.7204	706
+Ballistische Elektronenemissionsmikroskopie	19	0.6482	264
+Berry-Phase	18	0.5326	1115
+Bekenstein-Hawking-Entropie	16	0.6784	693
+Bogoliubov-Ungleichung	0	0.7204	322
+Bohr-Einstein-Debatte	0	0.7204	175
+Bloch-Kugel	-1	0.8150	512
+Bornsche Wahrscheinlichkeitsinterpretation	0	0.7204	215
+Burstein-Moss-Effekt	-1	0.8150	367
+CBH-Theorem	0	0.7204	1819
+Configuration Interaction	0	0.7204	821
+De-Broglie-Bohm-Theorie	0	0.7204	2887
+Dekohärenz	0	0.7204	1103
+Clebsch-Gordan-Koeffizient	-1	0.8150	592
+Diamant-Norm	0	0.7204	213
+Dichtefunktionaltheorie (Quantenphysik)	0	0.7204	2352
+Dirac-Notation	-1	0.8150	941
+Elektrochemische Rastertunnelmikroskopie	19	0.6482	333
+Ehrenfest-Theorem	0	0.7204	526
+Drehimpuls (Quantenmechanik)	0	0.7204	2288
+Energieeigenzustand	-1	0.8150	198
+Energie-Zeit-Unschärferelation	13	0.6241	2002
+Fermionen-Kondensat	-1	0.8150	243
+Free-Will-Theorem	3	0.4698	680
+Hamiltonoperator	0	0.7204	659
+Fresnel-Integral	0	0.7204	222
+Franck-Condon-Prinzip	0	0.7204	1022
+Gesamtdrehimpuls	2	0.6162	212
+GHZ-Zustand	0	0.7204	594
+Grenzorbital	10	0.7557	205
+GHZ-Experiment	-1	0.8150	897
+Gross-Pitaevskii-Gleichung	0	0.7204	228
+Hamiltonoperator	0	0.7204	659
+Heisenberg-Schnitt	0	0.7204	128
+Harmonischer Oszillator (Quantenmechanik)	-1	0.8150	2120
+Heisenberg-Modell	-1	0.8150	1001
+Heisenberg-Bild	0	0.7204	721
+Heisenberg-Bild	0	0.7204	721
+Hellmann-Feynman-Theorem	0	0.7204	158
+Heisenbergsche Unschärferelation	0	0.7204	2991
+Hermitesche Funktion	0	0.7204	229
+Hermitescher Operator	0	0.7204	1409
+Hundsche Kopplungsfälle	10	0.7557	242
+Inverses Streuproblem der Quantenmechanik	0	0.7204	775
+Impulsoperator	0	0.7204	558
+Kanonische Vertauschungsrelation	0	0.7204	305
+Jordan-Wigner-Transformation	-1	0.8150	458
+Kasha-Regel	-1	0.8150	513
+Kochen-Specker-Theorem	0	0.7204	1535
+Kommensurabilität (Quantenmechanik)	0	0.7204	162
+Kollaps der Wellenfunktion	0	0.7204	948
+Komplementaritätsprinzip	0	0.7204	1690
+Kohärenz (Physik)	7	0.5450	3833
+Komplementäre Observablen	0	0.7204	182
+Kopenhagener Deutung der Quantenmechanik	0	0.7204	1230
+Lindblad-Gleichung	0	0.7204	376
+Kramers-Theorem	0	0.7204	251
+Kubo-Formel	-1	0.8150	464
+Lippmann-Schwinger-Gleichung	0	0.7204	324
+LOCC	0	0.7204	2246
+Matrixelement (Physik)	0	0.7204	192
+Mathematische Formulierung der Quantenmechanik	0	0.7204	2003
+Matrizenmechanik	0	0.7204	1349
+Maxwell-Bloch-Gleichungen	-1	0.8150	563
+Multiplizität	-1	0.8150	718
+Parallelwelt	4	0.6571	3547
+Nakajima-Zwanzig-Gleichung	0	0.7204	180
+NOON-Zustand	0	0.7204	368
+Ortho- und Parawasserstoff	5	0.6795	1335
+Ortsoperator	0	0.7204	258
+Parallelwelt	4	0.6571	3547
+Pfadordnung	0	0.7204	265
+Pauli-Lubanski-Pseudovektor	-1	0.8150	343
+Permutationsinvariante Quantentomographie	0	0.7204	605
+Photonenwaage	0	0.7204	338
+Post-Hartree-Fock-Methoden	0	0.7204	466
+Quantelung	0	0.7204	148
+Positive Operator Valued Probability Measure	-1	0.8150	246
+Quanten-Spieltheorie	0	0.7204	179
+Quantenkontrolle	0	0.7204	338
+Quantendarwinismus	-1	0.8150	1320
+Quantenlithographie	0	0.7204	1153
+Quantenlogik	0	0.7204	2102
+Quantenmechanik	0	0.7204	8271
+Quantenmechanische Messung	0	0.7204	2358
+Quantenontologie	0	0.7204	219
+Erwartungswert	3	0.4698	2613
+Quantenstruktur	0	0.7204	185
+Die Quantentheorie und das Schisma der Physik	0	0.7204	509
+Quantenreflexion	0	0.7204	380
+Quantenspinflüssigkeit	0	0.7204	215
+Quantentomographie	0	0.7204	120
+Quantenradierer	0	0.7204	5794
+Quantisierungsachse	0	0.7204	347
+Quantum Nondemolition Measurement	0	0.7204	230
+Ramsauer-Effekt	10	0.7557	413
+Random-Phase-Approximation	-1	0.8150	149
+Rarita-Schwinger-Gleichung	-1	0.8150	219
+Rastertunnelmikroskop	19	0.6482	2631
+Rastertunnelpotentiometrie	19	0.6482	252
+Rastertunnelspektroskopie	19	0.6482	320
+Rayleigh-Ritz-Prinzip	-1	0.8150	553
+Satz von Floquet	-1	0.8150	157
+Regge-Theorie	-1	0.8150	567
+Schrödinger-Newton-Gleichung	0	0.7204	974
+Schrödinger-Bild	0	0.7204	748
+Schrödinger-Operator	0	0.7204	470
+Schrödingergleichung	0	0.7204	2819
+Self-Consistent-Field-Methode	0	0.7204	452
+Schrödingers Katze	0	0.7204	4323
+Separabilität (Quantenmechanik)	0	0.7204	834
+Spin-Echo	-1	0.8150	601
+Slater-Determinante	0	0.7204	650
+Spin-Gruppe	-1	0.8150	374
+Spinpolarisierte Rastertunnelmikroskopie	19	0.6482	200
+Spinor-Darstellung	-1	0.8150	288
+Stationärer Zustand (Quantenmechanik)	0	0.7204	135
+Stokes-Verschiebung	-1	0.8150	465
+Split-Operator-Methode	0	0.7204	432
+Streuamplitude	0	0.7204	257
+Tamm-Dancoff-Näherung	10	0.7557	516
+Störungstheorie (Quantenmechanik)	-1	0.8150	1993
+Thermische Wellenlänge	-1	0.8150	286
+Teilchen auf dem Ring	-1	0.8150	458
+Teilchen im Kasten	-1	0.8150	1857
+Tunneleffekt	0	0.7204	1592
+Übergang (Quantenmechanik)	0	0.7204	271
+Valleytronik	-1	0.8150	191
+Ununterscheidbare Teilchen	0	0.7204	2494
+Valenzbindungstheorie	10	0.7557	1943
+Variationsmethode (Quantenmechanik)	0	0.7204	204
+Verborgene Variablen	0	0.7204	368
+Vektoroperator	0	0.7204	190
+Viele-Welten-Interpretation	0	0.7204	3021
+Vollständiger Satz kommutierender Observablen	0	0.7204	523
+Von-Neumann-Gleichung	0	0.7204	347
+Wechselwirkungsbild	0	0.7204	435
+Entropie	16	0.6784	6243
+Wellenvektor	7	0.5450	436
+Wellenfunktion	0	0.7204	2260
+WIEN2k	0	0.7204	196
+Weyl-Quantisierung	0	0.7204	459
+Wigner-Theorem	0	0.7204	263
+Wigners Freund	0	0.7204	1055
+Wignerfunktion	0	0.7204	681
+WKB-Näherung	0	0.7204	583
+Zeitentwicklungsoperator	0	0.7204	537
+Wignersche D-Matrix	-1	0.8150	815
+Zustand (Quantenmechanik)	0	0.7204	4798
+Zweiter Schall	-1	0.8150	172
+Zustand (Quantenmechanik)	0	0.7204	4798
+Fototechnik	1	0.4168	438
+Zweizustandssystem	0	0.7204	490
+Abbildungstiefe	1	0.4168	244
+Abbildungsmaßstab	1	0.4168	624
+Agfacontour Professional	1	0.4168	283
+Albuminpapier	1	0.4168	385
+Äquidensiten	-1	0.8150	326
+Artefakt (Fotografie)	-1	0.8150	108
+Advanced Photo System	1	0.4168	1457
+Aufheller	1	0.4168	206
+Auflösung (Fotografie)	1	0.4168	414
+Fotografische Aufnahme	1	0.4168	320
+Bahtinov-Maske	11	0.6067	206
+Basis (Stereofotografie)	1	0.4168	223
+Bean Bag	6	0.3364	335
+Beugungsunschärfe	11	0.6067	538
+Bewegte Bilder	1	0.4168	579
+Bewegungsunschärfe	1	0.4168	399
+Bildebene (Fotografie)	1	0.4168	231
+Bildelement	1	0.4168	873
+Bildfolgezeit	1	0.4168	138
+Bildformat (Papierbild)	1	0.4168	498
+Bildkreis	1	0.4168	379
+Bildsensorkalibrierung	1	0.4168	435
+Bildträger	1	0.4168	506
+Bildrauschen	1	0.4168	1827
+Bipack-Verfahren	1	0.4168	249
+Bleichbadüberbrückung	1	0.4168	439
+Blendeneinstellring	-1	0.8150	163
+Bildwinkel	1	0.4168	1449
+Blitzkopie	1	0.4168	663
+Blitzsynchronanschluss	-1	0.8150	289
+Bromsilberdruck	1	0.4168	128
+Bromsilbergelatinepapier	1	0.4168	268
+Buchwippe	6	0.3364	150
+Camera tossing	1	0.4168	351
+Chemigramm	1	0.4168	813
+Candela	11	0.6067	933
+Chlorsilberpapier	1	0.4168	197
+Fotografie	1	0.4168	4894
+Chromatische Aberration	-1	0.8150	607
+ColorCode 3D	1	0.4168	219
+Cromalin	6	0.3364	284
+Crossentwicklung	1	0.4168	303
+Cos4-Gesetz	1	0.4168	1388
+Densitometrie (Farbdichtemessung)	11	0.6067	236
+Dia (Fotografie)	1	0.4168	2516
+Dia-Scan	1	0.4168	917
+Diagonalmethode	1	0.4168	608
+Dibond	6	0.3364	691
+Dichoptisch	1	0.4168	152
+Digiskopie	1	0.4168	365
+Dichte (Fotografie)	1	0.4168	519
+Distanzbild	1	0.4168	150
+Doppelbelichtung	1	0.4168	262
+Duplikatnegativ	1	0.4168	332
+Bildsensorkalibrierung	1	0.4168	435
+Entfernungsmessung	9	0.5271	3812
+Hermann Ebel (Fotograf)	-1	0.8150	314
+Einstellungsgröße	1	0.4168	1021
+Einzelbild (Fotografie)	1	0.4168	206
+Eiweißlasur	1	0.4168	149
+Endoskopiefotografie in der Architektur	1	0.4168	1958
+Entfernungseinstellung	1	0.4168	1568
+Entzerrung (Fotografie)	1	0.4168	165
+Entfernungsmessung	9	0.5271	3812
+Falschlicht	11	0.6067	1192
+Farbstern	-1	0.8150	180
+Farbfotografie	1	0.4168	2172
+Filmmeterware	1	0.4168	240
+Focus stacking	1	0.4168	551
+Fotoautomat (Unternehmen)	1	0.4168	610
+Fotobeton	1	0.4168	353
+Fotogalvanografie	1	0.4168	414
+Fotoemulsion	1	0.4168	582
+Fotografieranstrich	1	0.4168	263
+Fotografischer Effekt	1	0.4168	273
+Fotokeramik	1	0.4168	238
+Fotoserie	1	0.4168	288
+Fotostudio	1	0.4168	949
+Fotovernähung	1	0.4168	340
+Generative Fotografie	1	0.4168	354
+HDRi	1	0.4168	142
+Grau	-1	0.8150	1458
+HDRI-Erzeugung aus Belichtungsreihen	1	0.4168	1644
+High Dynamic Range Image	1	0.4168	3014
+Blitzsynchronisation	-1	0.8150	1355
+Seitenausrichtung	1	0.4168	148
+Hotpixel	1	0.4168	488
+Hyperlapse	-1	0.8150	506
+Image Fulgurator	1	0.4168	341
+Hyperspektral	-1	0.8150	223
+Int-Ball	19	0.6482	375
+Infrarotfotografie	1	0.4168	1733
+IPTC-IIM-Standard	-1	0.8150	1190
+Kamera-Slider	1	0.4168	330
+Kabinettformat	1	0.4168	226
+ISO 5800	1	0.4168	676
+Kanadabalsam	6	0.3364	320
+Kinegramm (Sicherheitstechnik)	-1	0.8150	337
+Kissenverzerrung	1	0.4168	258
+Kleinbildfotografie	1	0.4168	202
+Knotenpunkt (Fotografie)	11	0.6067	744
+Kollodium-Nassplatte	1	0.4168	568
+Kollodiumpapier	-1	0.8150	222
+Kollodium-Nassplatte	1	0.4168	568
+Komplementärfarbe	-1	0.8150	1132
+Kolorieren	-1	0.8150	1453
+Kontaktkopie	1	0.4168	860
+Korn (Foto)	1	0.4168	170
+Kornrasterverfahren	1	0.4168	378
+Kontrast	-1	0.8150	818
+Kunstlicht	11	0.6067	1153
+Kurzzeitfotografie	1	0.4168	196
+Kritische Blende	-1	0.8150	808
+Langzeitsynchronisation	-1	0.8150	124
+Lens Flare	11	0.6067	366
+Lichtenberg-Figur	-1	0.8150	181
+Lichtgrafik	1	0.4168	425
+Lichthofschutz	1	0.4168	170
+Lichthof (Fotografie)	1	0.4168	184
+Light Painting	1	0.4168	609
+Linienrasterverfahren	1	0.4168	184
+Linsenrasterbild	1	0.4168	1013
+Linsenrasterverfahren	1	0.4168	434
+Linse (Optik)	11	0.6067	3390
+Lucky Imaging	4	0.6571	889
+Lippmannverfahren	1	0.4168	203
+Luther-Bedingung	-1	0.8150	1063
+Maskierung (Reproduktionstechnik)	1	0.4168	807
+Megapixel	1	0.4168	835
+Mischlicht	-1	0.8150	195
+Moiré-Effekt	-1	0.8150	741
+Monitorkalibrierung	1	0.4168	1811
+Multi-Exposure	-1	0.8150	335
+Multispektral	1	0.4168	288
+Nachtaufnahme	1	0.4168	1074
+Negativfehler	1	0.4168	509
+Nikon Coolscan 5000 ED	1	0.4168	475
+Normlicht	-1	0.8150	153
+Optische Abbildung	1	0.4168	1261
+Orton (Fotografie)	1	0.4168	195
+Fotoemulsion	1	0.4168	582
+Panografie	1	0.4168	312
+Papiergradation	1	0.4168	158
+Parallaxe	1	0.4168	1291
+Parfokal	1	0.4168	144
+Perforation	-1	0.8150	965
+Photohalbleiter	-1	0.8150	368
+Phenakistiskop	-1	0.8150	1328
+Photoinitiator	-1	0.8150	999
+Objektivplatine	1	0.4168	302
+Polagraphie	1	0.4168	138
+Pseudo-Solarisation	1	0.4168	605
+Seitenausrichtung	1	0.4168	148
+Purikura	1	0.4168	279
+Randlichtabfall	1	0.4168	956
+Redscale	1	0.4168	223
+Repoussoir	6	0.3364	614
+Refotografie	1	0.4168	232
+Reprofotografie	1	0.4168	500
+Rollei-Metric-Verfahren	1	0.4168	524
+Sammellinse	11	0.6067	259
+Rückenfigur	6	0.3364	2765
+Schärfeebene	1	0.4168	237
+Schärfe (Fotografie)	1	0.4168	2228
+Scheimpflugsche Regel	1	0.4168	790
+Scheiner-Grad	11	0.6067	604
+Scheinerblende	11	0.6067	235
+Scheinbare Größe	1	0.4168	775
+Schlierenfotografie	1	0.4168	421
+Schlomographie	1	0.4168	232
+Schärfentiefe	1	0.4168	6416
+Seitenausrichtung	1	0.4168	148
+Schwarzweißfotografie	1	0.4168	4767
+Sensibilisierung (Fotografie)	1	0.4168	467
+Sensorglühen	1	0.4168	309
+Sepia (Fotografie)	1	0.4168	230
+Serienfotografie	1	0.4168	387
+Siebblende	11	0.6067	123
+SL-System	1	0.4168	562
+Solarisation (Fotografie)	1	0.4168	652
+Staubverfahren	1	0.4168	227
+Strobochromatogramm	1	0.4168	195
+Stereoskopie	1	0.4168	5354
+Tageslichtfilter	11	0.6067	177
+Tageslichtlampe	-1	0.8150	166
+Tonwertumfang	1	0.4168	224
+Ultraviolettfotografie	1	0.4168	155
+V-Lambda-Kurve	-1	0.8150	1017
+Stürzende Linien	1	0.4168	678
+Tageslichtatelier	1	0.4168	210
+Verlängerungsfaktor	1	0.4168	722
+View-Master	1	0.4168	782
+Verwackeln	1	0.4168	592
+Vignettierung	1	0.4168	616
+Bildsensorkalibrierung	1	0.4168	435
+Wechselmagazin	1	0.4168	600
+Weitwinkeleinstellgerät	1	0.4168	562
+Zerstreuungskreis	1	0.4168	594
+Zoomfaktor	1	0.4168	202
+À jour	6	0.3364	208
+Zonensystem	1	0.4168	2024
+3D-Kunst	1	0.4168	619
+Abklatsch (Epigraphik)	6	0.3364	221
+Abklatsch (Zeichenkunst)	6	0.3364	151
+Adbusting	6	0.3364	356
+Akkumulation (Kunst)	6	0.3364	128
+Aquatinta	6	0.3364	591
+Assis (Grundierung)	6	0.3364	321
+Basaltware	6	0.3364	238
+Basse-Taille	6	0.3364	813
+Bauplastik	6	0.3364	154
+Bildhauerei	6	0.3364	2025
+Bildschnitzer	6	0.3364	1059
+Boro (Textilhandwerk)	6	0.3364	300
+Bildhauerkunst	6	0.3364	8078
+Bleiglasfenster	11	0.6067	1337
+Chikankari	6	0.3364	629
+Braunschweiger Fayencen	6	0.3364	1798
+Sticken	6	0.3364	1824
+Chryselephantin	6	0.3364	193
+Buchillustration	6	0.3364	10214
+Collage	6	0.3364	1058
+Cloisonné	6	0.3364	2138
+Context Hacking	6	0.3364	903
+Copy Art	1	0.4168	345
+Digitales Malen	1	0.4168	1047
+Deutsches Steinzeug	6	0.3364	389
+Digitale Kunst	1	0.4168	4129
+Digitalfotografie	1	0.4168	4143
+Drahtemail	6	0.3364	221
+Dreamachine	3	0.4698	686
+Drei-Zirkelmethode	-1	0.8150	657
+Embossing	-1	0.8150	166
+Enkaustik	6	0.3364	494
+Entwerfen	6	0.3364	620
+Fayence-Manufaktur Münden	6	0.3364	1202
+Fassung (Bemalung)	6	0.3364	1482
+Fayence-Manufaktur Wrisbergholzen	6	0.3364	971
+Filigranarbeit	6	0.3364	247
+Firnisbrand	6	0.3364	277
+Feuerwerk	-1	0.8150	7487
+Flechten (Technik)	6	0.3364	712
+Formstrich	6	0.3364	218
+Flachschnitt	6	0.3364	215
+Frontalplastik	6	0.3364	277
+Plastik (Kunst)	6	0.3364	505
+Fotografie	1	0.4168	4894
+Freiformschmieden	6	0.3364	197
+Giclée	6	0.3364	158
+Grattage	6	0.3364	193
+Glockenritzzeichnung	6	0.3364	1230
+Grafik	6	0.3364	2932
+Heiti	6	0.3364	197
+Guerilla Knitting	6	0.3364	420
+Hedcut	6	0.3364	430
+Hessischer Kratzputz	6	0.3364	685
+Horimono	6	0.3364	218
+Hilya	6	0.3364	723
+Illustration	6	0.3364	1351
+Jasperware	6	0.3364	197
+Kashida	6	0.3364	197
+Intarsie	6	0.3364	1187
+Katazome	6	0.3364	317
+Kerbschnitt	6	0.3364	357
+Körperabformung	6	0.3364	179
+Kreidemanier	6	0.3364	168
+Kumihimo	6	0.3364	226
+Kunstschmied	6	0.3364	567
+Kunstguss	6	0.3364	367
+LED-Throwie	11	0.6067	394
+Linolschnitt	6	0.3364	1116
+Lomografie	1	0.4168	797
+Lüsterfarbe	-1	0.8150	595
+Marketerie	6	0.3364	488
+Metallplastik	6	0.3364	567
+Malerei	6	0.3364	4235
+Malerei der Antike	6	0.3364	2745
+Mikromosaik	6	0.3364	197
+Miyako jofu	6	0.3364	1033
+Modeillustration	6	0.3364	171
+Monotypie	6	0.3364	451
+Multiple	6	0.3364	216
+Mosaik	6	0.3364	1824
+Neue Medien	1	0.4168	1237
+Netzkunst	-1	0.8150	2727
+Neues Sehen	1	0.4168	413
+Nitrofrottage	1	0.4168	146
+Non-finito	6	0.3364	338
+Non-Photo Blue	1	0.4168	183
+Opus sectile	6	0.3364	271
+Opus tessellatum	6	0.3364	302
+Opus vermiculatum	6	0.3364	473
+Papier collé	6	0.3364	216
+Panoramafotografie	1	0.4168	992
+Panoramaroboter	1	0.4168	244
+Paste-up	6	0.3364	155
+Perlarbeiten (Textil)	6	0.3364	898
+Physionotrace	1	0.4168	904
+Plastik (Kunst)	6	0.3364	505
+Plastisches Stadtmodell	1	0.4168	518
+Proskauer Fayencen	6	0.3364	168
+Porzellanmalerei	6	0.3364	2042
+Pseudo-Filigran	6	0.3364	286
+Psychedelische Musikvisualisierung	-1	0.8150	1207
+Purfling	6	0.3364	400
+Radierung (Schmucktechnik)	6	0.3364	409
+Régule	6	0.3364	256
+Relief	6	0.3364	750
+Reverse Graffiti	6	0.3364	435
+Sakiori	6	0.3364	146
+Schabkunst	6	0.3364	427
+Schmuckband	6	0.3364	279
+Schmieden	6	0.3364	2715
+Scherenschnitt	6	0.3364	3932
+Schnitzen	6	0.3364	1793
+Schraffur	6	0.3364	516
+Schraffur in der Kunst	6	0.3364	524
+Scrimshaw	6	0.3364	384
+Sgraffito	6	0.3364	1200
+Shibori	6	0.3364	723
+Silberstift	6	0.3364	512
+Skulptur	6	0.3364	339
+Speedpainting	1	0.4168	130
+Farbauftrag	-1	0.8150	503
+Steinguss	6	0.3364	363
+Steingut	6	0.3364	877
+Steinzeug	6	0.3364	864
+Sticken	6	0.3364	1824
+Stickerkunst	6	0.3364	472
+Tastmodell	1	0.4168	645
+Tauschierung	6	0.3364	780
+Tatreez	6	0.3364	1339
+Terminals Cycle	-1	0.8150	1203
+Töpferei	6	0.3364	927
+Treiben	6	0.3364	1227
+Trencadís	6	0.3364	399
+Guerilla Knitting	6	0.3364	420
+Videokunst	1	0.4168	1373
+Visierung (Kunst)	6	0.3364	223
+Waffengravur	6	0.3364	177
+Wedgwoodware	6	0.3364	377
+Werkstatt Kollerschlag	6	0.3364	310
+Wimmelbild	1	0.4168	402
+Wytynanky	6	0.3364	490
+Guerilla Knitting	6	0.3364	420
+Zardozi	6	0.3364	633
+Zellij	6	0.3364	173
+Zentangle	2	0.6162	178
+Zinkguss	6	0.3364	1022
+3D-Brille	1	0.4168	1190
+Stereoskopisches Sehen	1	0.4168	1495
+3D-Film	1	0.4168	2561
+3D-Polarisationssystem	1	0.4168	1051
+Anaglyph 3D	1	0.4168	724
+Autostereoskopie	1	0.4168	679
+Bewegungsparallaxe	1	0.4168	905
+Binokular	1	0.4168	262
+Deutsche Gesellschaft für Stereoskopie	1	0.4168	1902
+Deviation (Stereografie)	1	0.4168	560
+Disney Digital 3-D	1	0.4168	240
+Film-type Patterned Retarder	1	0.4168	855
+Halbbild	1	0.4168	268
+Lang-Stereotest	-1	0.8150	362
+High Frame Rate	1	0.4168	471
+Das Magische Auge	1	0.4168	556
+Multiview Video Coding	1	0.4168	609
+Nimslo	1	0.4168	604
+Pulfrich-Effekt	4	0.6571	446
+Querdisparation	1	0.4168	426
+Shutter-3D-System	-1	0.8150	1116
+Stereoblindheit	1	0.4168	326
+Raumwahrnehmung	1	0.4168	1427
+Stereokamera	1	0.4168	372
+Stereodisplay	1	0.4168	2620
+Telestereoskop	-1	0.8150	373
+Treffversuch	-1	0.8150	263
+Stereoskopie	1	0.4168	5354
+Visuelle Klippe	1	0.4168	189
+Beugungseffizienz	-1	0.8150	153
+Babinetsches Prinzip	11	0.6067	1157
+Wellenoptik	11	0.6067	1053
+Beugungsscheibchen	11	0.6067	978
+Digitale Holografie	-1	0.8150	415
+Bragg-Gleichung	-1	0.8150	877
+Beugungsintegral	11	0.6067	946
+Fresnel-Arago-Gesetze	11	0.6067	245
+Fresnelscher Biprismaversuch	11	0.6067	129
+Fresnelscher Doppelspiegel	11	0.6067	343
+Gangunterschied	7	0.5450	476
+Geradsichtprisma	11	0.6067	156
+Haidingerringe	11	0.6067	444
+Kohärenzlänge	7	0.5450	867
+Interferenz (Physik)	7	0.5450	2173
+Metallinterferenzfilter	11	0.6067	134
+Laue-Bedingung	-1	0.8150	724
+Newtonsche Ringe	11	0.6067	793
+Wellenoptik	-1	0.8150	1053
+Astrodicticum simplex	4	0.6571	345
+Verzögerungsplatte	11	0.6067	1043
+Äquivalentbreite	-1	0.8150	143
+Aberration (Astronomie)	4	0.6571	1630
+Argelandersche Stufenschätzungsmethode	4	0.6571	416
+Asteroseismologie	4	0.6571	345
+Astrograf	4	0.6571	408
+Astrometrie	4	0.6571	770
+Astrofotografie	4	0.6571	2331
+Astronomische Refraktion	4	0.6571	1305
+Astrospektroskopie	4	0.6571	680
+Bewegungskompensation	1	0.4168	150
+Cepheiden	4	0.6571	2383
+Eigenbewegung (Astronomie)	2	0.6162	631
+Transitmethode	4	0.6571	3555
+Faber-Jackson-Beziehung	4	0.6571	187
+Gammaastronomie	4	0.6571	833
+Einnorden	-1	0.8150	1834
+HI-Linie	-1	0.8150	393
+Peripheres Sehen	1	0.4168	576
+Astrofotografie	4	0.6571	2331
+Infrarotastronomie	4	0.6571	1525
+Interferometrie	-1	0.8150	864
+Kreisablesung	11	0.6067	125
+Leuchtkraftfunktion planetarischer Nebel	4	0.6571	361
+Lichtkurve	4	0.6571	143
+Luftgestützte Astronomie	4	0.6571	615
+Lichtverschmutzung	11	0.6067	4838
+Luftmasse (Astronomie)	4	0.6571	617
+Luyten Half-Second Catalog	4	0.6571	676
+Lyman-Break-Technik	4	0.6571	544
+Meteorkamera	4	0.6571	174
+LX200-Protokoll	9	0.5271	230
+Mikrolinseneffekt	11	0.6067	651
+Mittagsweiser	4	0.6571	800
+Multiwellenlängen-Astronomie	4	0.6571	112
+Nachführung (Astronomie)	4	0.6571	1283
+Nebelfilter	11	0.6067	411
+Okularprojektion	4	0.6571	231
+Perioden-Leuchtkraft-Beziehung	4	0.6571	751
+Photometrie	-1	0.8150	741
+Pickeringsche Bruchmethode	4	0.6571	157
+Astrometrie	4	0.6571	770
+Projektionsmethode	4	0.6571	271
+Radarastronomie	4	0.6571	603
+Röntgenastronomie	4	0.6571	486
+Radioastronomie	4	0.6571	1231
+Exoplanet	4	0.6571	4894
+Astronomische Refraktion	4	0.6571	1305
+Solarer Radioflussindex	4	0.6571	342
+Simultanmessung	-1	0.8150	442
+Seeing	4	0.6571	2308
+Sonnenprojektionsmethode	4	0.6571	208
+Sphärische Astronomie	4	0.6571	530
+Stacking (Bildverarbeitung)	1	0.4168	163
+Sternführung	4	0.6571	833
+Stellardynamik	4	0.6571	327
+Spektroskopie	-1	0.8150	1146
+Surface Brightness Fluctuation	4	0.6571	252
+Teleskopkuppel	4	0.6571	287
+Tip of the Red Giant Branch	4	0.6571	214
+Tagbeobachtung	4	0.6571	2336
+Tully-Fisher-Beziehung	4	0.6571	266
+Ultraviolettastronomie	4	0.6571	568
+Transitmethode	4	0.6571	3555
+Tscherenkow-Blitz	-1	0.8150	333
+Abklingkonstante	7	0.5450	170
+Visuelle Astronomie	4	0.6571	1899
+Weltraumfotografie	4	0.6571	2443
+Absorptionsgrad	12	0.6693	1271
+Anfangszeitlücke	7	0.5450	322
+Amplitude	7	0.5450	438
+Anpassungsdämpfung	7	0.5450	189
+Ausbreitungsmedium	7	0.5450	254
+Aperiodischer Grenzfall	-1	0.8150	268
+Wellenvektor	7	0.5450	436
+Beugung (Physik)	7	0.5450	912
+Beugungsordnung	7	0.5450	359
+Brechung (Physik)	7	0.5450	694
+Dämpfungsgrad	-1	0.8150	308
+Brillanz (Strahlung)	-1	0.8150	285
+Depolarisation (Wellenausbreitung)	-1	0.8150	130
+Debye-Sears-Effekt	7	0.5450	390
+Dispersionsrelation	-1	0.8150	730
+Ebene Welle	7	0.5450	981
+Evaneszenz	7	0.5450	1033
+Doppler-Effekt	-1	0.8150	3131
+Fortpflanzungskonstante	7	0.5450	529
+Gruppengeschwindigkeit	-1	0.8150	268
+Intensitätstransport-Gleichung	7	0.5450	279
+Knotenfläche	7	0.5450	151
+Huygenssches Prinzip	7	0.5450	737
+Knotenlinie	-1	0.8150	1820
+Lamb-Welle	10	0.7557	370
+Lissajous-Figur	11	0.6067	597
+Longitudinalwelle	7	0.5450	274
+Kugelwellentransformation	0	0.7204	3298
+Mechanische Welle	7	0.5450	255
+Modalanalyse	2	0.6162	292
+Mode (Physik)	7	0.5450	774
+Negative Frequenz	7	0.5450	319
+Oberflächenwelle	7	0.5450	192
+Reflexion (Physik)	-1	0.8150	3342
+Periode (Physik)	18	0.5326	501
+Phasengeschwindigkeit	-1	0.8150	567
+Phasensprung	18	0.5326	433
+Pillbox (Kavität)	-1	0.8150	197
+Logarithmische Größe	-1	0.8150	1072
+Poisson-Fleck	11	0.6067	643
+Rayleigh-Kriterium	-1	0.8150	432
+Raummode	7	0.5450	1265
+Reflexion (Physik)	-1	0.8150	3342
+Reflexionsfaktor	-1	0.8150	1008
+Reflexion (Physik)	-1	0.8150	3342
+Reflexionsgrad	-1	0.8150	420
+Resonanzabsorption	12	0.6693	632
+Resonanzkatastrophe	-1	0.8150	395
+Resonator	7	0.5450	239
+Schallstrahlungsdruck	-1	0.8150	262
+Retardiertes Potential	-1	0.8150	285
+Schamel-Gleichung	0	0.7204	303
+Sack-Schamel-Gleichung	10	0.7557	805
+Schumann-Resonanz	-1	0.8150	434
+Schwingung	18	0.5326	2095
+Signalgeschwindigkeit	-1	0.8150	311
+Soliton	7	0.5450	1217
+Snelliussches Brechungsgesetz	-1	0.8150	1768
+Stehende Welle	7	0.5450	670
+Stochastische Resonanz	18	0.5326	219
+Strahlungsleistung	12	0.6693	222
+Strahlungstransport	12	0.6693	689
+Streuung (Physik)	-1	0.8150	1491
+Transmission (Physik)	7	0.5450	462
+Verstärkung (Physik)	-1	0.8150	226
+Transversalwelle	7	0.5450	488
+Wanderwelle	7	0.5450	361
+Welle	7	0.5450	1559
+Welle-Teilchen-Dualismus	0	0.7204	2588
+Wasserwelle	7	0.5450	1854
+Wellenfront	7	0.5450	191
+Wellengeschwindigkeit	7	0.5450	155
+Wellenkonversion	7	0.5450	542
+Wellenlänge	-1	0.8150	492
+Wellenpaket	7	0.5450	875
+Wellentransformation	7	0.5450	421
+Wellenzahl	-1	0.8150	357
+Wellenwiderstand	7	0.5450	3715
+Abklingzeit	-1	0.8150	277
+Abschirmung (Strahlung)	-1	0.8150	1141
+Accelerator Driven System	5	0.6795	1431
+Anzahldichte	17	0.5868	1010
+Atomic Mass Evaluation	5	0.6795	2059
+Isotop	5	0.6795	1348
+Barn	5	0.6795	223
+Cäsium-Barium-Generator	5	0.6795	217
+Betastrahlung	-1	0.8150	1503
+Bethe-Weizsäcker-Formel	10	0.7557	1042
+Compoundkern	5	0.6795	729
+DeVries-Effekt	5	0.6795	364
+Coulombwall	-1	0.8150	687
+Beschleuniger-Massenspektrometrie	-1	0.8150	1015
+Dineutron	5	0.6795	225
+Diproton	5	0.6795	221
+Dosiskonversionsfaktor	-1	0.8150	185
+Dopplerverbreiterung	-1	0.8150	797
+Elektroschwache Wechselwirkung	10	0.7557	1397
+Escapelinie	12	0.6693	335
+Farb-Glas-Kondensat	-1	0.8150	326
+EMC-Effekt	5	0.6795	180
+Forschungsreaktor	5	0.6795	1461
+Gammaspektroskopie	-1	0.8150	1034
+Gammastrahlung	-1	0.8150	2011
+Geant4	11	0.6067	398
+Gamow-Faktor	0	0.7204	283
+Geiger-Nuttall-Regel	5	0.6795	229
+Halokern	5	0.6795	588
+Goldhaber-Experiment	-1	0.8150	924
+Herman Feshbach Prize in Theoretical Nuclear Physics	-1	0.8150	449
+Hyperkern	-1	0.8150	214
+Interacting Boson Approximation	10	0.7557	451
+Isobar (Kernphysik)	5	0.6795	288
+Isomer (Kernphysik)	5	0.6795	772
+Isodiapher	5	0.6795	153
+Ionenstrahl	-1	0.8150	589
+Isomerieübergang	5	0.6795	144
+Isotop	5	0.6795	1348
+Isotopenuntersuchung	5	0.6795	1358
+Isotopenfraktionierung	5	0.6795	417
+Kerma (Physik)	-1	0.8150	206
+Karlsruher Nuklidkarte	5	0.6795	551
+Kernmagneton	14	0.5864	135
+Kernchemie	5	0.6795	574
+Kernmasse	17	0.5868	292
+Kernphotoeffekt	-1	0.8150	378
+Kernphysikalische Forschungsberichte	5	0.6795	239
+Kernquadrupolresonanz-Spektroskopie	-1	0.8150	232
+Kernreaktion	5	0.6795	1796
+Kernreaktionsrate	5	0.6795	1526
+Ionisierende Strahlung	-1	0.8150	2123
+Kernspinresonanz	-1	0.8150	2708
+Kernwaffen-Effekt	5	0.6795	280
+Lise-Meitner-Preis	-1	0.8150	193
+Magische Zahl (Physik)	5	0.6795	761
+Markow-Preis	-1	0.8150	429
+Kinematik (Teilchenprozesse)	-1	0.8150	842
+Ladungsradius	5	0.6795	595
+Massenschwächungskoeffizient	12	0.6693	234
+Massenexzess	17	0.5868	478
+Mittleres logarithmisches Energiedekrement	13	0.6241	170
+Massendefekt	17	0.5868	1362
+MCNP	5	0.6795	475
+Mößbauer-Effekt	-1	0.8150	1191
+National Nuclear Data Center	-1	0.8150	353
+Neutroneneinfang	5	0.6795	514
+Multipolarität der Gammastrahlung	-1	0.8150	662
+Neutronenleiter	5	0.6795	239
+Neutronenquelle	5	0.6795	1540
+Neutronenradiographie	5	0.6795	514
+Wirkungsquerschnitt	-1	0.8150	1941
+Neutronendiffusion	5	0.6795	472
+Neutronenfluss	5	0.6795	2478
+Neutronenstrahlung	5	0.6795	774
+Neutronentomografie	5	0.6795	237
+Neutronenüberschuss	5	0.6795	355
+Neutronenzahl	5	0.6795	196
+Nukleare Reaktionsanalyse	5	0.6795	365
+Nukleare Astrophysik	4	0.6571	612
+Neutronium	5	0.6795	164
+Nulleffekt	-1	0.8150	183
+Primordiales Nuklid	5	0.6795	664
+Optisches Modell	-1	0.8150	214
+Paritätsverletzung	0	0.7204	1894
+Kernspaltung	5	0.6795	2466
+Proton	5	0.6795	1567
+Protonenanlagerung	5	0.6795	191
+Proton-Bor-Fusion	5	0.6795	332
+Pygmy-Resonanz	-1	0.8150	369
+Proton-Proton-Kette	5	0.6795	1008
+Reaktivitätskoeffizient	13	0.6241	267
+Rhenium-Osmium-Chronometer	5	0.6795	305
+Radonmessung	-1	0.8150	2433
+Säkulares Gleichgewicht	5	0.6795	281
+Entdeckung der Radioaktivität	5	0.6795	2028
+Riesenresonanz	5	0.6795	520
+Schwellenenergie	-1	0.8150	220
+Scherenmode	5	0.6795	322
+Schalenmodell (Kernphysik)	10	0.7557	1326
+Schwerion	-1	0.8150	158
+Si-Isotopenfraktionierung	5	0.6795	281
+Skaleninvarianz	-1	0.8150	373
+Schwache Wechselwirkung	0	0.7204	3027
+Spallation	-1	0.8150	440
+Skyrmion	5	0.6795	1201
+Spiegelkern	5	0.6795	197
+Spaltprodukt	5	0.6795	1632
+Strahlungsdetektor	-1	0.8150	408
+Strahlendosis	-1	0.8150	1003
+Streuexperiment	-1	0.8150	332
+Szintillationsspektroskopie	-1	0.8150	139
+Strukturfunktion	5	0.6795	483
+Kernreaktion	5	0.6795	1796
+Tetraneutron	5	0.6795	366
+Teilchenbeschleuniger	-1	0.8150	1359
+Tief inelastische Streuung	5	0.6795	619
+Transmutation	5	0.6795	3009
+Trigger (Physik)	-1	0.8150	153
+Thermisches Neutron	5	0.6795	707
+Tröpfchenmodell	10	0.7557	363
+V-A-Theorie	-1	0.8150	329
+Westcott-Faktor	5	0.6795	193
+Yrast	-1	0.8150	263
+Woods-Saxon-Potential	-1	0.8150	153
+Wu-Experiment	-1	0.8150	958
+Yukawa-Potential	10	0.7557	219
+Zerfallsbreite	5	0.6795	535
+Vereinigtes Institut für Kernforschung	-1	0.8150	581
+Zerfallsgesetz	5	0.6795	162
+Astroteilchenphysik	4	0.6571	319
+Zerfallsenergie	13	0.6241	150
+Alphastrahlung	-1	0.8150	1731
+Alphastrahlung	-1	0.8150	1731
+Amaterasu-Teilchen	4	0.6571	330
+Annihilation	-1	0.8150	451
+Antiteilchen	0	0.7204	845
+Askaryan-Strahlung	12	0.6693	156
+Antibunching	0	0.7204	184
+Antimaterie	5	0.6795	1297
+Atomstrahl	-1	0.8150	255
+Baryonenasymmetrie	0	0.7204	311
+Baryogenese	0	0.7204	895
+Baryonenzahl	0	0.7204	228
+Benchmark-Szenario	-1	0.8150	140
+Betazerfall	-1	0.8150	2297
+Betazerfall	-1	0.8150	2297
+Betazerfall	-1	0.8150	2297
+Bjorken-Skalierung	0	0.7204	268
+Cabibbo-Winkel	0	0.7204	279
+Bose-Einstein-Korrelationen	0	0.7204	933
+Charm (Physik)	0	0.7204	159
+Cherenkov Telescope Array Observatory	4	0.6571	316
+Chiralität (Physik)	0	0.7204	620
+Compton-Effekt	-1	0.8150	1522
+Breit-Wheeler-Effekt	-1	0.8150	310
+Confinement	0	0.7204	458
+Dalitz-Diagramm	0	0.7204	272
+CP-Verletzung	-1	0.8150	1863
+Delta-Elektron	12	0.6693	204
+CKM-Matrix	0	0.7204	1445
+Effektive Theorie schwerer Quarks	0	0.7204	348
+Elektromagnetischer Schauer	-1	0.8150	324
+Elektronenemission	-1	0.8150	119
+Elektronenstrahl	-1	0.8150	979
+Elementarladung	-1	0.8150	350
+DGLAP-Gleichungen	0	0.7204	517
+Exotische Materie	0	0.7204	204
+Freies Teilchen	-1	0.8150	142
+Fluenz	17	0.5868	143
+Gammastrahlung	-1	0.8150	2011
+Gammastrahlung	-1	0.8150	2011
+G-Parität	0	0.7204	264
+Betazerfall	-1	0.8150	2297
+Christof Gattringer	-1	0.8150	303
+GIM-Mechanismus	0	0.7204	229
+Gitterführungseffekt	-1	0.8150	522
+Generation (Teilchenphysik)	0	0.7204	587
+Hadronischer Schauer	-1	0.8150	202
+Hadronisierung	0	0.7204	306
+Hierarchieproblem	-1	0.8150	917
+Hochenergiephysik	-1	0.8150	331
+INSPIRE-HEP	-1	0.8150	347
+ISOLDE	5	0.6795	3136
+Ionisierende Strahlung	-1	0.8150	2123
+Higgs-Mechanismus	-1	0.8150	2934
+Higgs-Mechanismus	-1	0.8150	2934
+Koide-Formel	0	0.7204	309
+Komitee Forschung mit Neutronen	-1	0.8150	311
+Klein-Nishina-Wirkungsquerschnitt	-1	0.8150	474
+Komitee Forschung mit Synchrotronstrahlung	-1	0.8150	288
+Isospin	5	0.6795	610
+Lazarus-Effekt (Physik)	10	0.7557	368
+Ladung (Physik)	-1	0.8150	618
+Kramers-Heisenberg-Formel	0	0.7204	200
+Luftschauer	-1	0.8150	686
+Mandelstam-Variable	10	0.7557	463
+Leptonenzahl	0	0.7204	357
+Minimales supersymmetrisches Standardmodell	-1	0.8150	1425
+Molière-Radius	12	0.6693	177
+Michejew-Smirnow-Wolfenstein-Effekt	10	0.7557	504
+Møller-Streuung	-1	0.8150	446
+Molekularstrahl	5	0.6795	598
+Mott-Streuung	-1	0.8150	203
+Natürlichkeitsproblem	-1	0.8150	522
+Schwache Wechselwirkung	0	0.7204	3027
+Neutrinomassenanordnung	5	0.6795	396
+Neutrinooszillation	-1	0.8150	1883
+Natürliche Einheiten	17	0.5868	921
+Oh-My-God-Teilchen	4	0.6571	340
+OSQAR-Experiment	-1	0.8150	411
+Partondichtefunktion	0	0.7204	609
+Particle Data Group	-1	0.8150	487
+Photonenmarkierungsanlage	-1	0.8150	236
+Paarbildung (Physik)	0	0.7204	730
+Protonenzerfall	5	0.6795	383
+Parität (Physik)	-1	0.8150	1310
+PYTHIA	0	0.7204	349
+Polarisierbarkeit des Nukleons	-1	0.8150	1444
+Pseudorapidität	0	0.7204	169
+Röntgenstrahlung	12	0.6693	2581
+Schwerpunktsenergie	13	0.6241	392
+Schwacher Isospin	5	0.6795	364
+Sekundärstrahlung	12	0.6693	251
+Strahlungslänge	12	0.6693	384
+Standardmodell	0	0.7204	1346
+Superpartner	-1	0.8150	259
+Standardmodellerweiterung	-1	0.8150	1562
+Spontane Symmetriebrechung	0	0.7204	754
+Technicolor (Physik)	-1	0.8150	489
+Teilchendetektor	-1	0.8150	675
+Teilchenjet	-1	0.8150	144
+Synchrotronstrahlung	-1	0.8150	1126
+Supersymmetrie	-1	0.8150	1382
+Teilchenschauer	-1	0.8150	417
+Ultrahochenergetische kosmische Strahlung	4	0.6571	2362
+Tscherenkow-Strahlung	-1	0.8150	944
+Weinberg-Winkel	10	0.7557	807
+Stephen Wolfram	-1	0.8150	1599
+Weyl-Gleichung	-1	0.8150	291
+Angeregter Zustand	-1	0.8150	561
+Zeitumkehr (Physik)	-1	0.8150	804
+Zerfallskanal	5	0.6795	665
+Aharonov-Bohm-Effekt	10	0.7557	584
+Aufenthaltswahrscheinlichkeit	0	0.7204	127
+Atominterferometer	-1	0.8150	4128
+Attosekundenphysik	-1	0.8150	3416
+Bell-Test	0	0.7204	3805
+BCS-Theorie	10	0.7557	4586
+Bellsche Ungleichung	0	0.7204	2992
+Born-Oppenheimer-Näherung	0	0.7204	664
+Bose-Einstein-Kondensat	0	0.7204	1227
+Bogoljubow-Theorie	0	0.7204	531
+Chronon	0	0.7204	157
+Bose-Einstein-Statistik	-1	0.8150	623
+Davisson-Germer-Experiment	-1	0.8150	398
+Cooper-Paar	-1	0.8150	1131
+Clifford-Algebra	-1	0.8150	1878
+Delayed-Choice-Experiment	0	0.7204	1857
+Materiewelle	0	0.7204	1518
+Dirac-See	-1	0.8150	405
+Dichteoperator	0	0.7204	2789
+Eigenspinor	-1	0.8150	208
+Dirac-Matrizen	-1	0.8150	866
+Eigenzustand	0	0.7204	867
+Einstein-Podolsky-Rosen-Paradoxon	-1	0.8150	1972
+Einzelphotonenquelle	-1	0.8150	414
+Elektronenbeugungsröhre	12	0.6693	217
+Elektronenbeugung	-1	0.8150	1039
+Elektronenspin	-1	0.8150	1175
+Quantisierung (Physik)	0	0.7204	967
+Entartung (Quantenmechanik)	0	0.7204	539
+Excimerlaser	-1	0.8150	641
+Feldquant	0	0.7204	488
+Feinstrukturkonstante	10	0.7557	662
+Fermion	-1	0.8150	566
+Feuerwand-Paradoxon	-1	0.8150	962
+Feynman-Stückelberg-Interpretation	0	0.7204	376
+Franck-Hertz-Versuch	10	0.7557	2069
+Geometrische Quantisierung	0	0.7204	229
+Gleason-Theorem	0	0.7204	166
+Hintergrundunabhängigkeit	2	0.6162	238
+Helizität	-1	0.8150	742
+Impulsraum	-1	0.8150	182
+Kein-Verbergen-Theorem	0	0.7204	556
+Ideales Fermigas	-1	0.8150	844
+Kohärente Kontrolle	0	0.7204	316
+Konformes Killing-Vektorfeld	2	0.6162	183
+Josephson-Effekt	10	0.7557	1084
+Konzewitschs Formel	-1	0.8150	382
+Ladungsartige Quantenzahl	0	0.7204	213
+Kraus-Darstellung	0	0.7204	366
+Lebensdauer (Quantenphysik)	18	0.5326	621
+Lokalität (Physik)	0	0.7204	866
+Makroskopischer Quantenzustand	0	0.7204	149
+Lugiato-Lefever-Gleichung	-1	0.8150	1742
+Moyal-Produkt	-1	0.8150	238
+Makroskopisches Quantentunneln	0	0.7204	2001
+Materiewelle	0	0.7204	1518
+No-Communication-Theorem	0	0.7204	842
+Parametrische Fluoreszenz	-1	0.8150	147
+Partielle Spur	0	0.7204	704
+No-Cloning-Theorem	0	0.7204	593
+Pauli-Matrizen	-1	0.8150	1189
+Planck-Skala	-1	0.8150	255
+Planck-Konstante	-1	0.8150	3129
+Propensität	3	0.4698	236
+Planck-Konstante	-1	0.8150	3129
+Quant	0	0.7204	226
+Plancksches Strahlungsgesetz	-1	0.8150	1727
+Quanten-Zeno-Effekt	10	0.7557	939
+Quantenausbeute	0	0.7204	793
+Quantenbiologie	0	0.7204	1404
+Quantenchaos	0	0.7204	240
+Quantendefekttheorie	10	0.7557	681
+Quantenflüssigkeit	0	0.7204	233
+Quantenhypothese	0	0.7204	255
+Quantenkosmologie	0	0.7204	563
+Quantenmaschine	0	0.7204	584
+Quantenpunktkontakt	0	0.7204	263
+Quantenpunktlaser	0	0.7204	1088
+Quantenschaum	0	0.7204	422
+Quantensimulation	0	0.7204	240
+Quantensprung	0	0.7204	570
+Quantenstatistik	0	0.7204	1074
+Quantentechnologie	0	0.7204	853
+Quantisierung (Physik)	0	0.7204	967
+Quantum (Fachzeitschrift)	0	0.7204	132
+Quantenverschränkung	0	0.7204	3048
+Quantenteleportation	0	0.7204	2245
+Quantum Walk	0	0.7204	551
+Schwinger-Bosonisierung	0	0.7204	178
+Saser	7	0.5450	349
+Qubit	0	0.7204	3894
+Spin	-1	0.8150	2927
+SQUID	0	0.7204	868
+Suprasolidität	-1	0.8150	639
+Suprafluidität	-1	0.8150	1341
+Sternprodukt	-1	0.8150	394
+Stickstoff-Fehlstellen-Zentrum	5	0.6795	1571
+Taylor-Experiment (Physik)	-1	0.8150	615
+Termsymbol	-1	0.8150	171
+Tight-Binding-Methode	-1	0.8150	205
+Titan:Saphir-Laser	11	0.6067	633
+Verbotener Übergang	0	0.7204	398
+Wechselwirkungsfreie Quantenmessung	0	0.7204	994
+Verschränkungsmaß	0	0.7204	1112
+Wiensches Verschiebungsgesetz	-1	0.8150	1821
+Absorptionsbande	12	0.6693	250
+Bandenspektrum	12	0.6693	145
+Absorptionskoeffizient	12	0.6693	273
+Äquivalentbreite	-1	0.8150	143
+Berreman-Effekt	-1	0.8150	484
+Bathochromer Effekt	-1	0.8150	377
+Betastrahlung	-1	0.8150	1503
+Lambert-beersches Gesetz	12	0.6693	1410
+Biolumineszenz-Resonanzenergietransfer	12	0.6693	121
+Birge-Sponer-Methode	-1	0.8150	219
+Chemische Ionisation bei Atmosphärendruck	-1	0.8150	430
+Chromophor	-1	0.8150	568
+Circulardichroismus	11	0.6067	341
+Dunkelzustand	-1	0.8150	208
+Echellegitter	11	0.6067	513
+Elektronenoptik	-1	0.8150	445
+Einzelmolekülexperiment	-1	0.8150	956
+Extinktionskoeffizient	-1	0.8150	445
+Fermi-Resonanz	-1	0.8150	468
+Fingerprint (Spektroskopie)	19	0.6482	368
+Ferromagnetische Resonanz	-1	0.8150	138
+Feshbach-Resonanz	-1	0.8150	400
+Fluoreszenzlebensdauer	-1	0.8150	557
+Flugzeitverbreiterung	-1	0.8150	361
+Fluoreszenzpolarisation	-1	0.8150	924
+Förster-Radius	-1	0.8150	200
+Globar	4	0.6571	214
+Graphitrohrofen	19	0.6482	241
+Hohlkathodenlampe	9	0.5271	442
+Hypsochromer Effekt	-1	0.8150	260
+Innere Umwandlung	-1	0.8150	225
+Instrumentelle Analytik	19	0.6482	1164
+Interferometrie	-1	0.8150	864
+Interferenzfilter	11	0.6067	2411
+Intersystem Crossing	-1	0.8150	597
+Fabry-Pérot-Interferometer	-1	0.8150	4353
+Isosbestischer Punkt	12	0.6693	300
+Isotopenmarkierung	5	0.6795	464
+Kathodolumineszenz	-1	0.8150	347
+Jabłoński-Schema	-1	0.8150	436
+Kanalelektronenvervielfacher	-1	0.8150	550
+Katrin Kneipp	-1	0.8150	317
+Laue-Bedingung	-1	0.8150	724
+Kreuzpolarisation	-1	0.8150	233
+Lambert-beersches Gesetz	12	0.6693	1410
+Linienverbreiterung	12	0.6693	579
+Lichtabsorption	12	0.6693	695
+Legierungsverbreiterung	-1	0.8150	288
+Luminophor	-1	0.8150	163
+Mie-Streuung	-1	0.8150	182
+Magnetspektrometer	14	0.5864	227
+Mikrokanalplatte	-1	0.8150	588
+Monochromatisches Licht	-1	0.8150	423
+Modulator (Optik)	11	0.6067	577
+Michelson-Interferometer	-1	0.8150	1589
+Lippert-Mataga-Plot	-1	0.8150	294
+Monochromator	-1	0.8150	935
+Nephelometer	-1	0.8150	160
+Optisches Spektrometer	-1	0.8150	872
+Optisches Gitter	11	0.6067	1877
+PALAOA	4	0.6571	136
+Optrode	19	0.6482	909
+Orgel-Diagramm	10	0.7557	323
+Photobleichung	-1	0.8150	307
+Photodiodenzeile	-1	0.8150	347
+Photomultiplier	-1	0.8150	1329
+Photophysikalischer Prozess	-1	0.8150	1026
+Polarisationsmodulator	-1	0.8150	300
+Photochromie	-1	0.8150	1478
+Polychromator	-1	0.8150	195
+Resonanzfluoreszenz	12	0.6693	144
+Reststrahlen-Effekt	12	0.6693	189
+Solvatochromie	-1	0.8150	451
+Soret-Bande	-1	0.8150	132
+Spektralfarbe	-1	0.8150	835
+Röntgendichroismus	-1	0.8150	282
+Spektroskop	-1	0.8150	256
+Spektroskopischer Doppelstern	4	0.6571	494
+Stern-Volmer-Gleichung	-1	0.8150	1784
+Strukturfaktor	-1	0.8150	644
+Szintillationszähler	12	0.6693	2289
+Szintillator	12	0.6693	511
+Szintillation (Strahlungsphysik)	12	0.6693	1099
+Thermochromie	-1	0.8150	607
+Terahertz-Zeitbereichsspektroskopie	-1	0.8150	552
+Transmissometer	-1	0.8150	152
+Trübung	11	0.6067	413
+Virtually Imaged Phased Array	11	0.6067	1048
+Verstimmung (Physik)	9	0.5271	189
+Übergangsdipolmoment	-1	0.8150	918
+Von-Hámos-Geometrie	11	0.6067	251
+Ablenksystem	-1	0.8150	209
+B-Fabrik	-1	0.8150	413
+Betatron	-1	0.8150	315
+CERN Hadron Linacs	-1	0.8150	711
+Cockcroft-Walton-Beschleuniger	-1	0.8150	409
+Woodward-Fieser-Regeln	-1	0.8150	260
+Speicherring	-1	0.8150	678
+Colliding-Beam-Experiment	-1	0.8150	405
+Crab Cavity	-1	0.8150	144
+Dipolmagnet	14	0.5864	508
+Duoplasmatron	5	0.6795	124
+Durham HepData Project	-1	0.8150	205
+Dynamitron	8	0.5638	190
+Elektronenbeschleuniger	-1	0.8150	436
+Elektronenkühlung	-1	0.8150	428
+Elektronenkanone	-1	0.8150	1452
+Emittanz	-1	0.8150	680
+Freie-Elektronen-Laser	-1	0.8150	1179
+Kapillaritron	-1	0.8150	282
+Kielfeld-Beschleuniger	-1	0.8150	689
+Ionenquelle	-1	0.8150	1291
+Larmor-Radius	-1	0.8150	190
+Zyklotron	-1	0.8150	1919
+Linearbeschleuniger	-1	0.8150	2659
+Mikrotron	-1	0.8150	400
+Luminosität	-1	0.8150	372
+Pelletron	-1	0.8150	305
+Quadrupolmagnet	14	0.5864	382
+Rhodotron	-1	0.8150	497
+Ringbeschleuniger	-1	0.8150	144
+Linearbeschleuniger	-1	0.8150	2659
+Schwerionenbeschleuniger	-1	0.8150	172
+Self-amplified spontaneous emission	12	0.6693	211
+Zyklotron	-1	0.8150	1919
+Shuntimpedanz	7	0.5450	400
+Speicherring	-1	0.8150	678
+Sputter-Ionenquelle	-1	0.8150	213
+Stochastische Kühlung	-1	0.8150	438
+Strahllinie	-1	0.8150	276
+Tandembeschleuniger	-1	0.8150	279
+Synchrotron	-1	0.8150	1414
+Target (Physik)	-1	0.8150	287
+Undulator (Synchrotron)	-1	0.8150	798
+Van-de-Graaff-Beschleuniger	-1	0.8150	393
+Zyklotronfrequenz	-1	0.8150	271
+Zyklotron	-1	0.8150	1919
+Arzimowitsch-Preis	-1	0.8150	159
+Larmor-Radius	-1	0.8150	190
+Alfvén-Geschwindigkeit	14	0.5864	130
+Alpha-Omega-Dynamo	4	0.6571	212
+Alfvénsches Theorem	-1	0.8150	236
+Alfvénsche Näherung	14	0.5864	147
+Ambipolare Diffusion	-1	0.8150	230
+Arc-Enhanced Glow Discharge	-1	0.8150	131
+Atmosphärendruckplasma	-1	0.8150	574
+Bernstein-Welle	-1	0.8150	245
+Debye-Länge	-1	0.8150	376
+André Anders	-1	0.8150	696
+Ecton (Physik)	-1	0.8150	194
+Dynamotheorie	14	0.5864	329
+Elmsfeuer	8	0.5638	179
+Funkenstrecke	-1	0.8150	598
+Gasentladung	-1	0.8150	662
+Gerhart von Gierke	-1	0.8150	300
+Gleichrichter	8	0.5638	3923
+Glimmentladung	-1	0.8150	964
+Induktionsplasma	-1	0.8150	668
+Hochleistungsimpulsmagnetronsputtern	14	0.5864	1409
+Intergalaktisches Medium	4	0.6571	239
+Interplanetares Magnetfeld	14	0.5864	397
+Intracluster-Medium	4	0.6571	616
+Ionisationsgrad	-1	0.8150	125
+Ionosphärenheizer	-1	0.8150	507
+Jakobsleiter (Elektrizität)	-1	0.8150	380
+Ionosonde	-1	0.8150	588
+Komplexes Plasma	-1	0.8150	674
+Anatolij Kondratenko	-1	0.8150	407
+Koronaentladung	8	0.5638	407
+Kinetische Helizität	14	0.5864	192
+Langmuir-Sonde	-1	0.8150	389
+Landau-Länge	-1	0.8150	169
+Luxemburgeffekt	7	0.5450	245
+Magnetische Flasche	14	0.5864	343
+Landau-Dämpfung	-1	0.8150	197
+Magnetohydrodynamik	14	0.5864	1681
+Erdmagnetfeld	14	0.5864	2820
+Lichtbogen	-1	0.8150	1418
+Magnetohydrodynamischer Generator	14	0.5864	831
+Magnetoplasmadynamischer Antrieb	14	0.5864	866
+Max-Planck-Institut für Plasmaphysik	-1	0.8150	552
+Magnetorotationsinstabilität	14	0.5864	524
+Magnetische Helizität	14	0.5864	1411
+Nachthimmellicht	4	0.6571	238
+Magnetosphäre	14	0.5864	1497
+Niederdruckplasma	-1	0.8150	441
+Nichtthermisches Plasma	-1	0.8150	561
+PK-4	-1	0.8150	850
+Plasma-Immersions-Ionenimplantation	-1	0.8150	492
+Particle in Cell	-1	0.8150	396
+Plasmakristall	-1	0.8150	280
+Plasmalampe	-1	0.8150	541
+Plasma-Randschicht	-1	0.8150	564
+Plasmafenster	-1	0.8150	635
+Plasmaveraschung	-1	0.8150	144
+Plasmawelle	-1	0.8150	956
+Plasmaoszillation	-1	0.8150	720
+Plasmasphäre	-1	0.8150	218
+Polarlicht	4	0.6571	2646
+Quasineutralität	-1	0.8150	377
+Rekombinationsleuchten	-1	0.8150	290
+Rekonnexion	14	0.5864	360
+Rotationstransformation	14	0.5864	260
+Saha-Gleichung	10	0.7557	199
+Sonnenfleck	4	0.6571	3339
+Stille elektrische Entladung	-1	0.8150	907
+Teilentladung	-1	0.8150	3420
+Sonnenwind	4	0.6571	1775
+Zyklotron-Resonanzheizung	-1	0.8150	950
+Warm-Hot Intergalactic Medium	4	0.6571	164
+Karl Wojaczek	-1	0.8150	503
+Abbe-Verfahren	11	0.6067	202
+Z-Maschine	-1	0.8150	828
+Ablenkwinkel	-1	0.8150	178
+Absorption (Physik)	12	0.6693	1664
+Achromatismus	11	0.6067	141
+Apertur	-1	0.8150	472
+Auflösungsvermögen	1	0.4168	829
+Apodisation	-1	0.8150	352
+Bragg-Brentano-Geometrie	-1	0.8150	299
+Bessel-Strahl	-1	0.8150	616
+Linse (Optik)	11	0.6067	3390
+Cauchy-Gleichung	-1	0.8150	321
+Chappuis-Absorption	12	0.6693	981
+Brillouin-Streuung	-1	0.8150	593
+Christiansen-Filter	11	0.6067	191
+Dawes-Kriterium	4	0.6571	234
+Debye-Scherrer-Verfahren	-1	0.8150	459
+Diabatie	11	0.6067	176
+Diffusstrahlung	12	0.6693	181
+Dioptrik	11	0.6067	130
+Direktstrahlung	12	0.6693	145
+Evanescent Wave Scattering	-1	0.8150	304
+Extinktion (Optik)	-1	0.8150	303
+Extinktionsverhältnis	-1	0.8150	225
+Frequenzspektrum	7	0.5450	1410
+Fourieroptik	11	0.6067	601
+Gauß-Strahl	11	0.6067	1074
+Geisterfleck	11	0.6067	976
+Gradientenoptik	11	0.6067	537
+Immersionsmethode (Mineralogie)	7	0.5450	216
+Irisieren	11	0.6067	335
+Kaleidoskop	11	0.6067	497
+Kantenspektrum	-1	0.8150	945
+Indexellipsoid	11	0.6067	1700
+Kontrastverhältnis	1	0.4168	685
+Kritischer Winkel	7	0.5450	585
+Kristalloptik	-1	0.8150	779
+Korpuskeltheorie	-1	0.8150	2492
+Kramers-Kronig-Beziehungen	0	0.7204	679
+Kubelka-Munk-Theorie	-1	0.8150	322
+Lichtfeld	14	0.5864	1632
+Lichtfarbe	-1	0.8150	2208
+Lochblende	1	0.4168	255
+Lichtgeschwindigkeit	-1	0.8150	4176
+Lorenz-Mie-Theorie	-1	0.8150	374
+Magnetooptik	14	0.5864	626
+Metamaterial	-1	0.8150	1064
+Numerische Apertur	-1	0.8150	861
+Optische Achse (Kristalloptik)	-1	0.8150	245
+Optische Dicke	-1	0.8150	309
+Michelson-Morley-Experiment	-1	0.8150	4386
+Levitation (Technik)	2	0.6162	750
+Passe (Optik)	11	0.6067	304
+Photonischer Kristall	-1	0.8150	908
+Petzval-Summe	-1	0.8150	152
+Poincaré-Kugel	-1	0.8150	447
+Polarisation	-1	0.8150	2525
+Punktspreizfunktion	-1	0.8150	285
+Queteletsche Ringe	11	0.6067	236
+Remission (Physik)	-1	0.8150	192
+Rayleigh-Streuung	-1	0.8150	1023
+Remissionsgrad	-1	0.8150	319
+Rayleighlänge	-1	0.8150	241
+Sellmeier-Gleichung	11	0.6067	135
+Schrotrauschen	-1	0.8150	326
+Sonnentaler	4	0.6571	220
+Röntgenoptik	12	0.6693	1158
+Speckle-Fotografie	1	0.4168	258
+Stokes-Beziehungen	-1	0.8150	251
+Zapfen (Auge)	1	0.4168	2082
+Strahlaufweiter	11	0.6067	343
+Subtraktive Farbmischung	-1	0.8150	699
+Thomson-Streuung	-1	0.8150	528
+Träger-Einhüllenden-Phase	18	0.5326	182
+Unschärfe	3	0.4698	1492
+Unsichtbarkeit	-1	0.8150	2754
+Zielachse	11	0.6067	220
+Zernike-Polynom	0	0.7204	262
+Chemische Energie	-1	0.8150	458
+Verformungsenergie	-1	0.8150	464
+Gravitationsenergie	-1	0.8150	264
+Energie	-1	0.8150	5798
+Feld (Physik)	-1	0.8150	1349
+Schallenergie	7	0.5450	224
+Innere Energie	-1	0.8150	695
+Schwingung	18	0.5326	2095
+Potentielle Energie	-1	0.8150	1481
+Strahlungsenergie	-1	0.8150	236
+Thermische Energie	13	0.6241	343
+Verzerrungsenergie	-1	0.8150	129
+Vis viva	2	0.6162	244
+Verschiebearbeit	13	0.6241	552
+Antitelefon	-1	0.8150	524
+Wärme	13	0.6241	3796
+Spezielle Relativitätstheorie	2	0.6162	5890
+Bellsches Raumschiffparadoxon	3	0.4698	1534
+Äquivalenz von Masse und Energie	-1	0.8150	3337
+Bornsche Starrheit	2	0.6162	344
+Rotverschiebung	4	0.6571	3736
+Bondis k-Kalkül	2	0.6162	1115
+Einsteinsche Postulate	2	0.6162	151
+Beschleunigung (spezielle Relativitätstheorie)	2	0.6162	2416
+Geschichte der Lorentz-Transformation	2	0.6162	2565
+Elektromagnetische Masse	17	0.5868	2619
+Viererimpuls	2	0.6162	1014
+Hyperbelbewegung	2	0.6162	1408
+Lorentz-Faktor	2	0.6162	297
+Geschichte der speziellen Relativitätstheorie	2	0.6162	10951
+Lorentz-Gruppe	2	0.6162	463
+Lorentz-Kovarianz	2	0.6162	268
+Lorentz-Kontraktion	2	0.6162	2684
+Lorentz-Transformation	2	0.6162	2610
+Lorentz-Transformation	2	0.6162	2610
+Maxwell-Jüttner-Verteilung	-1	0.8150	305
+Spezielle Lorentz-Transformation	2	0.6162	923
+Paradoxon der Längenkontraktion	-1	0.8150	2438
+Poincaré-Gruppe	-1	0.8150	316
+Minkowski-Diagramm	2	0.6162	3219
+Relativgeschwindigkeit	2	0.6162	214
+Rapidität (Physik)	2	0.6162	161
+Relativistische Massenzunahme	2	0.6162	1408
+Relativistische Rakete	2	0.6162	1056
+Relativistischer Impuls	2	0.6162	411
+Relativistisches Additionstheorem für Geschwindigkeiten	2	0.6162	464
+Relativität der Gleichzeitigkeit	2	0.6162	1438
+Doppler-Effekt	-1	0.8150	3131
+Weltlinie	2	0.6162	472
+Viererimpuls	2	0.6162	1014
+Rotverschiebung	4	0.6571	3736
+1/f²-Rauschen	7	0.5450	452
+Zeitdilatation	2	0.6162	4413
+Zwillingsparadoxon	3	0.4698	5273
+Aktivierungsenergie	-1	0.8150	707
+Adsorptionskapazität	-1	0.8150	204
+1/f-Rauschen	7	0.5450	555
+Andersen-Thermostat	16	0.6784	190
+Adsorption	-1	0.8150	2073
+ASEP	-1	0.8150	1112
+Binder-Kumulante	16	0.6784	226
+Gleichverteilungssatz	16	0.6784	1736
+Boltzmann-Grad-Grenzwert	16	0.6784	439
+Anomale Diffusion	-1	0.8150	1061
+Boltzmann-Konstante	16	0.6784	692
+Boltzmann-Gleichung	16	0.6784	578
+Boltzmann-Medaille	16	0.6784	169
+Brillouin-Paradoxon	-1	0.8150	187
+Boltzmann-Statistik	16	0.6784	888
+Chemisorption	-1	0.8150	371
+Desorption	-1	0.8150	350
+Crooks-Fluktuationstheorem	-1	0.8150	390
+Brownsche Bewegung	-1	0.8150	1292
+Diffusionsbegrenztes Wachstum	-1	0.8150	217
+Dichtefunktionaltheorie (statistische Physik)	0	0.7204	1124
+Diffusionsweg	-1	0.8150	136
+Diffusionskoeffizient	-1	0.8150	564
+Einstein-Smoluchowski-Beziehung	-1	0.8150	206
+Ensemble (Physik)	16	0.6784	580
+Ensemblemittelwert	16	0.6784	174
+Eddy-Diffusion	-1	0.8150	155
+Entropiekraft	16	0.6784	554
+Equilibrierung	-1	0.8150	190
+Ergodenhypothese	16	0.6784	632
+FHP-Modell	-1	0.8150	478
+Flächenstoßrate	13	0.6241	139
+Fluktuationstheorem	-1	0.8150	368
+Fluktuations-Dissipations-Theorem	-1	0.8150	563
+Fokker-Planck-Gleichung	0	0.7204	710
+Fugazität	16	0.6784	432
+Funkelrauschen	-1	0.8150	209
+Geschwindigkeitsdispersion	-1	0.8150	228
+Gasstrahlung	12	0.6693	336
+Gibbssches Paradoxon	16	0.6784	696
+Gradient	-1	0.8150	963
+Grauer Körper	12	0.6693	221
+Großkanonisches Ensemble	16	0.6784	137
+Schwarzer Körper	-1	0.8150	2963
+Hexatische Phase	13	0.6241	675
+Ideales Gas	16	0.6784	2578
+Entropie (Informationstheorie)	16	0.6784	2089
+Kanonisches Ensemble	16	0.6784	1914
+Kanonisches Ensemble	16	0.6784	1914
+Knudsen-Diffusion	-1	0.8150	142
+Kirkwood-Buff-Theorie	0	0.7204	431
+Kardar-Parisi-Zhang-Gleichung	0	0.7204	419
+Korrelationsfunktion (Physik)	0	0.7204	449
+Knudsen-Zahl	-1	0.8150	149
+Korrelationslänge	0	0.7204	325
+Kritischer Exponent	16	0.6784	685
+Korrelationsungleichung	-1	0.8150	1032
+Lambertsches Gesetz	12	0.6693	599
+KPZ-Fixpunkt	0	0.7204	1237
+Landau-Theorie	0	0.7204	1077
+Landau-Theorie	0	0.7204	1077
+Landauer-Prinzip	16	0.6784	392
+Langevin-Funktion	-1	0.8150	283
+Langevin-Gleichung	-1	0.8150	1076
+Makrozustand	16	0.6784	221
+Mastergleichung	-1	0.8150	429
+Maxwellscher Dämon	-1	0.8150	1435
+Maxwell-Boltzmann-Verteilung	-1	0.8150	1007
+Lokale Dichtenäherung	-1	0.8150	174
+Loschmidt-Paradoxon	0	0.7204	320
+Mikrokanonisches Ensemble	16	0.6784	1043
+Mikrokanonisches Ensemble	16	0.6784	1043
+Mermin-Wagner-Theorem	0	0.7204	1116
+Mikrozustand	16	0.6784	543
+Mittlere freie Flugzeit	-1	0.8150	169
+Modell harter Kugeln	-1	0.8150	185
+Molekulare Ratsche	-1	0.8150	699
+Mittlere freie Weglänge	-1	0.8150	1216
+Molekulare Strömung	-1	0.8150	154
+Monte-Carlo-Simulation	-1	0.8150	1492
+Mori-Zwanzig-Formalismus	0	0.7204	594
+Mittlere quadratische Verschiebung	-1	0.8150	959
+Molekularfeldtheorie	0	0.7204	420
+N-Vektor-Modell	-1	0.8150	237
+Ordnungsparameter	-1	0.8150	604
+Potentialhyperfläche	-1	0.8150	756
+Radiale Verteilungsfunktion	-1	0.8150	302
+Rauschen (Physik)	7	0.5450	1294
+Perkolationstheorie	-1	0.8150	1488
+Potts-Modell	-1	0.8150	646
+Replika-Trick	-1	0.8150	266
+Relaxation (Naturwissenschaft)	18	0.5326	592
+Rouse-Modell	-1	0.8150	445
+Reversible Markow-Kette	-1	0.8150	227
+Reptation (Chemie)	-1	0.8150	665
+Rayleigh-Jeans-Gesetz	-1	0.8150	465
+Satz von Liouville (Physik)	0	0.7204	459
+Schwarzer Körper	-1	0.8150	2963
+Skalengesetz	-1	0.8150	590
+Statistische Mechanik	-1	0.8150	479
+Spektrale Leistungsdichte	-1	0.8150	796
+Sackur-Tetrode-Gleichung	16	0.6784	258
+Stochastischer Prozess	-1	0.8150	1126
+Synergetik	2	0.6162	1010
+Gradient	-1	0.8150	963
+Stoffübergangskoeffizient	-1	0.8150	160
+Superstatistik	-1	0.8150	239
+Thermodynamischer Grenzfall	13	0.6241	615
+Ungeordnete Bewegung	-1	0.8150	156
+Thermophorese	13	0.6241	792
+Universalität (Physik)	16	0.6784	345
+Wärmeleitungsgleichung	13	0.6241	783
+Weißes Rauschen	7	0.5450	659
+Wiensches Strahlungsgesetz	-1	0.8150	370
+Virialsatz	0	0.7204	2421
+Wärmerauschen	13	0.6241	3902
+Heisenberg-Modell	-1	0.8150	1001
+XY-Modell	-1	0.8150	207
+Zeitmittelwert	18	0.5326	247
+Archäoastronomie	4	0.6571	883
+Astrobiologie	4	0.6571	372
+Zustandssumme	0	0.7204	631
+Astrogeologie	4	0.6571	165
+Astronomische Phänomenologie	4	0.6571	393
+Zwanzig-Projektionsoperator	0	0.7204	701
+Extragalaktische Astronomie	4	0.6571	388
+Beobachtende Astronomie	4	0.6571	6683
+Himmelsmechanik	2	0.6162	1934
+Meteorastronomie	4	0.6571	211
+Kosmogonie	4	0.6571	7254
+Planetologie	4	0.6571	420
+Sonnenforschung	4	0.6571	324
+Astrochemie	4	0.6571	2035
+Stellarstatistik	4	0.6571	231
+Astrophysik	4	0.6571	1287
+Antarctic Impulsive Transient Antenna	4	0.6571	306
+Akkretionsscheibe	4	0.6571	2202
+Achse des Bösen (Kosmologie)	4	0.6571	533
+Astronomisches Objekt	4	0.6571	386
+Blandford-Znajek-Prozess	-1	0.8150	204
+Bekenstein-Grenze	16	0.6784	225
+Blanet	4	0.6571	301
+Chromosphäre	4	0.6571	419
+Cauchy-Horizont	-1	0.8150	198
+Barnes-Evans-Relation	4	0.6571	2579
+Clouds and the Earth’s Radiant Energy System	4	0.6571	516
+Dark Energy Survey	4	0.6571	404
+Bugstoßwelle	-1	0.8150	279
+Deutsches Zentrum für Astrophysik	4	0.6571	158
+Eisenlinien (Physik)	5	0.6795	354
+Eisenlinien (Physik)	5	0.6795	354
+Extraterrestrisch	4	0.6571	187
+Farbtemperatur	-1	0.8150	1315
+Flächenhelligkeit	4	0.6571	184
+Gaußsche Gravitationskonstante	2	0.6162	192
+Gas-Torus	4	0.6571	287
+Event Horizon Telescope	4	0.6571	1817
+Gleichgewichtstemperatur	13	0.6241	230
+Gleichgewichtsfigur	17	0.5868	812
+HiSCORE	4	0.6571	399
+Interplanetares Medium	4	0.6571	533
+Interstellarer Staub	4	0.6571	333
+Schwarzes Loch	-1	0.8150	8165
+Interstellares Medium	4	0.6571	459
+KASCADE-Grande	4	0.6571	541
+Kosmische zusätzliche Dimensionen	-1	0.8150	527
+Institut d’Astrophysique de Paris	-1	0.8150	1312
+Schwarzes Loch	-1	0.8150	8165
+Kosmischer Neutrinohintergrund	-1	0.8150	659
+Massenverteilung	17	0.5868	718
+Lane-Emden-Gleichung	3	0.4698	346
+N-Körper-Simulation	0	0.7204	300
+Schwarzes Loch	-1	0.8150	8165
+Kausalstruktur	2	0.6162	3135
+NOAA-Weltraumwetterprognosezentrum	4	0.6571	267
+Österreichische Gesellschaft für Astronomie und Astrophysik	4	0.6571	128
+M–Sigma-Beziehung	4	0.6571	1042
+Penrose-Prozess	-1	0.8150	293
+Penrose-Diagramm	2	0.6162	706
+Pickup-Ionen	-1	0.8150	130
+Ringkriterium	-1	0.8150	166
+Schalenaufbau	4	0.6571	190
+Schwarzes-Loch-Analogon	-1	0.8150	466
+Schwarzes Loch	-1	0.8150	8165
+Paradoxon der schwachen jungen Sonne	4	0.6571	4440
+Schwarzes Loch	-1	0.8150	8165
+Smithsonian Astrophysical Observatory	4	0.6571	212
+Solar Radiation and Climate Experiment	4	0.6571	276
+Spaghettisierung	-1	0.8150	294
+Singularität (Astronomie)	2	0.6162	824
+Spikulen	4	0.6571	334
+Sternenstaub (Astronomie)	4	0.6571	919
+Schwarzes Loch	-1	0.8150	8165
+Strahlungstransfermodell	12	0.6693	141
+Strömgren-Sphäre	4	0.6571	249
+Sunjajew-Seldowitsch-Effekt	-1	0.8150	138
+Sternrotation	2	0.6162	1977
+Strahlungsdruck	12	0.6693	1006
+Schwarzes Loch	-1	0.8150	8165
+Theoretische Astronomie	4	0.6571	552
+Terrestrischer Gammablitz	-1	0.8150	926
+Tunka-Experiment	4	0.6571	427
+Wassersynthese im Weltraum	-1	0.8150	1638
+Weltraumwetter	4	0.6571	2643
+World Radiation Monitoring Center	4	0.6571	176
+Zustandsgröße (Astrophysik)	4	0.6571	172
+Alphapartikel-Röntgenspektrometer	-1	0.8150	394
+Tidal Disruption Event	4	0.6571	399
+Elektronenspektroskopie	19	0.6482	163
+Wasservorkommen im Universum	4	0.6571	4625
+Energiedispersive Röntgenspektroskopie	-1	0.8150	896
+Mößbauerspektroskopie	19	0.6482	273
+Photoelektronenbeugung	19	0.6482	465
+Glimmentladungsspektroskopie	19	0.6482	190
+Röntgenabsorptionsspektroskopie	-1	0.8150	742
+Photoemissionselektronenmikroskopie	19	0.6482	374
+PIXE	-1	0.8150	173
+Photoelektronenspektroskopie	-1	0.8150	3184
+Röntgenemissionsspektroskopie	-1	0.8150	505
+Röntgenphotoelektronenspektroskopie	19	0.6482	1451
+Röntgenfluoreszenzanalyse	-1	0.8150	3054
+Wellenlängendispersive Röntgenspektroskopie	-1	0.8150	189
+Ultraviolettphotoelektronenspektroskopie	19	0.6482	464
+Röntgenfluoreszenzanalyse	-1	0.8150	3054
+ZEKE-Spektroskopie	19	0.6482	338
+Erwin-Schrödinger-Preis	-1	0.8150	644
+Negentropie	16	0.6784	415
+Erwin Schrödinger	-1	0.8150	1961
+Internationales Erwin Schrödinger Institut für Mathematik und Physik	-1	0.8150	1327
+Terry Rudolph	-1	0.8150	469
+Schrödingers Katze (Romantrilogie)	0	0.7204	656
+Schrödinger Medal	-1	0.8150	719
+Angel Cat Sugar	15	0.2861	295
+Schrödinger (Mondkrater)	4	0.6571	240
+Bajun	15	0.2861	351
+Babbit and Catstello	15	0.2861	681
+Bartls Abenteuer	15	0.2861	389
+Beans (Zeichentrickfigur)	15	0.2861	899
+Billy the Cat	15	0.2861	841
+Blacksad	-1	0.8150	1674
+Catwoman	15	0.2861	3080
+Cheshire Cat	15	0.2861	1115
+Hello Kitty	15	0.2861	2091
+Le Chat (Comic)	15	0.2861	878
+Chessie (Maskottchen)	15	0.2861	1357
+CryptoKitties	-1	0.8150	648
+Fat Freddys Kater	15	0.2861	313
+Felix the Cat	15	0.2861	1946
+Fritz the Cat	15	0.2861	325
+Eine Geburtstagstorte für die Katze	15	0.2861	497
+Geschichten vom Kater Musch	15	0.2861	310
+Der gestiefelte Kater oder Wie man das Spiel spielt	15	0.2861	441
+Der gestiefelte Kater	15	0.2861	1771
+Garfield (Comic)	15	0.2861	3903
+The Ginger Cat	15	0.2861	264
+Itchy & Scratchy	15	0.2861	586
+Hello Kitty	15	0.2861	2091
+Der gestiefelte Kater (Tieck)	15	0.2861	3400
+Karla Kick	15	0.2861	192
+Kater Mikesch	15	0.2861	525
+Der Kater mit Hut (Kinderbuch)	15	0.2861	929
+Tom und Jerry	15	0.2861	2390
+Katze Q	0	0.7204	1321
+Krazy Kat	15	0.2861	1926
+Katze mit Hut	15	0.2861	547
+Cats	15	0.2861	4671
+Lebens-Ansichten des Katers Murr	15	0.2861	2111
+Marc Antony and Pussyfoot	15	0.2861	989
+Meg and Mog	15	0.2861	342
+Neue Lebensansichten eines Katers	15	0.2861	1652
+Nyan Cat	15	0.2861	552
+Neues von der Katze mit Hut (Buch)	15	0.2861	714
+Nyango Star	6	0.3364	613
+Oskar (Comic)	15	0.2861	238
+Oggy und die Kakerlaken	15	0.2861	1130
+Mauzi	6	0.3364	1182
+Orlando (The Marmalade Cat)	15	0.2861	445
+Petter Schwanzlos	15	0.2861	1163
+Pettersson und Findus	15	0.2861	1818
+Pitschi	15	0.2861	267
+Simon’s Cat	15	0.2861	715
+Mauzi	6	0.3364	1182
+Spiegel, das Kätzchen	15	0.2861	3264
+Sylvester und Tweety (Zeichentrickfiguren)	15	0.2861	443
+Telemiezen	15	0.2861	330
+Sylvester und Tweety/Filmografie	15	0.2861	1090
+Nebenfiguren im Superman-Universum	4	0.6571	17601
+Tom Puss	15	0.2861	230
+Tom und Jerry	15	0.2861	2390
+Norton’s Dome	-1	0.8150	381
+Allmachtsparadoxon	3	0.4698	970
+Gedankenexperiment	3	0.4698	1577
+Argument der letzten Person	3	0.4698	271
+Braitenberg-Vehikel	3	0.4698	495
+Brett des Karneades	3	0.4698	1171
+Buridans Esel	3	0.4698	535
+Chinesisches Zimmer	3	0.4698	1328
+Darwinscher Dämon	3	0.4698	350
+Figuren im Star-Trek-Universum	4	0.6571	55050
+Dornröschen-Problem	3	0.4698	405
+Fliegender Mann	2	0.6162	441
+Gettier-Problem	3	0.4698	1520
+Gehirn im Tank	3	0.4698	670
+Hilberts Hotel	3	0.4698	665
+Gravitationstunnel	2	0.6162	688
+Innenweltkosmos	4	0.6571	643
+Buttered cat paradox	3	0.4698	576
+Josephspfennig	3	0.4698	323
+Infinite-Monkey-Theorem	3	0.4698	3879
+Konventionalismus	3	0.4698	1894
+Laplacescher Dämon	0	0.7204	877
+Methodologischer Solipsismus	3	0.4698	374
+Molyneux-Problem	3	0.4698	1211
+Mary (Gedankenexperiment)	3	0.4698	2201
+Lifeboat ethics	3	0.4698	647
+Mühlenbeispiel	3	0.4698	415
+Quantenselbstmord	0	0.7204	245
+Philosophenproblem	3	0.4698	644
+Newcombs Problem	3	0.4698	1866
+Raumfahrer-Vervielfältigung	3	0.4698	248
+Schleier des Nichtwissens	3	0.4698	291
+Rotierende Bewegung in lebenden Systemen	2	0.6162	3109
+Rokos Basilisk	3	0.4698	466
+Simulationshypothese	-1	0.8150	1957
+Sumpfmann	-1	0.8150	375
+Silurianer-Hypothese	-1	0.8150	909
+Trolley-Problem	3	0.4698	1746
+Zwillingserde	4	0.6571	870
+Paradoxon	3	0.4698	985
+Abilene-Paradox	3	0.4698	199
+Achilles und die Schildkröte	3	0.4698	551
+Vertragstheorie	3	0.4698	1504
+Alabama-Paradoxon	3	0.4698	311
+Adipositas-Paradoxon	3	0.4698	416
+Aerodynamisches Paradoxon	3	0.4698	152
+Allais-Paradoxon	3	0.4698	549
+Arrow-Theorem	3	0.4698	2345
+Augensummenparadoxon	3	0.4698	230
+Auswahlparadox	3	0.4698	1011
+Alternierende Reihe (Euler)	3	0.4698	538
+Barbier-Paradoxon	3	0.4698	451
+Berry-Paradoxon	3	0.4698	847
+Baulandparadoxon	3	0.4698	167
+Bertrand-Wettbewerb	3	0.4698	913
+Bildungsparadox	3	0.4698	512
+Banach-Tarski-Paradoxon	3	0.4698	1619
+Bertrand-Paradoxon (Wahrscheinlichkeitstheorie)	3	0.4698	169
+Bonini-Paradox	3	0.4698	157
+Burali-Forti-Paradoxon	3	0.4698	143
+Catch-22 (Dilemma)	3	0.4698	641
+Chainstore-Paradoxon	3	0.4698	542
+Consalvi-Paradoxon	3	0.4698	342
+Braess-Paradoxon	3	0.4698	1498
+Currys Paradoxon	3	0.4698	644
+D’Alembertsches Paradoxon	3	0.4698	268
+Condorcet-Paradoxon	3	0.4698	771
+De-Méré-Paradoxon	3	0.4698	494
+Doppelbindungstheorie	0	0.7204	7359
+Downs-Thomson-Paradoxon	-1	0.8150	419
+Demografisch-ökonomisches Paradoxon	3	0.4698	1894
+Easterlin-Paradox	3	0.4698	468
+Ellsberg-Paradoxon	3	0.4698	2252
+Equity Premium Puzzle	3	0.4698	554
+Paradoxon des Epimenides	3	0.4698	379
+Ex falso quodlibet	3	0.4698	1497
+Euthyphron-Dilemma	3	0.4698	2065
+Französisches Paradox	3	0.4698	853
+Fahrstuhl-Paradoxon	3	0.4698	687
+Fermi-Paradoxon	-1	0.8150	2786
+Ehrenfestsches Paradoxon	3	0.4698	1353
+Galileis Paradoxon	3	0.4698	308
+Gabriels Horn	7	0.5450	375
+Geburtstagsparadoxon	3	0.4698	1903
+Gefangenenparadoxon	3	0.4698	1224
+Freundschaftsparadox	3	0.4698	423
+Giffen-Paradoxon	3	0.4698	691
+Goodmans neues Rätsel der Induktion	3	0.4698	538
+Graysches Paradoxon	3	0.4698	356
+Gefangenendilemma	3	0.4698	5454
+Hempels Paradox	3	0.4698	705
+Paradoxie des Haufens	3	0.4698	1459
+Grelling-Nelson-Antinomie	3	0.4698	1172
+Großvaterparadoxon	3	0.4698	1621
+Henne-Ei-Problem	3	0.4698	1347
+Holländische Krankheit	3	0.4698	679
+Ikarus-Paradox	3	0.4698	226
+Interessante-Zahlen-Paradoxon	3	0.4698	256
+Bernoulli-Gleichung	-1	0.8150	3941
+Gefangenendilemma	3	0.4698	5454
+Hydrostatisches Paradoxon	3	0.4698	1043
+Jevons-Paradoxon	3	0.4698	481
+Konkurrenzparadoxon	3	0.4698	654
+Krokodilschluss	3	0.4698	205
+Levinthal-Paradox	10	0.7557	345
+Junge-oder-Mädchen-Problem	3	0.4698	1125
+Leontief-Paradoxon	3	0.4698	1247
+Lügner-Paradox	3	0.4698	1701
+Mandeville-Paradox	3	0.4698	149
+Mpemba-Effekt	3	0.4698	1477
+Moravecsches Paradox	3	0.4698	172
+Nowikow-Selbstübereinstimmungsprinzip	3	0.4698	589
+Olberssches Paradoxon	3	0.4698	1291
+Nicht-Identitätsproblem	3	0.4698	1494
+Ostrogorski-Paradox	3	0.4698	475
+Paradox der Hässlichkeit	3	0.4698	602
+Negatives Stimmgewicht	3	0.4698	4008
+Paradox des Liberalismus	3	0.4698	693
+Paradox von Hooper	3	0.4698	250
+Parrondo-Paradoxon	3	0.4698	386
+Petos Parodoxon	3	0.4698	856
+Paradoxien der materialen Implikation	3	0.4698	548
+Pfeil-Paradoxon	3	0.4698	219
+Pferde-Paradox	3	0.4698	601
+Politisierungsdilemma	3	0.4698	388
+Prävention	3	0.4698	944
+Plankton-Paradoxon	-1	0.8150	1670
+Präferenzwahl	3	0.4698	872
+Riffparadoxon	-1	0.8150	517
+Rad des Aristoteles	3	0.4698	294
+Richards Paradox	3	0.4698	679
+Sad-Film-Paradoxon	3	0.4698	897
+Samariterdilemma	3	0.4698	287
+Russellsche Antinomie	3	0.4698	679
+Sankt-Petersburg-Paradoxon	3	0.4698	1321
+Schiff des Theseus	3	0.4698	273
+Schachbrett-Paradoxon	3	0.4698	987
+Sicherheitseffekt	3	0.4698	173
+Der Satyr und der Wanderer	15	0.2861	325
+Simpson-Paradoxon	3	0.4698	653
+Sparparadoxon	3	0.4698	421
+Sozialwahltheorie	3	0.4698	1356
+Satz von Löwenheim-Skolem	0	0.7204	616
+Struktureller Egoismus	3	0.4698	139
+Stadion-Paradoxon	3	0.4698	421
+Thomson-Lampe	-1	0.8150	517
+Toleranz-Paradoxon	3	0.4698	191
+Teilungsparadoxon	3	0.4698	573
+Traffic evaporation	-1	0.8150	158
+Trouton-Noble-Experiment	-1	0.8150	1278
+Paradoxon der unerwarteten Hinrichtung	3	0.4698	1212
+Unmögliche Figur	1	0.4168	173
+Urlauberdilemma	3	0.4698	1321
+Vexierfrage	3	0.4698	159
+Umtauschparadoxon	3	0.4698	2695
+Uncanny Valley	3	0.4698	1027
+Wählerzuwachsparadoxon	3	0.4698	541
+Will-Rogers-Phänomen	3	0.4698	239
+Wartezeitparadoxon	3	0.4698	490
+What the Tortoise Said to Achilles	3	0.4698	660
+Wissensparadox	3	0.4698	280
+Yablos Paradoxon	3	0.4698	244
+Zenons Paradoxien der Vielheit	3	0.4698	1314
+École nationale supérieure d’ingénieurs du Mans	-1	0.8150	456
+Ziegenproblem	3	0.4698	6207
+Anharmonischer Oszillator	-1	0.8150	1789
+Aperiodisch	18	0.5326	421
+Schwingungslehre	2	0.6162	3985
+Dämpfungskonstante	-1	0.8150	180
+Dämpfung	12	0.6693	815
+Drehschwingung	2	0.6162	221
+Einschwingvorgang	18	0.5326	647
+Einschwingzeit	18	0.5326	187
+Eigenmode	18	0.5326	1326
+Eigenmode	18	0.5326	1326
+Frequenzziehen	18	0.5326	143
+Harmonische	7	0.5450	592
+Erzwungene Schwingung	18	0.5326	2441
+Gütefaktor	0	0.7204	980
+Intermodulation	-1	0.8150	1187
+Harmonischer Oszillator	-1	0.8150	3197
+Isochronismus	5	0.6795	723
+Kippschwingung	-1	0.8150	454
+Kreisfrequenz	18	0.5326	730
+Kriechfall	-1	0.8150	259
+Modenkopplung	9	0.5271	549
+Nachhall	7	0.5450	1329
+Lineares zeitinvariantes System	18	0.5326	2515
+Phasenwinkel	18	0.5326	255
+Eigenmode	18	0.5326	1326
+Oszillator	18	0.5326	781
+Parametrischer Oszillator	18	0.5326	1776
+Phasenverschiebung	18	0.5326	1056
+Pendel	2	0.6162	1368
+Phasenwinkel	18	0.5326	255
+Phasenverschiebung	18	0.5326	1056
+Rechteckschwingung	-1	0.8150	691
+Physikalisches Pendel	2	0.6162	395
+Resonanzkörper	7	0.5450	344
+Reibschwinger	2	0.6162	636
+Resonanzfrequenz	7	0.5450	553
+Resonanz	-1	0.8150	3412
+Schwebung	7	0.5450	966
+Periode (Physik)	18	0.5326	501
+Spektrale Beschleunigungsdichte	-1	0.8150	142
+Spitze-Tal-Wert	-1	0.8150	173
+Stoßmittelpunkt	2	0.6162	1880
+Schwingkreis	8	0.5638	4274
+Zeigermodell	-1	0.8150	1069
+Physikalische Akustik	7	0.5450	715
+Acoustical Society of America	7	0.5450	208
+Vergrößerungsfunktion	-1	0.8150	638
+Levitation (Technik)	2	0.6162	750
+Akustische Impedanz	7	0.5450	382
+Akustische Oberflächenwelle	7	0.5450	1143
+Akustischer Kurzschluss	7	0.5450	386
+Akustischer Wirkungsgrad	7	0.5450	192
+Atmende Kugel	7	0.5450	136
+Cappuccino-Effekt	7	0.5450	524
+Chladnische Klangfigur	7	0.5450	545
+Druckstau	7	0.5450	581
+Deutsche Jahrestagung für Akustik	7	0.5450	673
+Exponentialtrichter	-1	0.8150	265
+European Acoustics Association	7	0.5450	367
+Flüstergewölbe	7	0.5450	779
+Humboldt-Effekt	7	0.5450	218
+Helmholtz-Resonator	7	0.5450	598
+Klang	7	0.5450	786
+Infraschall	7	0.5450	2404
+Laufzeitverzögerung	7	0.5450	351
+Lupeneffekt	7	0.5450	195
+Kundtsches Staubrohr	7	0.5450	510
+Hohlraumresonator	7	0.5450	865
+Mikrobarome	16	0.6784	238
+Machscher Kegel	7	0.5450	399
+Molekularakustik	7	0.5450	656
+Naturtonreihe	7	0.5450	807
+Nachschwingen	7	0.5450	319
+Normalfrequenz	7	0.5450	216
+Normfrequenz	7	0.5450	249
+Debye-Sears-Effekt	7	0.5450	390
+Oberton	7	0.5450	3064
+Quinckesches Interferenzrohr	-1	0.8150	240
+Radiophonie	7	0.5450	633
+Rijke-Rohr	7	0.5450	181
+Schallbrechung	7	0.5450	205
+Schallfeld	7	0.5450	207
+Schallreflexion	-1	0.8150	351
+Rubenssches Flammenrohr	-1	0.8150	983
+Saitenschwingung	7	0.5450	2212
+Strahlerzeile	7	0.5450	170
+Thermoakustik	13	0.6241	257
+Tortuosität	-1	0.8150	241
+Ultraschall	7	0.5450	1263
+Virtuelle Akustik	7	0.5450	159
+Christian Doppler Labors	-1	0.8150	913
+Christian-Doppler-Preis	-1	0.8150	533
+Universitätskliniken Salzburg	-1	0.8150	1507
+Dopplernavigation	-1	0.8150	164
+Dopplereffekt (Band)	-1	0.8150	469
+Doppler-Radar	-1	0.8150	184
+Christian-Doppler-Gymnasium und Realgymnasium	-1	0.8150	518
+Andreev-Reflexion	2	0.6162	159
+Sonografie	-1	0.8150	5917
+Druckaufschmelzung	13	0.6241	744
+Leidenfrost-Effekt	13	0.6241	505
+Thermoelektrizität	-1	0.8150	1679
+Bernoulli-Gleichung	-1	0.8150	3941
+Thermoelektrizität	-1	0.8150	1679
+Sperreffekt	-1	0.8150	173
+Photothermischer Effekt	-1	0.8150	1452
+Thermoelektrizität	-1	0.8150	1679
+Thermotunneling	13	0.6241	493
+Einwellenlängenreflektometrie	11	0.6067	489
+Elektronische Specklemuster-Interferometrie	-1	0.8150	553
+FTIR-Spektrometer	9	0.5271	1215
+Fizeau-Interferometer	-1	0.8150	554
+Treibhauseffekt	12	0.6693	5635
+Holometer	-1	0.8150	480
+Interferometric Synthetic Aperture Radar	-1	0.8150	566
+Jamin-Interferometer	-1	0.8150	320
+Kugelinterferometer	-1	0.8150	754
+Elektrooptische Entfernungsmessung	9	0.5271	980
+Phasenschiebeverfahren	18	0.5326	330
+Sagnac-Interferometer	-1	0.8150	1272
+Mach-Zehnder-Interferometer	-1	0.8150	695
+Very Long Baseline Interferometry	-1	0.8150	698
+Twyman-Green-Interferometer	-1	0.8150	432
+Tagmond	4	0.6571	428
+Ramsey-Interferometer	-1	0.8150	2550
