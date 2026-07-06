@@ -11,8 +11,9 @@ Surprisal sources:
   aligned           : by READER discipline — physics surprisal for physicists,
                       biology for biologists (Study 2).
   prompted          : baseline weights + discipline-matched prior passage.
-  prompt_neutral    : off-domain scientific prior control (same corpus and
-                      register as the domain priors, no domain content).
+  prompt_physics /  : fixed-domain PSEUDO-TESTS — baseline weights + a physics
+  prompt_biology      (resp. biology) prior passage for EVERY reader, regardless
+                      of discipline.
 """
 
 from __future__ import annotations
@@ -41,12 +42,14 @@ SURPRISAL_MODELS = (
     "biology",
     "aligned",
     "prompted",
-    "prompt_neutral",
+    "prompt_physics",
+    "prompt_biology",
 )
 # sources whose surprisal doesn't depend on the DAPT checkpoint: fit once.
-_CKPT_INDEP = {"baseline", "prompted", "prompt_neutral"}
-# reader-conditioned arms compared to the baseline-surprisal model by Vuong test.
-_VUONG_ARMS = {"aligned", "prompted", "prompt_neutral"}
+_CKPT_INDEP = {"baseline", "prompted", "prompt_physics", "prompt_biology"}
+# reader-conditioned arms compared to the baseline-surprisal model by Vuong test
+# (the two fixed-domain pseudo-tests included).
+_VUONG_ARMS = {"aligned", "prompted", "prompt_physics", "prompt_biology"}
 
 # Paper Eq. (2) fixed effects; Eq. (4) adds the surprisal main effect(s).
 # Random effects: by-subject intercept, by-word intercept + expertise slope
@@ -180,7 +183,7 @@ def model_comparison_over_steps(
 
     d0 = build_index_df(surp_versions, rt_df, prompt_surp, all_indices[0], measure)
     dep = [m for m in models if m not in _CKPT_INDEP]
-    # column check: neutral prompt absent from old caches.
+    # column check: skip an indep source whose surprisal column is absent.
     indep = [m for m in models if m in _CKPT_INDEP and f"s_{m}" in d0.columns]
 
     rows: list[dict] = []

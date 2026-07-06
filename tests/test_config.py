@@ -12,10 +12,11 @@ def test_prior_config_present():
     assert priors.PRIOR_PASSAGE_SENTENCES > 0
     # every condition is averaged over N_PRIOR_PASSAGES distinct passages.
     assert config.N_PRIOR_PASSAGES > 0
-    # neutral priors are sampled from the off-domain pool, not hand-written.
+    # domain corpora are the term-targeted Wikipedia scrape, not commons.
+    assert all(d.name == f"wiki_{k}" for k, d in config.DOMAIN_DIRS.items())
+    # no hand-written / persona prompts, no off-domain neutral pool.
     assert not hasattr(config, "NEUTRAL_PRIORS")
-    assert config.DOMAIN_OTHER_DIR.parent == config.DATA_DIR
-    # persona prompts are gone.
+    assert not hasattr(config, "DOMAIN_OTHER_DIR")
     assert not hasattr(config, "GRAD_STUDENT_PROMPTS")
 
 

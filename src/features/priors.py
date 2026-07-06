@@ -1,21 +1,19 @@
-"""Prior-reading passages for the prompted-surprisal arm.
+"""Prior-reading passages for the prompted-surprisal arms.
 
 The prompted arm conditions a base LM on a short passage the reader "just read",
 joined to the stimulus by a native document boundary (surprisal.score_words).
-Domain priors come from the HELD-OUT german-commons split — the same corpus DAPT
-trains on, so "prime via context" and "adapt via weights" draw domain signal from
-one source — but from a document the model never trained on, and never the PoTeC
-stimulus (which would trigger in-context memorisation and collapse surprisal).
+Domain priors come from the HELD-OUT split of each domain's Wikipedia corpus — the
+same corpus DAPT trains on, so "prime via context" and "adapt via weights" draw
+domain signal from one source — but from a document the model never trained on,
+and never the PoTeC stimulus (which would trigger in-context memorisation and
+collapse surprisal).
 
-The neutral condition is sampled from the SAME corpus by the SAME code path: the
-off-domain pool (``config.DOMAIN_OTHER_DIR``, built by acquire.domain_preprocessing
-from docs far from both domain seeds). Scientific register, no physics/biology
-content — so the domain-vs-neutral contrast isolates domain content, not register
-or sampling procedure. DAPT never trains on the off-domain pool, so every neutral
-passage is unseen by every checkpoint; the split is applied anyway to keep the
-code path identical across conditions.
+Both domains' priors feed three downstream arms (features.dataset / main):
+reader-aligned ``prompted`` (physicists get physics priors, biologists biology),
+plus the two fixed-domain PSEUDO-TESTS — physics priors for every reader and
+biology priors for every reader — regardless of discipline.
 
-Each condition supplies ``config.N_PRIOR_PASSAGES`` DISTINCT priors, not one.
+Each domain supplies ``config.N_PRIOR_PASSAGES`` DISTINCT priors, not one.
 Downstream the stimulus is scored under each prior separately and the per-word
 surprisals are averaged (surprisal.compute_surprisal), so no single idiosyncratic
 passage drives a condition.
@@ -27,14 +25,14 @@ import re
 
 from datasets import load_from_disk
 
-from src.config import DOMAIN_DIRS, DOMAIN_OTHER_DIR, N_PRIOR_PASSAGES
+from src.config import DOMAIN_DIRS, N_PRIOR_PASSAGES
 
 # How many leading sentences of a held-out domain doc make one prior passage
 # (token-truncated to the caller's budget at scoring time).
 PRIOR_PASSAGE_SENTENCES = 20
 
-# the two training domains (config) + the off-domain neutral pool.
-_DOMAIN_DIRS = {**DOMAIN_DIRS, "neutral": DOMAIN_OTHER_DIR}
+# the two training domains (config); each supplies a prior pool.
+_DOMAIN_DIRS = DOMAIN_DIRS
 
 
 def _first_sentences(text: str, n: int) -> str:
@@ -71,12 +69,12 @@ def load_prior_passages(
     n_sent: int = PRIOR_PASSAGE_SENTENCES,
     k: int = N_PRIOR_PASSAGES,
 ) -> dict[str, list[str]]:
-    """``{"physics", "biology", "neutral"}`` -> list of ``k`` prior passages.
+    """``{"physics", "biology"}`` -> list of ``k`` prior passages.
 
-    All three lists are ``k`` distinct german-commons openings drawn by the same
-    procedure (defaults match DAPT's split); "neutral" draws from the off-domain
-    pool. Every passage is token-truncated to the caller's budget at scoring
-    time; the caller averages surprisal across each list.
+    Both lists are ``k`` distinct held-out Wikipedia openings drawn by the same
+    procedure (defaults match DAPT's split). Every passage is token-truncated to
+    the caller's budget at scoring time; the caller averages surprisal across each
+    list.
     """
     return {
         domain: _held_out_passages(domain, val_frac, seed, n_sent, k)

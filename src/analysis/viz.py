@@ -28,9 +28,15 @@ FIGURES_DIR = PROJECT_ROOT / "figures"
 STEP_OF_INDEX = {i: s for i, s in enumerate([0, *DAPT_CHECKPOINT_STEPS])}
 MODEL_LABELS = {"german-gpt2": "GPT-2", "llammlein-1b": "Llama"}
 FT_DOMAINS = ("biology", "physics")  # fig1 row order
-PROMPT_COLORS = {"physics": "tab:purple", "biology": "tab:green", "neutral": "gray"}
-# fig4 checkpoint-independent intercepts (curves use the default cycle).
-INTERCEPT_COLORS = {"baseline": "k", "prompted": "tab:orange", "prompt_neutral": "gray"}
+PROMPT_COLORS = {"physics": "tab:purple", "biology": "tab:green"}
+# fig4 checkpoint-independent intercepts (curves use the default cycle). The two
+# fixed-domain prompt pseudo-tests reuse the PROMPT_COLORS palette.
+INTERCEPT_COLORS = {
+    "baseline": "k",
+    "prompted": "tab:orange",
+    "prompt_physics": "tab:purple",
+    "prompt_biology": "tab:green",
+}
 
 
 def _plt():
@@ -86,7 +92,7 @@ def perplexity_grid(
     PoTeC stimulus texts of each domain (``surprisal.stimuli_perplexity`` output,
     columns ``model``, ``ft_domain``, ``index``, ``text_domain``, ``perplexity``).
     Colors follow the eval domain; markers separate corpus (o = held-out
-    german-commons split, s = PoTeC stimuli).
+    Wikipedia split, s = PoTeC stimuli).
     """
     plt = _plt()
     models = _slugs(manifests, "model")
@@ -158,7 +164,7 @@ def sentence_surprisal_example(
     1. baseline surprisal per word;
     2. Δ surprisal vs baseline, one line per DAPT checkpoint (fine-tune domain
        matches the text's domain);
-    3. Δ surprisal vs baseline, one line per prompt (physics / biology / neutral).
+    3. Δ surprisal vs baseline, one line per prompt (physics / biology).
 
     Word labels of PoTeC expert technical terms are drawn in red.
     """
@@ -237,8 +243,8 @@ def mean_surprisal_over_steps(
     """Fig 3 — mean surprisal vs fine-tune step, 2×2 grid: columns = fine-tuned
     model domain (physics left, biology right), rows = stimulus text domain.
     Each panel plots ONE model's checkpoints on ONE stimulus domain, plus
-    intercept lines for that model-domain's prompt and the neutral prompt
-    (both evaluated on the panel's stimuli). ``expert_terms_only`` restricts
+    intercept lines for both fixed-domain prompt pseudo-tests (physics and biology
+    priors, each evaluated on the panel's stimuli). ``expert_terms_only`` restricts
     the mean to words annotated as expert technical terms in PoTeC."""
     w = words[WORD_KEY + ["text_domain", "is_expert_technical_term"]].drop_duplicates(
         WORD_KEY
@@ -279,18 +285,16 @@ def mean_surprisal_over_steps(
                 label=f"{md} model",
             )
             pt = p[p["text_domain"] == td]
-            col = f"s_prompt_{md}"
-            if col in pt.columns and len(pt):
-                ax.axhline(
-                    pt[col].mean(), color="tab:orange", ls="--", label=f"{md} prompt"
-                )
-            if "s_prompt_neutral" in pt.columns and len(pt):
-                ax.axhline(
-                    pt["s_prompt_neutral"].mean(),
-                    color="gray",
-                    ls="--",
-                    label="neutral prompt",
-                )
+            # both fixed-domain prompt pseudo-tests as intercept references.
+            for prompt_dom in ("physics", "biology"):
+                col = f"s_prompt_{prompt_dom}"
+                if col in pt.columns and len(pt):
+                    ax.axhline(
+                        pt[col].mean(),
+                        color=PROMPT_COLORS[prompt_dom],
+                        ls="--",
+                        label=f"{prompt_dom} prompt",
+                    )
             ax.set_xscale("log")
             if len(g):
                 _step_ticks(ax, g["step"])
@@ -313,8 +317,8 @@ def delta_ll_curves(results: pd.DataFrame, out_dir: Path = FIGURES_DIR) -> pd.Da
     ``results`` is the model-comparison table (``model_lm``, ``model``,
     ``index``, ``delta_ll``). Checkpoint-dependent sources plot as curves over
     the step of each checkpoint index; checkpoint-independent ones (baseline /
-    prompted / neutral, NA index) as intercept lines. y-limits span the global
-    ΔLL range.
+    prompted / prompt_physics / prompt_biology, NA index) as intercept lines.
+    y-limits span the global ΔLL range.
     """
     plt = _plt()
     slugs = _slugs(results, "model_lm")

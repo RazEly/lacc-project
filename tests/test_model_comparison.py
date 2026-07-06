@@ -63,7 +63,8 @@ def test_model_comparison_over_steps_paper(mc_inputs):
     )
     assert set(vuong["model"]) == mc._VUONG_ARMS
     n_aligned = out.loc[out["model"] == "aligned", "index"].nunique()
-    assert len(vuong) == n_aligned + 2  # + prompted + prompt_neutral
+    # + prompted + prompt_physics + prompt_biology (the two fixed-domain pseudo-tests)
+    assert len(vuong) == n_aligned + 3
     # aligned at checkpoint 0 duplicates the baseline model -> undefined (NaN).
     ok = vuong["vuong_z"].notna()
     assert ok.any()

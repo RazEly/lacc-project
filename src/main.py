@@ -5,7 +5,8 @@ measure (TFT). Every surprisal source (baseline, aligned, prompted, …) enters 
 a single plain main effect and is scored against the SAME shared no-surprisal
 baseline (paper Eq. 2/4/5): LL, ΔLL, χ², LRT p, AIC. A second per-LM table
 reports Vuong tests of the baseline-surprisal model against each
-reader-conditioned arm (aligned per checkpoint, prompted, neutral prompt).
+reader-conditioned arm (aligned per checkpoint, prompted, and the two
+fixed-domain prompt pseudo-tests — physics-for-all, biology-for-all).
 Along the way: figures (viz.md) — perplexity grid, example-sentence surprisal,
 mean surprisal over steps, ΔLL curves, RT–surprisal.
 
@@ -29,7 +30,7 @@ from src.modeling import lm
 
 # reading-time measure (TFT); the effect is expected on the late measure.
 MEASURE = "TFT"
-SLIM_MODELS = ("baseline", "prompted", "prompt_neutral", "aligned")
+SLIM_MODELS = ("baseline", "prompted", "prompt_physics", "prompt_biology", "aligned")
 # every checkpoint: indices 1..N pair to finetune's DAPT_CHECKPOINT_STEPS (0 = baseline).
 SLIM_INDICES = list(range(1, len(ft.DAPT_CHECKPOINT_STEPS) + 1))
 
@@ -71,11 +72,11 @@ def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
     model, tok = lm.load_causal_lm(name)
 
     # Prompted arm: prior-reading passage + native document boundary, truncated to
-    # a shared context budget. physics/biology = domain priors (reader-aligned per
-    # reader downstream); neutral = off-domain scientific control (same corpus,
-    # same register, no domain content). Each arg is a LIST of N_PRIOR_PASSAGES
-    # priors — compute_surprisal averages per-word surprisal across them, so the
-    # stored column is the mean over priors.
+    # a shared context budget. physics/biology domain priors, scored on EVERY word.
+    # Downstream they build the reader-aligned ``prompted`` arm plus the two
+    # fixed-domain pseudo-tests (physics-for-all / biology-for-all). Each arg is a
+    # LIST of N_PRIOR_PASSAGES priors — compute_surprisal averages per-word
+    # surprisal across them, so the stored column is the mean over priors.
     def _prior_surp(prior_texts: list[str], col: str) -> pd.DataFrame:
         return su.compute_surprisal(
             words,
@@ -85,10 +86,8 @@ def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
             max_prompt_tokens=PRIOR_MAX_TOKENS,
         ).rename(columns={"surprisal": col})
 
-    prompt_surp = (
-        _prior_surp(priors["physics"], "s_prompt_physics")
-        .merge(_prior_surp(priors["biology"], "s_prompt_biology"), on=WORD_KEY)
-        .merge(_prior_surp(priors["neutral"], "s_prompt_neutral"), on=WORD_KEY)
+    prompt_surp = _prior_surp(priors["physics"], "s_prompt_physics").merge(
+        _prior_surp(priors["biology"], "s_prompt_biology"), on=WORD_KEY
     )
 
     # Step 4 — DAPT checkpoints, one run per domain (loaded from artifacts/)
@@ -122,9 +121,9 @@ def fit_model(
     slug = bundle["slug"]
     print(f"\n=== fit: {slug} / {measure} ===")
 
-    # drop the neutral-prompt arm when the cache lacks it (older surprisal.csv).
-    has_neutral = "s_prompt_neutral" in bundle["prompt_surp"].columns
-    models = tuple(m for m in SLIM_MODELS if has_neutral or m != "prompt_neutral")
+    # every prompt arm derives from s_prompt_physics / s_prompt_biology, which the
+    # cache always carries; no source-dependent filtering needed.
+    models = SLIM_MODELS
 
     # Model comparison — every source scored against the shared no-surprisal
     # baseline (LRT + AIC), plus Vuong tests of the baseline-surprisal model
@@ -162,9 +161,9 @@ def main() -> None:
     else:
         priors = pr.load_prior_passages()
         print(
-            f"  priors: {config.N_PRIOR_PASSAGES}× physics/biology from held-out "
-            f"german-commons + {config.N_PRIOR_PASSAGES}× neutral (off-domain "
-            f"pool), averaged per word (budget {PRIOR_MAX_TOKENS} tokens)"
+            f"  priors: {config.N_PRIOR_PASSAGES}× physics/biology from each "
+            f"domain's held-out Wikipedia split, averaged per word "
+            f"(budget {PRIOR_MAX_TOKENS} tokens)"
         )
         bundles = [
             compute_model_surprisal(slug, name, words, priors)

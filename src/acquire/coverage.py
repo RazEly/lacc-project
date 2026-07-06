@@ -6,9 +6,9 @@ actually contains — the metric that decides whether DAPT can lower PoTeC surpr
 (hits per million tokens) matters more than raw counts when corpora differ in size.
 
 Run:
-    python -m src.acquire.coverage                       # default corpora, physics
+    python -m src.acquire.coverage                       # the physics wiki corpus
     python -m src.acquire.coverage --domain biology
-    python -m src.acquire.coverage data/wiki_physics data/domain_physics
+    python -m src.acquire.coverage data/wiki_physics data/wiki_biology
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import re
 
 from datasets import load_from_disk
 
-from src.acquire.scrape import SCRAPE_DIRS, level2_terms
+from src.acquire.scrape import level2_terms
 from src.config import DOMAIN_DIRS, DOMAINS
 
 # German inflection tails stripped for stem coverage (longest first).
@@ -60,15 +60,12 @@ def analyze(path: str, terms: list[str]) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("corpora", nargs="*", help="corpus dirs (default: wiki_ + domain_ for --domain)")
+    ap.add_argument("corpora", nargs="*", help="corpus dirs (default: the --domain wiki corpus)")
     ap.add_argument("--domain", default="physics", choices=DOMAINS)
     args = ap.parse_args()
 
     terms = level2_terms(args.domain)
-    corpora = args.corpora or [
-        str(SCRAPE_DIRS[args.domain]),
-        str(DOMAIN_DIRS[args.domain]),
-    ]
+    corpora = args.corpora or [str(DOMAIN_DIRS[args.domain])]
 
     print(f"{len(terms)} level-2 expert terms for '{args.domain}'\n")
     print(f"{'corpus':30} {'rows':>5} {'tokens':>10} {'exact':>7} {'stem':>7} {'hits':>6} {'hits/Mtok':>9}")

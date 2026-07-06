@@ -1,8 +1,8 @@
 """Domain-adaptive continued pre-training (DAPT) of a causal LM (step 4).
 
 Continued next-token pre-training (Gururangan et al. 2020) of a German decoder LM
-on the ``german-commons`` domain splits (``data/domain_physics`` / ``data/domain_biology``),
-disjoint from the PoTeC stimuli (no leakage). Physics and biology train
+on the term-targeted Wikipedia domain corpora (``data/wiki_physics`` /
+``data/wiki_biology``), disjoint from the PoTeC stimuli (no leakage). Physics and biology train
 independently on a shared *token* budget (``max_tokens``), so both see the same
 tokens at the same checkpoint index despite different corpus sizes. Saves
 checkpoints by training step with validation perplexity, for a progress curve.
