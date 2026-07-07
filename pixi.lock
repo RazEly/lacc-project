@@ -5859,6 +5859,8 @@ packages:
   - great-tables>=0.22
   - accelerate>=0.26.0
   - adapters>=1.3.0
+  - sentencepiece>=0.2.1,<0.3
+  - protobuf>=3.20.0
   - matplotlib>=3.7.0
   - formulae>=0.6.2
   - wikipedia-api>=0.15.0,<0.16

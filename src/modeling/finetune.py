@@ -327,6 +327,7 @@ def finetune_dapt(
     # Optimiser steps: from max_steps if set, else derived from the token budget
     # (max_tokens, or one full pass over the packed train blocks).
 
+    tokens_per_step = block_size * batch_size * grad_accum
     use_cuda = DEVICE == "cuda"
     use_bf16 = use_cuda and torch.cuda.is_bf16_supported()
     args = TrainingArguments(

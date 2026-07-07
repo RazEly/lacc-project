@@ -23,12 +23,7 @@ from src.modeling.lm import load_causal_lm
 
 
 def save_cache(bundles: list[dict], path: Path = SURPRISAL_CACHE_PATH) -> None:
-    """Write every model's surprisal to one long CSV — only after all models ran.
-
-    One row per word × source: checkpoint rows keep ``index``/``domain``/``epoch``
-    (``condition`` = "dapt"), prompted rows carry the ``s_prompt_*`` column name
-    as ``condition``.
-    """
+    """Write every model's surprisal to a CSV"""
     frames = []
     for b in bundles:
         frames.append(b["surp_versions"].assign(model=b["slug"], condition="dapt"))
