@@ -44,7 +44,7 @@ EVAL_SUBSET_SIZE = 256
 # Decoder LMs the study fine-tunes (slug -> HF repo). Both German: german-gpt2
 # (124M) + LLäMmlein 1B (German-only, from scratch). GPT and LLaMA archs supported.
 MODELS = {
-    "german-gpt2": "dbmdz/german-gpt2",
+    "german-gpt2": "benjamin/gerpt2",
     "llammlein-1b": "LSX-UniWue/LLaMmlein_1B",
 }
 

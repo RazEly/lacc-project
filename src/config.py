@@ -26,7 +26,7 @@ DOMAIN_DIRS = {domain: DATA_DIR / f"wiki_{domain}" for domain in DOMAINS}
 DOMAIN_COS_THRESHOLD = {"physics": 0.12, "biology": 0.20}
 
 # Default decoder LM; loaders are model-agnostic within the decoder family.
-DEFAULT_MODEL = "dbmdz/german-gpt2"
+DEFAULT_MODEL = "benjamin/gerpt2"
 
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 
