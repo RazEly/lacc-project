@@ -17,6 +17,7 @@ Differences from the paper, kept deliberately simple:
 Run:
     python -m src.acquire.scrape                    # full scrape, both domains
     python -m src.acquire.scrape --domain biology   # one domain only
+    python -m src.acquire.scrape --neutral          # neutral corpus (200 articles)
     python -m src.acquire.scrape --test             # tiny smoke run (few terms, depth 1)
 """
 
@@ -131,6 +132,7 @@ def _count_words(text: str) -> int:
 # Output dirs — SEPARATE from data/domain_<domain> so a scrape never clobbers a
 # corpus the DAPT checkpoints were trained on. Point DOMAIN_DIRS here to use them.
 SCRAPE_DIRS = {d: DATA_DIR / f"wiki_{d}" for d in DOMAINS}
+NEUTRAL_SCRAPE_DIR = DATA_DIR / "wiki_neutral"
 
 
 def _wiki() -> wikipediaapi.Wikipedia:
@@ -197,6 +199,32 @@ CURRICULUM_TERMS = {
         "Histologie",
     ],
 }
+
+# Neutral corpus seeds — off-domain academic fields (humanities / social science).
+# No PoTeC expert terms and no physics/biology overlap, but the SAME encyclopedic
+# expository register as the domain corpora, so the neutral prior differs from the
+# domain priors only in TOPIC (holding context length + register fixed). Used as
+# the single length-matched pseudo-test replacing the physics/biology-for-all ones.
+NEUTRAL_TERMS = [
+    "Geschichtswissenschaft",
+    "Rechtswissenschaft",
+    "Volkswirtschaftslehre",
+    "Soziologie",
+    "Philosophie",
+    "Sprachwissenschaft",
+    "Kunstgeschichte",
+    "Politikwissenschaft",
+    "Musikwissenschaft",
+    "Literaturwissenschaft",
+    "Archäologie",
+    "Pädagogik",
+    "Theologie",
+    "Ethnologie",
+]
+# Neutral corpus is sized by article count, not words (200 kept). Pool oversized
+# vs the cap so redirect/stub/list skips don't starve it below 200.
+NEUTRAL_ARTICLES = 200
+NEUTRAL_POOL = 800
 
 
 def level2_terms(domain: str) -> list[str]:
@@ -340,16 +368,17 @@ def _fetch_one(page) -> dict | None:
     }
 
 
-def fetch_texts(pages, max_words) -> list[dict]:
+def fetch_texts(pages, max_words, max_articles: int | None = None) -> list[dict]:
     """Article bodies until the word budget is reached (short/missing dropped).
 
     ``pages`` are the ``WikipediaPage`` stubs from ``collect_articles`` (reused,
     not re-resolved). Fetched ``FETCH_WORKERS`` at a time in a thread pool; results
     are consumed with ``as_completed`` so the bar advances per FINISHED article,
     not in submission order — one slow/large page no longer freezes progress while
-    other workers are done. The word budget is checked as rows land and fetching
-    stops (remaining futures cancelled) once it crosses ``max_words``. The corpus
-    is sized by words (comparable across domains), not article count.
+    other workers are done. Fetching stops (remaining futures cancelled) once the
+    word budget crosses ``max_words`` OR, when set, ``kept`` reaches
+    ``max_articles`` — the neutral corpus is sized by article count, the domain
+    corpora by words (comparable across domains).
 
     Also reports ``kept``/``skipped`` so a stalled-looking run is diagnosable: a
     high skip count with words far below budget means the title pool ran dry
@@ -372,7 +401,7 @@ def fetch_texts(pages, max_words) -> list[dict]:
                     total += row["num_words"]
                     bar.update(row["num_words"])
                 bar.set_postfix(kept=kept, skip=skipped, refresh=False)
-                if total >= max_words:
+                if total >= max_words or (max_articles and kept >= max_articles):
                     break
         finally:
             for fut in futures:
@@ -380,6 +409,34 @@ def fetch_texts(pages, max_words) -> list[dict]:
     bar.close()
     print(f"    fetched: kept={kept} skipped={skipped} words={total:,}")
     return rows
+
+
+def _scrape(
+    label: str,
+    terms: list[str],
+    wiki,
+    max_depth: int,
+    max_words: int,
+    pool_size: int,
+    max_terms: int | None,
+    max_articles: int | None = None,
+) -> Dataset:
+    """Shared pipeline: seed cats -> pool titles -> fetch bodies -> ``Dataset``.
+
+    Sized by ``max_words`` (domain corpora) or ``max_articles`` (neutral), whichever
+    binds first in ``fetch_texts``. ``label`` tags the ``domain`` column.
+    """
+    cats = seed_categories(terms, wiki, max_terms=max_terms)
+    print(f"[{label}] {len(cats)} seed content categories (top: {cats[:8]})")
+
+    pages = collect_articles(cats, wiki, max_depth, pool_size)
+    print(f"[{label}] {len(pages)} article titles pooled (depth<= {max_depth})")
+
+    rows = fetch_texts(pages, max_words, max_articles=max_articles)
+    ds = Dataset.from_list([{**r, "domain": label} for r in rows])
+    total_words = sum(r["num_words"] for r in rows)
+    print(f"[{label}] kept {len(ds)} articles, {total_words:,} words")
+    return ds
 
 
 def scrape_domain(
@@ -397,23 +454,40 @@ def scrape_domain(
         f"[{domain}] {len(terms)} seed terms "
         f"({len(expert)} level-2 + {len(CURRICULUM_TERMS[domain])} curriculum)"
     )
+    return _scrape(domain, terms, wiki, max_depth, max_words, pool_size, max_terms)
 
-    cats = seed_categories(terms, wiki, max_terms=max_terms)
-    print(f"[{domain}] {len(cats)} seed content categories (top: {cats[:8]})")
 
-    pages = collect_articles(cats, wiki, max_depth, pool_size)
-    print(f"[{domain}] {len(pages)} article titles pooled (depth<= {max_depth})")
+def scrape_neutral(
+    max_depth: int = MAX_DEPTH,
+    max_words: int = MAX_WORDS,
+    pool_size: int = NEUTRAL_POOL,
+    max_terms: int | None = None,
+    max_articles: int | None = NEUTRAL_ARTICLES,
+) -> Dataset:
+    """Scrape the off-domain neutral corpus (to an article count) into a ``Dataset``.
 
-    rows = fetch_texts(pages, max_words)
-    ds = Dataset.from_list([{**r, "domain": domain} for r in rows])
-    total_words = sum(r["num_words"] for r in rows)
-    print(f"[{domain}] kept {len(ds)} articles, {total_words:,} words")
-    return ds
+    Same pipeline as ``scrape_domain`` but seeded from ``NEUTRAL_TERMS`` (no PoTeC
+    expert terms, no curriculum) and sized by ``max_articles`` — the word budget is
+    left at the domain ceiling so the article cap binds first.
+    """
+    wiki = _wiki()
+    print(f"[neutral] {len(NEUTRAL_TERMS)} seed terms (off-domain academic fields)")
+    return _scrape(
+        "neutral",
+        NEUTRAL_TERMS,
+        wiki,
+        max_depth,
+        max_words,
+        pool_size,
+        max_terms,
+        max_articles=max_articles,
+    )
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Scrape German Wikipedia domain corpora.")
     ap.add_argument("--domain", choices=DOMAINS)
+    ap.add_argument("--neutral", action="store_true", help="scrape the neutral corpus")
     ap.add_argument("--test", action="store_true")
     args = ap.parse_args()
 
@@ -422,6 +496,23 @@ def main() -> None:
     words = 30_000 if test else MAX_WORDS
     pool = 15 if test else ARTICLE_POOL
     terms = 4 if test else None
+
+    if args.neutral:
+        n_art = 5 if test else NEUTRAL_ARTICLES
+        n_pool = 15 if test else NEUTRAL_POOL
+        ds = scrape_neutral(
+            max_depth=depth, pool_size=n_pool, max_terms=terms, max_articles=n_art
+        )
+        if test:
+            if len(ds):
+                print(
+                    f"\n--- neutral sample ---\n{ds[0]['title']}: {ds[0]['text'][:300]!r}"
+                )
+        else:
+            ds.save_to_disk(str(NEUTRAL_SCRAPE_DIR))
+            print(f"[neutral] saved -> {NEUTRAL_SCRAPE_DIR}")
+        return
+
     if args.domain:
         doms = (args.domain,)
     else:

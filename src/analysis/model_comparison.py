@@ -11,9 +11,9 @@ Surprisal sources:
   aligned           : by READER discipline — physics surprisal for physicists,
                       biology for biologists (Study 2).
   prompted          : baseline weights + discipline-matched prior passage.
-  prompt_physics /  : fixed-domain PSEUDO-TESTS — baseline weights + a physics
-  prompt_biology      (resp. biology) prior passage for EVERY reader, regardless
-                      of discipline.
+  prompt_neutral    : fixed-domain PSEUDO-TEST — baseline weights + an off-domain
+                      (neutral) prior passage for EVERY reader, holding context
+                      length fixed while the prior carries no domain signal.
 """
 
 from __future__ import annotations
@@ -25,9 +25,8 @@ from pymer4.models import lmer  # lazy: importing loads R via rpy2
 from scipy.stats import chi2, norm
 from tqdm import tqdm
 
-from src.config import WORD_KEY
+from src.config import DAPT_CHECKPOINT_STEPS, WORD_KEY
 from src.features.dataset import build_index_df
-from src.modeling.finetune import DAPT_CHECKPOINT_STEPS
 
 # checkpoint index -> fixed optimiser step (index 0 = un-fine-tuned base model).
 # Reported instead of ``epoch``: epoch is fractional and differs across domains
@@ -42,14 +41,13 @@ SURPRISAL_MODELS = (
     "biology",
     "aligned",
     "prompted",
-    "prompt_physics",
-    "prompt_biology",
+    "prompt_neutral",
 )
 # sources whose surprisal doesn't depend on the DAPT checkpoint: fit once.
-_CKPT_INDEP = {"baseline", "prompted", "prompt_physics", "prompt_biology"}
+_CKPT_INDEP = {"baseline", "prompted", "prompt_neutral"}
 # reader-conditioned arms compared to the baseline-surprisal model by Vuong test
-# (the two fixed-domain pseudo-tests included).
-_VUONG_ARMS = {"aligned", "prompted", "prompt_physics", "prompt_biology"}
+# (the neutral fixed-domain pseudo-test included).
+_VUONG_ARMS = {"aligned", "prompted", "prompt_neutral"}
 
 # Paper Eq. (2) fixed effects; Eq. (4) adds the surprisal main effect(s).
 # Random effects: by-subject intercept, by-word intercept + expertise slope
@@ -136,7 +134,11 @@ def _score_source(d, measure, name, index, training_steps, ll_null):
 
 
 def _vuong(ll_base: pd.Series, ll_arm: pd.Series) -> tuple[int, float, float]:
-    """Paired Vuong test on per-reader LL sums: ``(n_readers, z, p)``."""
+    """Paired Vuong test on per-reader LL sums: ``(n_readers, z, p)``.
+
+    ``diff = base - arm``, so ``z < 0`` means the reader-conditioned arm fits
+    better. One-sided p (H1: arm improves fit) = lower-tail ``P(Z <= z)``.
+    """
     d1, d2 = ll_base.align(ll_arm, join="inner")
     diff = d1 - d2
     sd = float(diff.std(ddof=1))
@@ -145,7 +147,7 @@ def _vuong(ll_base: pd.Series, ll_arm: pd.Series) -> tuple[int, float, float]:
         # the baseline model) — the Vuong statistic is undefined.
         return len(diff), np.nan, np.nan
     z = float(diff.mean() / (sd / np.sqrt(len(diff))))
-    return len(diff), z, float(2.0 * norm.sf(abs(z)))
+    return len(diff), z, float(norm.cdf(z))
 
 
 def model_comparison_over_steps(

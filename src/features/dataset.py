@@ -48,10 +48,10 @@ def _prep_models(df, measure):
     """One row per reader×word with every surprisal column + covariates.
 
     ``df`` must carry ``s_baseline`` / ``s_physics`` / ``s_biology`` /
-    ``s_prompt_physics`` / ``s_prompt_biology`` plus the reading measures. The two
-    ``s_prompt_*`` columns are both the reader-aligned ``prompted`` arm and the two
-    fixed-domain pseudo-tests (used directly as ``s_prompt_physics`` /
-    ``s_prompt_biology`` in the model comparison).
+    ``s_prompt_physics`` / ``s_prompt_biology`` / ``s_prompt_neutral`` plus the
+    reading measures. The two ``s_prompt_{physics,biology}`` columns build the
+    reader-aligned ``prompted`` arm; ``s_prompt_neutral`` is the single
+    fixed-domain pseudo-test (off-domain prior for every reader).
     """
     raw_cols = [
         "s_baseline",
@@ -59,6 +59,7 @@ def _prep_models(df, measure):
         "s_biology",
         "s_prompt_physics",
         "s_prompt_biology",
+        "s_prompt_neutral",
     ]
 
     # reader_discipline_numeric: 1 = physicist, 0 = biologist.

@@ -36,8 +36,8 @@ fi
 echo "==> Downloading PoTeC eye-tracking data ..."
 $PY -m src.acquire.download_potec
 
-echo "==> Scraping the domain corpora (physics / biology) from Wikipedia ..."
-$PY -m src.acquire.scrape
+echo "==> Downloading Datasets ..."
+scripts/download_datasets.sh
 
 echo
 echo "Setup complete."

@@ -22,11 +22,28 @@ DOMAINS = ("physics", "biology")
 # fine-tuning corpora dirs
 DOMAIN_DIRS = {domain: DATA_DIR / f"wiki_{domain}" for domain in DOMAINS}
 
+# Off-domain neutral corpus — source of the neutral prior passage (the single
+# length-matched prompt pseudo-test replacing the physics/biology-for-all ones).
+# NOT a DAPT domain and NOT a reader discipline; kept out of DOMAINS on purpose.
+NEUTRAL_DIR = DATA_DIR / "wiki_neutral"
+
 
 DOMAIN_COS_THRESHOLD = {"physics": 0.12, "biology": 0.20}
 
 # Default decoder LM; loaders are model-agnostic within the decoder family.
 DEFAULT_MODEL = "benjamin/gerpt2"
+
+# Decoder LMs the study runs over (slug -> HF repo). Both German: german-gpt2
+# (124M) + LLäMmlein 1B (German-only, from scratch). GPT and LLaMA archs supported.
+MODELS = {
+    "german-gpt2": "benjamin/gerpt2",
+    "llammlein-1b": "LSX-UniWue/LLaMmlein_1B",
+}
+
+# DAPT checkpoint schedule: the adapter is saved at exactly these optimiser steps
+# (checkpoint indices 1..; index 0 = un-fine-tuned base). Shared so a checkpoint
+# index means the same training-token count for every model.
+DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4_096]
 
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 

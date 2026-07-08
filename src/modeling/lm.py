@@ -31,15 +31,19 @@ def resize_with_mean_init(model, tokenizer) -> bool:
     """Grow embeddings to cover every tokenizer id; new rows = mean embedding.
 
     german-gpt2's eos/pad id sits one past its embedding rows, so training (which
-    appends eos as a document separator) needs the resize. The default resize
-    initialises new rows randomly — nondeterministic across loads and never
-    trained under LoRA (embeddings stay frozen); mean-init is deterministic and a
-    sane prior. Returns whether a resize happened.
+    appends eos as a document separator) needs the resize. transformers' built-in
+    init samples new rows (random noise pre-4.46, mean+covariance normal after) —
+    either way nondeterministic across loads, and the rows are never trained under
+    LoRA (embeddings stay frozen). Exact-mean init is deterministic and a sane
+    prior. Returns whether a resize happened.
     """
     if len(tokenizer) <= model.config.vocab_size:
         return False
     old_n = model.get_input_embeddings().weight.shape[0]
-    model.resize_token_embeddings(len(tokenizer))
+    # mean_resizing=False skips transformers' stochastic multivariate-normal
+    # init for the new rows; we overwrite them with the exact mean below (which
+    # is deterministic across loads — embeddings stay frozen under LoRA).
+    model.resize_token_embeddings(len(tokenizer), mean_resizing=False)
     with torch.no_grad():
         emb = model.get_input_embeddings().weight
         emb[old_n:] = emb[:old_n].mean(dim=0)

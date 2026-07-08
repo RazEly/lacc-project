@@ -30,7 +30,15 @@ from transformers import (
     TrainingArguments,
 )
 
-from src.config import ARTIFACTS_DIR, DEFAULT_MODEL, DEVICE, DOMAIN_DIRS, DOMAINS
+from src.config import (
+    ARTIFACTS_DIR,
+    DAPT_CHECKPOINT_STEPS,
+    DEFAULT_MODEL,
+    DEVICE,
+    DOMAIN_DIRS,
+    DOMAINS,
+    MODELS,
+)
 from src.modeling.lm import ADAPTER_NAME, resize_with_mean_init
 
 # Blocks used for the checkpoint perplexity readout. The held-out split is huge
@@ -41,19 +49,7 @@ EVAL_SUBSET_SIZE = 256
 # ---------------------------------------------------------------------------
 # Fine-tuning hyperparameters (every knob `train_all` uses)
 # ---------------------------------------------------------------------------
-# Decoder LMs the study fine-tunes (slug -> HF repo). Both German: german-gpt2
-# (124M) + LLäMmlein 1B (German-only, from scratch). GPT and LLaMA archs supported.
-MODELS = {
-    "german-gpt2": "benjamin/gerpt2",
-    "llammlein-1b": "LSX-UniWue/LLaMmlein_1B",
-}
-
-# --- shared across models (identical for german-gpt2 and llammlein-1b) ---
-# Budget + checkpoint schedule: the adapter is saved at exactly DAPT_CHECKPOINT_STEPS
-# (indices 1..); index 0 is the un-fine-tuned base model. Shared so a checkpoint
-# index means the same training-token count for every model.
-DAPT_MAX_STEPS = 4_096
-DAPT_CHECKPOINT_STEPS = [4, 16, 64, 256, 1024, 4_096]
+# MODELS + DAPT_CHECKPOINT_STEPS are shared across modules -> config.
 BLOCK_SIZE = 512  # causal-LM block length (tokens)
 VAL_FRAC = 0.05  # doc-level held-out fraction for the perplexity eval
 WARMUP_RATIO = 0.05  # short warmup + low LR: limit catastrophic forgetting
@@ -248,7 +244,7 @@ def finetune_dapt(
     domain: str,
     base_model: str = DEFAULT_MODEL,
     max_tokens: int | None = None,
-    max_steps: int | None = DAPT_MAX_STEPS,
+    max_steps: int | None = DAPT_CHECKPOINT_STEPS[-1],
     checkpoint_steps=DAPT_CHECKPOINT_STEPS,
     block_size: int = BLOCK_SIZE,
     batch_size: int = 8,

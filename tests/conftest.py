@@ -186,6 +186,7 @@ def mc_inputs():
     bio = {w: base[w] + rng.normal(0, 0.5) for w in words}
     pphys = {w: base[w] + rng.normal(0, 0.5) for w in words}
     pbio = {w: base[w] + rng.normal(0, 0.5) for w in words}
+    pneut = {w: base[w] + rng.normal(0, 0.5) for w in words}
     wlen = {w: int(rng.integers(3, 11)) for w in words}
     freq = {w: float(rng.uniform(0, 50)) for w in words}
 
@@ -218,6 +219,7 @@ def mc_inputs():
                 "word_index_in_text": wi,
                 "s_prompt_physics": pphys[(tid, dom, wi)],
                 "s_prompt_biology": pbio[(tid, dom, wi)],
+                "s_prompt_neutral": pneut[(tid, dom, wi)],
             }
             for (tid, dom, wi) in words
         ]
