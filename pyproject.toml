@@ -27,7 +27,6 @@ dependencies = [
     "protobuf>=3.20.0",       # SentencePiece model deserialization for Llama tokenizer load
     "matplotlib>=3.7.0",
     "formulae>=0.6.2", "wikipedia-api>=0.15.0,<0.16",       # pymer4 0.9 formula parser (pymer4 declares no deps)
-    "bertopic>=0.16",        # corpus off-topic filter (acquire.cluster_filter): SBERT+UMAP+HDBSCAN+c-TF-IDF; pulls sentence-transformers/umap-learn/hdbscan/scikit-learn
 ]
 
 [tool.uv]
