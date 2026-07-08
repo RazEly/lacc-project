@@ -37,7 +37,7 @@ echo "==> Downloading PoTeC eye-tracking data ..."
 $PY -m src.acquire.download_potec
 
 echo "==> Downloading Datasets ..."
-scripts/download_datasets.sh
+scripts/download_datasets_from_hub.sh
 
 echo
 echo "Setup complete."

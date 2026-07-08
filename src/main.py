@@ -40,7 +40,7 @@ CHECKPOINT_INDICES = list(range(1, len(config.DAPT_CHECKPOINT_STEPS) + 1))
 # `python -m src.modeling.finetune`.
 MODELS = config.MODELS
 # Context budget (tokens) shared by every prompt condition.
-PRIOR_MAX_TOKENS = 128
+PRIOR_MAX_TOKENS = 64
 
 # Example sentence for the fig-2 surprisal walk-through: (text_id, sent_index).
 # Baseline GPT-2 surprisal + Δ over checkpoints/prompts on one PoTeC sentence.

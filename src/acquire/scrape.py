@@ -336,7 +336,6 @@ def _section_text(section) -> str:
 
 def _clean_text(page) -> str:
     """Article prose: lead + body, minus reference sections and math.
-
     ``page.summary``/``sections[].text`` are HTML extracts. We rebuild from the
     sections dropping the reference tail (Einzelnachweise / Weblinks / Literatur —
     citation noise), then strip HTML to text with ``<math>`` blocks removed.

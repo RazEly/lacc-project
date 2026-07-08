@@ -28,13 +28,8 @@ from tqdm import tqdm
 from src.config import DAPT_CHECKPOINT_STEPS, WORD_KEY
 from src.features.dataset import build_index_df
 
-# checkpoint index -> fixed optimiser step (index 0 = un-fine-tuned base model).
-# Reported instead of ``epoch``: epoch is fractional and differs across domains
-# (corpus sizes differ), so it is NOT comparable; the step schedule is shared.
 STEP_OF_INDEX = {i: s for i, s in enumerate([0, *DAPT_CHECKPOINT_STEPS])}
 
-# every source's surprisal column is ``s_<source>``; aligned / prompted are
-# built by features.dataset.build_index_df.
 SURPRISAL_MODELS = (
     "baseline",
     "physics",
@@ -43,15 +38,10 @@ SURPRISAL_MODELS = (
     "prompted",
     "prompt_neutral",
 )
-# sources whose surprisal doesn't depend on the DAPT checkpoint: fit once.
 _CKPT_INDEP = {"baseline", "prompted", "prompt_neutral"}
-# reader-conditioned arms compared to the baseline-surprisal model by Vuong test
-# (the neutral fixed-domain pseudo-test included).
 _VUONG_ARMS = {"aligned", "prompted", "prompt_neutral"}
 
-# Paper Eq. (2) fixed effects; Eq. (4) adds the surprisal main effect(s).
-# Random effects: by-subject intercept, by-word intercept + expertise slope
-# (richer structures did not converge in the paper).
+# linear mixed effects model
 _BASE_TERMS = "word_length + log_word_freq + word_position + is_expert * is_technical"
 _RANDOM_EFFECTS = "(1|reader_id) + (1 + is_expert|word_id)"
 
@@ -74,8 +64,7 @@ def _fit(d, measure, surprisal_cols=None):
 
 
 def _stat(m, name) -> float:
-    """Fit statistic (``logLik`` / ``AIC`` / ``sigma`` …) from pymer4 0.9's
-    ``result_fit_stats``."""
+    """Teturns fit statistic (log-likelihood / AIC / std)"""
     return float(m.result_fit_stats[name].item())
 
 
@@ -90,8 +79,6 @@ def _reader_loglik(m, d) -> pd.Series:
     penalty terms cancel in the pairing. Indexed by ``reader_id``.
     """
 
-    # pymer4 augments m.data with broom-style `resid` (response - conditional
-    # fitted) in the original row order.
     resid = m.data["resid"].to_numpy()
     sigma = _stat(m, "sigma")
     if len(resid) != len(d):
@@ -134,20 +121,14 @@ def _score_source(d, measure, name, index, training_steps, ll_null):
 
 
 def _vuong(ll_base: pd.Series, ll_arm: pd.Series) -> tuple[int, float, float]:
-    """Paired Vuong test on per-reader LL sums: ``(n_readers, z, p)``.
-
-    ``diff = base - arm``, so ``z < 0`` means the reader-conditioned arm fits
-    better. One-sided p (H1: arm improves fit) = lower-tail ``P(Z <= z)``.
-    """
+    """Paired Vuong test on per-reader LL sums"""
     d1, d2 = ll_base.align(ll_arm, join="inner")
-    diff = d1 - d2
+    diff = d2 - d1  # arm - base: z>0 means arm fits better
     sd = float(diff.std(ddof=1))
     if sd == 0.0:
-        # indistinguishable fits (e.g. aligned at checkpoint 0 duplicates
-        # the baseline model) — the Vuong statistic is undefined.
         return len(diff), np.nan, np.nan
     z = float(diff.mean() / (sd / np.sqrt(len(diff))))
-    return len(diff), z, float(norm.cdf(z))
+    return len(diff), z, float(norm.sf(z))  # one-sided: small p = arm better
 
 
 def model_comparison_over_steps(
