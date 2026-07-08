@@ -3,7 +3,8 @@
 # Download the wiki_* domain corpora from the Hugging Face Hub.
 #
 # Inverse of push_datasets_to_hub.sh. Each public dataset repo
-# ElyR120/wiki_<domain> (one per domain in `src.config.DOMAINS`) is loaded with
+# ElyR120/wiki_<domain> (one per domain in `src.config.DOMAINS`, plus the
+# off-domain `wiki_neutral` corpus) is loaded with
 # datasets.load_dataset and written with save_to_disk into data/wiki_<domain>
 # (`src.config.DOMAIN_DIRS`), so downstream load_from_disk callers find the
 # corpora where the scrape pipeline would have written them. A missing repo is
@@ -27,12 +28,16 @@ pixi run python - <<'PY'
 from datasets import load_dataset
 from huggingface_hub.utils import RepositoryNotFoundError
 
-from src.config import DOMAIN_DIRS
+from src.config import DOMAIN_DIRS, NEUTRAL_DIR
 
 NAMESPACE = "ElyR120"
 
+# Neutral corpus lives on the Hub as wiki_neutral but is deliberately kept out of
+# DOMAINS/DOMAIN_DIRS (not a DAPT domain), so pull it explicitly alongside them.
+local_dirs = [*DOMAIN_DIRS.values(), NEUTRAL_DIR]
+
 pulled = 0
-for domain, local_dir in DOMAIN_DIRS.items():
+for local_dir in local_dirs:
     repo_id = f"{NAMESPACE}/{local_dir.name}"
     print(f"--> {repo_id}  ->  {local_dir}")
     try:
@@ -44,7 +49,7 @@ for domain, local_dir in DOMAIN_DIRS.items():
     pulled += 1
     print("    done")
 
-print(f"Downloaded {pulled}/{len(DOMAIN_DIRS)} dataset(s).")
+print(f"Downloaded {pulled}/{len(local_dirs)} dataset(s).")
 PY
 
 echo
