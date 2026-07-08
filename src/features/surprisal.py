@@ -1,9 +1,9 @@
 """Model surprisal from a decoder-only causal LM (step 2).
 
 Word surprisal = sum of sub-token surprisals (-log2 p(token | left context)),
-aligned via the tokenizer's ``word_ids``. Each text is scored as one sequence so
-context spans sentence boundaries (Eq. 1). An optional ``prompt`` prepends
-domain-matched context.
+aligned via the tokenizer's ``word_ids``. Each SENTENCE is scored as its own
+sequence, so context resets at sentence boundaries (never spans them). An
+optional ``prompt`` prepends domain-matched context to each sentence.
 
 Model/tokenizer loading lives in ``modeling.lm``. ``save_cache`` /
 ``load_cache`` persist these (expensive) forwards as one long CSV
@@ -163,28 +163,28 @@ def score_words(word_list, model, tokenizer, prompt=None, max_prompt_tokens=None
 def compute_surprisal(
     words_df: pd.DataFrame, model, tokenizer, prompt=None, max_prompt_tokens=None
 ) -> pd.DataFrame:
-    """Per-word surprisal for every PoTeC text.
+    """Per-word surprisal for every PoTeC text, scored ONE SENTENCE AT A TIME.
 
-    Each text is rebuilt as one sequence (ordered by ``word_index_in_text``) so
-    context carries across sentences (Eq. 1). The text's first/last word is
-    dropped to match the reading-time cleaning. ``prompt`` may be None, a string,
-    or a list of strings; each is a prior-reading passage joined to the stimulus
-    by the native document boundary (see ``score_words``). Given SEVERAL priors
-    the stimulus is scored under each and the per-word surprisals are averaged
-    (``_mean_bits``), so the column is a mean over priors. ``max_prompt_tokens``
-    fixes the prior's context length across conditions.
+    Each sentence (``sent_index_in_text``) is rebuilt as its OWN sequence, so
+    context resets at every sentence boundary and never carries across sentences.
+    A sentence's first word therefore has no left context (``None``) and drops
+    out; with a ``prompt`` the prior passage supplies that context instead. The
+    text's final word is still dropped to match the reading-time cleaning.
+
+    ``prompt`` may be None, a string, or a list of strings; each is a
+    prior-reading passage joined to EACH sentence by the native document boundary
+    (see ``score_words``). Given SEVERAL priors the sentence is scored under each
+    and the per-word surprisals are averaged (``_mean_bits``), so the column is a
+    mean over priors. ``max_prompt_tokens`` fixes the prior's context length.
 
     Returns columns: ``text_id``, ``word_index_in_text``, ``surprisal`` (the mean
     over priors when several are given).
     """
     prompts = _as_prompt_list(prompt)
-    rows = []
-    for text_id, text in words_df.sort_values(
-        ["text_id", "word_index_in_text"]
-    ).groupby("text_id", sort=False):
-        words = text["word"].fillna("").astype(str).tolist()
+
+    def _score(words: list[str]) -> list:
         if len(prompts) > 1:
-            bits = _mean_bits(
+            return _mean_bits(
                 [
                     score_words(
                         words,
@@ -196,21 +196,30 @@ def compute_surprisal(
                     for p in prompts
                 ]
             )
-        else:
-            # None / single prior: score once (keeps the no-prompt path unchanged).
-            bits = score_words(
-                words,
-                model,
-                tokenizer,
-                prompt=prompts[0] if prompts else None,
-                max_prompt_tokens=max_prompt_tokens,
-            )
-        idx = text["word_index_in_text"].tolist()
-        last = len(words) - 1
-        for k, (wi, b) in enumerate(zip(idx, bits)):
-            if b is None or k == last:  # text first (no context) / last word
-                continue
-            rows.append((text_id, wi, b))
+        # None / single prior: score once (keeps the no-prompt path unchanged).
+        return score_words(
+            words,
+            model,
+            tokenizer,
+            prompt=prompts[0] if prompts else None,
+            max_prompt_tokens=max_prompt_tokens,
+        )
+
+    rows = []
+    for _text_id, text in words_df.sort_values(
+        ["text_id", "word_index_in_text"]
+    ).groupby("text_id", sort=False):
+        last = text["word_index_in_text"].iloc[-1]  # text-final word (RT cleaning)
+        for (text_id, _sent), sent in text.groupby(
+            ["text_id", "sent_index_in_text"], sort=False
+        ):
+            words = sent["word"].fillna("").astype(str).tolist()
+            bits = _score(words)
+            for wi, b in zip(sent["word_index_in_text"].tolist(), bits):
+                # b is None -> sentence first word (no context) or text first word.
+                if b is None or wi == last:
+                    continue
+                rows.append((text_id, wi, b))
 
     return pd.DataFrame(rows, columns=WORD_KEY + ["surprisal"])
 

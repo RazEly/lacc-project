@@ -101,6 +101,30 @@ def test_compute_surprisal_drops_edges_and_columns(fake_causal_lm, fake_tokenize
     assert (out["surprisal"] > 0).all()
 
 
+def test_compute_surprisal_scores_each_sentence_independently(
+    fake_causal_lm, fake_tokenizer
+):
+    # one 6-word text split into TWO sentences (words 0-2, 3-5). Per-sentence
+    # scoring resets context at the boundary, so EACH sentence's first word has
+    # no left context and drops out: word 0 (text+sent first) AND word 3 (second
+    # sentence's first). The text-final word 5 drops for RT cleaning. Kept: 1,2,4.
+    rows = [
+        {
+            "text_id": "t",
+            "text_domain": "physics",
+            "sent_index_in_text": 0 if wi < 3 else 1,
+            "word_index_in_text": wi,
+            "word_index_in_sent": wi % 3,
+            "word": f"w{wi}",
+            "is_sent_beginning": int(wi in (0, 3)),
+            "is_sent_end": int(wi in (2, 5)),
+        }
+        for wi in range(6)
+    ]
+    out = su.compute_surprisal(pd.DataFrame(rows), fake_causal_lm, fake_tokenizer)
+    assert set(out["word_index_in_text"]) == {1, 2, 4}
+
+
 def test_compute_surprisal_averages_over_prior_list(fake_causal_lm, fake_tokenizer, words_df):
     # uniform LM ignores prior content, so every prior yields the same surprisal;
     # averaging a list of priors must reproduce the single-prior column exactly.
