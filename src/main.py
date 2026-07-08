@@ -3,10 +3,7 @@
 Per LM: one DAPT run per domain, then the mixed-model sweep for the reading-time
 measure (TFT). Every surprisal source (baseline, aligned, prompted, …) enters as
 a single plain main effect and is scored against the SAME shared no-surprisal
-baseline (paper Eq. 2/4/5): LL, ΔLL, χ², LRT p, AIC. A second per-LM table
-reports Vuong tests of the baseline-surprisal model against each
-reader-conditioned arm (aligned per checkpoint, prompted, and the single
-length-matched neutral prompt pseudo-test — off-domain prior for all readers).
+baseline (paper Eq. 2/4/5): LL, ΔLL, χ², LRT p, AIC.
 Along the way: figures (viz.md) — perplexity grid, example-sentence surprisal,
 mean surprisal over steps, ΔLL curves, RT–surprisal.
 
@@ -115,20 +112,19 @@ def compute_model_surprisal(slug: str, name: str, words, priors: dict) -> dict:
     }
 
 
-def fit_model(bundle: dict, rm, measure: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+def fit_model(bundle: dict, rm, measure: str) -> pd.DataFrame:
     """Phase 2 — mixed-model comparison for one model × measure.
 
-    Returns ``(results, vuong)``, both tagged with ``model_lm`` / ``measure``.
+    Returns ``results``, tagged with ``model_lm`` / ``measure``.
     Every prompt arm derives from s_prompt_physics / s_prompt_biology (aligned)
     and s_prompt_neutral (pseudo-test), which the cache always carries; no
     source-dependent filtering needed. Every source is scored against the shared
-    no-surprisal baseline (LRT + AIC), plus Vuong tests of the baseline-surprisal
-    model vs the reader-conditioned arms, over all checkpoints.
+    no-surprisal baseline (LRT + AIC) over all checkpoints.
     """
     slug = bundle["slug"]
     print(f"\n=== fit: {slug} / {measure} ===")
 
-    cmp, vuong, _ = mc.model_comparison_over_steps(
+    cmp = mc.model_comparison_over_steps(
         bundle["surp_versions"],
         rm,
         bundle["prompt_surp"],
@@ -136,13 +132,10 @@ def fit_model(bundle: dict, rm, measure: str) -> tuple[pd.DataFrame, pd.DataFram
         models=MODEL_ARMS,
         indices=CHECKPOINT_INDICES,
     )
-    for df in (cmp, vuong):
-        df.insert(0, "model_lm", slug)
-        df.insert(1, "measure", measure)
+    cmp.insert(0, "model_lm", slug)
+    cmp.insert(1, "measure", measure)
     print(cmp.to_string(index=False))
-    print("\nVuong — baseline+surprisal vs reader-conditioned arms:")
-    print(vuong.to_string(index=False))
-    return cmp, vuong
+    return cmp
 
 
 def main() -> None:
@@ -247,21 +240,16 @@ def main() -> None:
     )
 
     # Phase 2 — mixed models for the reading-time measure, per LM.
-    all_cmp, all_vuong = [], []
+    all_cmp = []
     rm = ds.clean_reading_times(rm_raw, MEASURE)
     print(f"\nStep 5 — {MEASURE}: cleaned={len(rm)} ({len(rm) / len(rm_raw):.1%})")
     for b in bundles:
-        cmp, vuong = fit_model(b, rm, MEASURE)
-        all_cmp.append(cmp)
-        all_vuong.append(vuong)
+        all_cmp.append(fit_model(b, rm, MEASURE))
 
     results = pd.concat(all_cmp, ignore_index=True)
     results_path = config.PROJECT_ROOT / "results.csv"
     results.to_csv(results_path, index=False)
-    vuong = pd.concat(all_vuong, ignore_index=True)
-    vuong_path = config.PROJECT_ROOT / "results_vuong.csv"
-    vuong.to_csv(vuong_path, index=False)
-    print(f"\n  wrote {results_path.name}, {vuong_path.name}")
+    print(f"\n  wrote {results_path.name}")
 
     # Fit-dependent figures — ΔLL curves (all LMs) + RT vs baseline surprisal
     # (baseline of FIGURE_LM, first measure only).

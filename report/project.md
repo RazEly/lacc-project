@@ -173,8 +173,6 @@ We then compare the two models using a likelihood ratio test, to determine wheth
 We then introduce an aligned-surprisal term, where the surprisal is estimated by a model that has been fine-tuned on the same domain as the reader's domain of expertise. Such turn is calculated for each of the fine-tune checkpoints - steps of 4^n.
 We then fit the linear mixed-effects model with all fine-tuned variants of the surprisal terms and the two prompt-based variants (aligned, and neutral),
 
-Finally, to determine statistical significance, we compare the fit of every checkpoint to the baseline-surprisal model (surprisal term is present, base model weights) using a Vuong test, reporting the z-statistic and p-value.
-
 ### results
 
 #### GPT results

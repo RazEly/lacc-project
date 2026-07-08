@@ -42,9 +42,8 @@ def test_fit_returns_loglik(index_df):
 
 
 def test_model_comparison_over_steps_paper(mc_inputs):
-    # every source scored against the shared no-surprisal baseline (LRT + AIC);
-    # Vuong table compares baseline-surprisal vs the reader-conditioned arms.
-    out, vuong, reader_ll = mc.model_comparison_over_steps(
+    # every source scored against the shared no-surprisal baseline (LRT + AIC).
+    out = mc.model_comparison_over_steps(
         mc_inputs["surp_versions"], mc_inputs["rt_df"], mc_inputs["prompt_surp"],
         measure="TFT",
     )
@@ -57,20 +56,3 @@ def test_model_comparison_over_steps_paper(mc_inputs):
     assert np.isfinite(out["aic"]).all()
     # LRT vs the null: p in [0, 1].
     assert out["p_lrt"].between(0, 1).all()
-    # Vuong: one row per reader-conditioned arm (aligned per checkpoint).
-    assert {"index", "training_steps", "model", "n_readers", "vuong_z", "p_vuong"} <= set(
-        vuong.columns
-    )
-    assert set(vuong["model"]) == mc._VUONG_ARMS
-    n_aligned = out.loc[out["model"] == "aligned", "index"].nunique()
-    # + prompted + prompt_neutral (the single fixed-domain pseudo-test)
-    assert len(vuong) == n_aligned + 2
-    # aligned at checkpoint 0 duplicates the baseline model -> undefined (NaN).
-    ok = vuong["vuong_z"].notna()
-    assert ok.any()
-    assert np.isfinite(vuong.loc[ok, "vuong_z"]).all()
-    assert vuong.loc[ok, "p_vuong"].between(0, 1).all()
-    # per-reader conditional LLs collected for the baseline reference + every fit.
-    assert {"model", "index", "reader_id", "ll_reader"} <= set(reader_ll.columns)
-    assert {"base_ref", *mc.SURPRISAL_MODELS} <= set(reader_ll["model"])
-    assert np.isfinite(reader_ll["ll_reader"]).all()
