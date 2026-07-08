@@ -2,8 +2,8 @@
 
 Continued next-token pre-training (Gururangan et al. 2020) of a German decoder LM
 on the term-targeted Wikipedia domain corpora (``data/wiki_physics`` /
-``data/wiki_biology``), disjoint from the PoTeC stimuli (no leakage). Physics and biology train
-independently on a shared *token* budget (``max_tokens``), so both see the same
+``data/wiki_biology``), disjoint from the PoTeC stimuli (no leakage). Physics and
+biology train independently for the same number of steps, so both see the same
 tokens at the same checkpoint index despite different corpus sizes. Saves
 checkpoints by training step with validation perplexity, for a progress curve.
 
@@ -101,11 +101,7 @@ def _tokenize_and_chunk(ds, tokenizer, block_size, text_col="text"):
 
 
 def _prepare_splits(domain, tokenizer, block_size, val_frac, seed, max_docs):
-    """Load a domain corpus and build packed train/test LM blocks.
-
-    Returns the split dict plus ``words_per_epoch`` (whitespace words in the
-    train docs, for the legacy words-seen column).
-    """
+    """Load a domain corpus and build packed train/test LM blocks."""
     raw = load_from_disk(str(DOMAIN_DIRS[domain]))
     if max_docs:
         raw = raw.select(range(min(max_docs, len(raw))))
@@ -114,14 +110,10 @@ def _prepare_splits(domain, tokenizer, block_size, val_frac, seed, max_docs):
     # text into val and inflates eval perplexity).
     raw_split = raw.train_test_split(test_size=val_frac, seed=seed)
 
-    # Legacy words-seen x-axis: train docs only.
-    words_per_epoch = sum(len(str(t).split()) for t in raw_split["train"]["text"])
-
-    split = {
+    return {
         "train": _tokenize_and_chunk(raw_split["train"], tokenizer, block_size),
         "test": _tokenize_and_chunk(raw_split["test"], tokenizer, block_size),
     }
-    return split, words_per_epoch
 
 
 def _prepare_eval_split(domain, tokenizer, block_size, val_frac, seed, max_docs=None):
@@ -154,7 +146,6 @@ class _CheckpointSchedule(TrainerCallback):
         out_dir,
         base_model,
         checkpoint_steps,
-        words_per_epoch,
         tokens_per_step,
         manifest,
         eval_samples=EVAL_SUBSET_SIZE,
@@ -163,7 +154,6 @@ class _CheckpointSchedule(TrainerCallback):
         self.trainer = trainer
         self.out_dir = Path(out_dir)
         self.base_model = base_model
-        self.words_per_epoch = words_per_epoch
         self.tokens_per_step = tokens_per_step
         self.manifest = manifest
         # step targets (indices 1..), clamped onto the final step.
@@ -200,14 +190,12 @@ class _CheckpointSchedule(TrainerCallback):
         ppl = math.exp(metrics["eval_loss"])
         # tokens_seen: cross-domain-comparable x-axis (depends only on global_step).
         tokens_seen = step * self.tokens_per_step
-        words_seen = round(state.epoch * self.words_per_epoch)
         row = {
             "checkpoint": str(checkpoint),
             "index": idx,
             "epoch": round(state.epoch, 3),
             "step": step,
             "tokens_seen": tokens_seen,
-            "words_seen": words_seen,
             "perplexity": ppl,
         }
         for dom, ds in self._cross_eval.items():
@@ -243,7 +231,6 @@ def load_cached_run(out_dir) -> pd.DataFrame | None:
 def finetune_dapt(
     domain: str,
     base_model: str = DEFAULT_MODEL,
-    max_tokens: int | None = None,
     max_steps: int | None = DAPT_CHECKPOINT_STEPS[-1],
     checkpoint_steps=DAPT_CHECKPOINT_STEPS,
     block_size: int = BLOCK_SIZE,
@@ -268,15 +255,14 @@ def finetune_dapt(
     it. LoRA is injected into attention (q, k, v) and both MLP projections on
     every arch (head and embeddings excluded).
 
-    Budgeted by tokens: ``max_tokens`` (one step = block_size·batch_size·grad_accum
-    tokens); the same ``max_tokens`` equalises two domains. ``None`` = one pass.
-    ``max_steps`` overrides with a fixed step count. Adapters are saved at exactly
-    ``checkpoint_steps`` (indices 1..); index 0 is the un-fine-tuned base model.
-    ``max_docs`` truncates the corpus (smoke testing).
+    Runs ``max_steps`` optimiser steps (one step = block_size·batch_size·grad_accum
+    tokens); the shared step count equalises two domains. Adapters are saved at
+    exactly ``checkpoint_steps`` (indices 1..); index 0 is the un-fine-tuned base
+    model. ``max_docs`` truncates the corpus (smoke testing).
 
     Always trains — the skip-if-cached check lives in the caller (``train_all``
     via ``load_cached_run``). Columns: ``domain``, ``checkpoint``, ``index``,
-    ``epoch``, ``step``, ``tokens_seen``, ``words_seen``, ``perplexity`` (own
+    ``epoch``, ``step``, ``tokens_seen``, ``perplexity`` (own
     held-out split), plus ``perplexity_<domain>`` per other domain (that
     domain's held-out split — the fig 1 out-of-domain dotted line).
     """
@@ -309,9 +295,7 @@ def finetune_dapt(
     model.train_adapter(ADAPTER_NAME)
     print(model.adapter_summary())
 
-    split, words_per_epoch = _prepare_splits(
-        domain, tokenizer, block_size, val_frac, seed, max_docs
-    )
+    split = _prepare_splits(domain, tokenizer, block_size, val_frac, seed, max_docs)
     # Other domains' held-out splits, scored at every checkpoint for the
     # out-of-domain perplexity curve (manifest ``perplexity_<domain>``, fig 1).
     cross_eval = {
@@ -319,9 +303,6 @@ def finetune_dapt(
         for d in DOMAINS
         if d != domain
     }
-
-    # Optimiser steps: from max_steps if set, else derived from the token budget
-    # (max_tokens, or one full pass over the packed train blocks).
 
     tokens_per_step = block_size * batch_size * grad_accum
     use_cuda = DEVICE == "cuda"
@@ -361,7 +342,6 @@ def finetune_dapt(
             out_dir,
             base_model,
             checkpoint_steps,
-            words_per_epoch,
             tokens_per_step,
             manifest,
             cross_eval=cross_eval,

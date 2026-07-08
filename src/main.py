@@ -17,7 +17,7 @@ import pandas as pd
 from src import config
 from src.analysis import model_comparison as mc
 from src.analysis import viz
-from src.config import WORD_KEY
+from src.config import MODELS, WORD_KEY
 from src.features import dataset as ds
 from src.features import potec
 from src.features import priors as pr
@@ -35,13 +35,13 @@ CHECKPOINT_INDICES = list(range(1, len(config.DAPT_CHECKPOINT_STEPS) + 1))
 # Decoder LMs the pipeline runs over (slug -> HF repo), then compares. DAPT
 # checkpoints are expected to already live in artifacts/; train them with
 # `python -m src.modeling.finetune`.
-MODELS = config.MODELS
 # Context budget (tokens) shared by every prompt condition.
-PRIOR_MAX_TOKENS = 64
+PRIOR_MAX_TOKENS = 32
 
 # Example sentence for the fig-2 surprisal walk-through: (text_id, sent_index).
 # Baseline GPT-2 surprisal + Δ over checkpoints/prompts on one PoTeC sentence.
 EXAMPLE_SENTENCE = ("b0", 1)
+
 # The LM whose baseline drives the single-model figures (fig 2 + fig 5).
 FIGURE_LM = "german-gpt2"
 # Overlay per-checkpoint PoTeC-stimulus perplexity lines on the perplexity grid.
@@ -210,26 +210,15 @@ def main() -> None:
             show_stimuli=SHOW_STIMULI,
         )
 
-    for b in bundles:
-        for expert_only in (False, True):
-            viz.mean_surprisal_over_steps(
-                b["surp_versions"],
-                b["prompt_surp"],
-                words,
-                b["slug"],
-                expert_terms_only=expert_only,
-            )
+    for expert_only in (False, True):
+        viz.mean_surprisal_over_steps(
+            bundles,
+            words,
+            expert_terms_only=expert_only,
+        )
 
     fig_lm = next((b for b in bundles if b["slug"] == FIGURE_LM), bundles[0])
     text_id, sent_index = EXAMPLE_SENTENCE
-    viz.sentence_surprisal_example(
-        fig_lm["surp_versions"],
-        fig_lm["prompt_surp"],
-        words,
-        text_id,
-        sent_index,
-        slug=fig_lm["slug"],
-    )
     viz.sentence_surprisal_overlay(
         fig_lm["surp_versions"],
         fig_lm["prompt_surp"],

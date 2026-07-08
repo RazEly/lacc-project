@@ -2,8 +2,7 @@
 (never ``.show()``) and returns the plotted frame.
 
 fig1  perplexity_grid            held-out perplexity vs step, 2×2 (model × ft-domain); optional PoTeC-stimuli lines
-fig2  sentence_surprisal_example one sentence: baseline surprisal, Δ per checkpoint, Δ per prompt
-fig2b sentence_surprisal_overlay one sentence, one panel: raw surprisal — baseline, one checkpoint, one prompt
+fig2  sentence_surprisal_overlay one sentence, one panel: raw surprisal — baseline, one checkpoint, one prompt
 fig3  mean_surprisal_over_steps  mean surprisal vs step, 2×2 (text domain × ft-domain); prompted arms as intercepts; optional expert-term-only filter
 fig4  delta_ll_curves            ΔLL vs step per LM; checkpoint-independent arms as intercepts
 fig5  rt_vs_surprisal            log RT vs baseline-GPT-2 surprisal
@@ -26,7 +25,7 @@ FIGURES_DIR = PROJECT_ROOT / "figures"
 # Surprisal tables carry index/epoch only, and epoch is NOT comparable across
 # domains (corpus sizes differ), so figures plot by index mapped to step.
 STEP_OF_INDEX = {i: s for i, s in enumerate([0, *DAPT_CHECKPOINT_STEPS])}
-MODEL_LABELS = {"german-gpt2": "GPT-2", "llammlein-1b": "Llama"}
+MODEL_LABELS = {"german-gpt2": "GPT-2", "llammlein-1b": "Llama 1B"}
 FT_DOMAINS = ("biology", "physics")  # fig1 row order
 # Okabe-Ito colorblind-safe palette; also survives grayscale print. Domains are
 # additionally distinguished by linestyle/marker so color is never load-bearing.
@@ -226,105 +225,6 @@ def perplexity_grid(
     return manifests
 
 
-def sentence_surprisal_example(
-    surp_versions: pd.DataFrame,
-    prompt_surp: pd.DataFrame,
-    words: pd.DataFrame,
-    text_id: str,
-    sent_index: int = 0,
-    slug: str = "german-gpt2",
-    out_dir: Path = FIGURES_DIR,
-) -> pd.DataFrame:
-    """Fig 2 — one sentence of one PoTeC text (``text_id`` = "b0", "p2", …), 3×1 stack:
-
-    1. baseline surprisal per word;
-    2. Δ surprisal vs baseline, one line per DAPT checkpoint (fine-tune domain
-       matches the text's domain);
-    3. Δ surprisal vs baseline: the sentence-domain prompt (the aligned arm's
-       ingredient) and the neutral pseudo-test.
-
-    Word labels of PoTeC expert technical terms are drawn in red.
-    """
-    sent = words[
-        (words["text_id"] == text_id) & (words["sent_index_in_text"] == sent_index)
-    ].sort_values("word_index_in_text")[
-        WORD_KEY + ["word", "text_domain", "is_expert_technical_term"]
-    ]
-    if sent.empty:
-        raise ValueError(f"no words for text_id={text_id!r} sent_index={sent_index}")
-    domain = sent["text_domain"].iloc[0]
-
-    def _surp(sel: pd.DataFrame, col: str) -> np.ndarray:
-        m = sent.merge(sel.drop_duplicates(WORD_KEY), on=WORD_KEY, how="left")
-        return m.sort_values("word_index_in_text")[col].to_numpy()
-
-    base = _surp(surp_versions[surp_versions["index"] == 0], "surprisal")
-
-    plt = _plt()
-    x = np.arange(len(sent))
-    fig, axes = plt.subplots(3, 1, figsize=(max(8, 0.45 * len(sent)), 9), sharex=True)
-
-    axes[0].plot(x, base, color="k", marker="o")
-    axes[0].set_title(f"baseline surprisal — {slug}, {text_id} sentence {sent_index}")
-    axes[0].set_ylabel("surprisal (bits)")
-
-    # collect every Δ series so the checkpoint and prompt panels share a y-scale.
-    deltas: list[np.ndarray] = []
-    ckpts = surp_versions[
-        (surp_versions["domain"] == domain) & (surp_versions["index"] > 0)
-    ]
-    for idx, g in sorted(ckpts.groupby("index")):
-        d = _surp(g, "surprisal") - base
-        deltas.append(d)
-        axes[1].plot(
-            x, d, marker="o", label=f"{STEP_OF_INDEX[int(idx)]} training steps"
-        )
-    axes[1].axhline(0, color="k", lw=0.5)
-    axes[1].set_title(f"Δ surprisal per DAPT checkpoint ({domain} fine-tune)")
-    axes[1].set_ylabel("Δ surprisal (bits)")
-    axes[1].legend(fontsize=8)
-
-    # the sentence-domain prompt (aligned-arm ingredient) + the neutral pseudo-test.
-    for cond in (domain, "neutral"):
-        col = f"s_prompt_{cond}"
-        if col in prompt_surp.columns:
-            d = _surp(prompt_surp, col) - base
-            deltas.append(d)
-            axes[2].plot(
-                x, d, color=PROMPT_COLORS.get(cond, "tab:gray"),
-                marker="o", label=f"{cond} prompt",
-            )
-    axes[2].axhline(0, color="k", lw=0.5)
-    axes[2].set_title("Δ surprisal per prompt")
-    axes[2].set_ylabel("Δ surprisal (bits)")
-    axes[2].set_xticks(x, sent["word"], rotation=60, ha="right")
-    # PoTeC expert technical terms in red (all other words stay black).
-    for lab, is_term in zip(
-        axes[2].get_xticklabels(), sent["is_expert_technical_term"]
-    ):
-        if is_term == 1:
-            lab.set_color("red")
-
-    # shared Δ y-limits across the checkpoint and prompt panels.
-    if deltas:
-        alld = np.concatenate(deltas)
-        lo, hi = np.nanmin(alld), np.nanmax(alld)
-        pad = 0.05 * (hi - lo) or 1.0
-        axes[1].set_ylim(lo - pad, hi + pad)
-        axes[2].set_ylim(lo - pad, hi + pad)
-
-    # Shade expert-term columns so they read without the red labels (grayscale /
-    # colorblind), across all three stacked panels.
-    for k, is_term in enumerate(sent["is_expert_technical_term"].to_numpy()):
-        if is_term == 1:
-            for ax in axes:
-                ax.axvspan(k - 0.5, k + 0.5, color="0.9", zorder=0)
-    _panel_letters(axes)
-    _save(fig, f"fig2_sentence_{slug}_{text_id}", out_dir)
-    plt.close(fig)
-    return sent
-
-
 def sentence_surprisal_overlay(
     surp_versions: pd.DataFrame,
     prompt_surp: pd.DataFrame,
@@ -335,7 +235,7 @@ def sentence_surprisal_overlay(
     slug: str = "german-gpt2",
     out_dir: Path = FIGURES_DIR,
 ) -> pd.DataFrame:
-    """Fig 2b — one sentence, one panel, raw surprisal (not Δ): three overlaid lines
+    """Fig 2 — one sentence, one panel, raw surprisal (not Δ): three overlaid lines
     — baseline, the ``step`` DAPT checkpoint (fine-tune domain = text domain), and
     the domain-matching prompt. Word labels of PoTeC expert terms are drawn in red.
     """
@@ -399,61 +299,78 @@ def sentence_surprisal_overlay(
             ax.axvspan(k - 0.5, k + 0.5, color="0.9", zorder=0)
     ax.legend()
 
-    _save(fig, f"fig2b_sentence_overlay_{slug}_{text_id}", out_dir)
+    _save(fig, f"fig2_sentence_overlay_{slug}_{text_id}", out_dir)
     plt.close(fig)
     return sent
 
 
 def mean_surprisal_over_steps(
-    surp_versions: pd.DataFrame,
-    prompt_surp: pd.DataFrame,
+    bundles: list[dict],
     words: pd.DataFrame,
-    slug: str,
     expert_terms_only: bool = False,
     out_dir: Path = FIGURES_DIR,
 ) -> pd.DataFrame:
-    """Fig 3 — mean surprisal vs fine-tune step, 2×2 grid: columns = fine-tuned
-    model domain (physics left, biology right), rows = stimulus text domain.
-    Each panel plots ONE model's checkpoints on ONE stimulus domain, plus an
-    intercept line for the neutral fixed-domain prompt pseudo-test (off-domain
-    prior evaluated on the panel's stimuli). ``expert_terms_only`` restricts
-    the mean to words annotated as expert technical terms in PoTeC."""
+    """Fig 3 — mean surprisal vs fine-tune step, 2×2 grid: rows = stimulus text
+    domain (physics top, biology bottom), columns = LM (one per bundle, e.g.
+    GPT-2 / Llama). Each panel overlays BOTH fine-tune domains on that stimulus
+    set — the in-domain fine-tune (model domain = stimulus domain) solid, the
+    out-of-domain fine-tune dotted — plus an intercept line for the neutral
+    fixed-domain prompt pseudo-test. ``expert_terms_only`` restricts the mean to
+    words annotated as expert technical terms in PoTeC."""
     w = words[WORD_KEY + ["text_domain", "is_expert_technical_term"]].drop_duplicates(
         WORD_KEY
     )
     if expert_terms_only:
         w = w[w["is_expert_technical_term"] == 1]
     dom = w[WORD_KEY + ["text_domain"]]
-    # group by index, not epoch: epoch differs across domains at the same
-    # checkpoint, so an epoch groupby would split the paired domains apart.
-    means = (
-        surp_versions.merge(dom, on=WORD_KEY)
-        .groupby(["domain", "text_domain", "index"])["surprisal"]
-        .mean()
-        .reset_index()
-        .assign(step=lambda x: x["index"].astype(int).map(STEP_OF_INDEX))
-    )
-    p = prompt_surp.merge(dom, on=WORD_KEY)
 
-    model_domains = ("physics", "biology")  # grid columns
+    model_domains = ("physics", "biology")  # fine-tune domains overlaid per panel
     text_domains = ("physics", "biology")  # grid rows
+    # in-/out-of-domain roles get their own colour+style so the shared legend
+    # stays consistent across panels (label no longer names a fixed domain).
+    ROLE = {
+        True: ("#0072B2", "-", "in-domain fine-tune"),
+        False: ("#D55E00", ":", "out-of-domain fine-tune"),
+    }
     plt = _plt()
+    # sharey="col": each model keeps its own surprisal scale (GPT-2 and Llama
+    # sit at different absolute bits) while its two stimulus rows stay comparable.
     fig, axes = _grid(
-        plt, len(text_domains), len(model_domains), sharex=True, sharey=True
+        plt, len(text_domains), len(bundles), sharex=True, sharey="col"
     )
-    for j, md in enumerate(model_domains):
+    all_means: list[pd.DataFrame] = []
+    for j, b in enumerate(bundles):
+        # group by index, not epoch: epoch differs across domains at the same
+        # checkpoint, so an epoch groupby would split the paired domains apart.
+        means = (
+            b["surp_versions"].merge(dom, on=WORD_KEY)
+            .groupby(["domain", "text_domain", "index"])["surprisal"]
+            .mean()
+            .reset_index()
+            .assign(
+                step=lambda x: x["index"].astype(int).map(STEP_OF_INDEX),
+                model=b["slug"],
+            )
+        )
+        all_means.append(means)
+        p = b["prompt_surp"].merge(dom, on=WORD_KEY)
         for i, td in enumerate(text_domains):
             ax = axes[i, j]
-            g = means[
-                (means["domain"] == md) & (means["text_domain"] == td)
-            ].sort_values("step")
-            ax.plot(
-                g["step"].clip(lower=1),  # step 0 (base model) shown at x=1
-                g["surprisal"],
-                color=PROMPT_COLORS.get(md, "tab:blue"),
-                marker="o",
-                label=f"{md} model",
-            )
+            for md in model_domains:
+                g = means[
+                    (means["domain"] == md) & (means["text_domain"] == td)
+                ].sort_values("step")
+                color, ls, label = ROLE[md == td]
+                ax.plot(
+                    g["step"].clip(lower=1),  # step 0 (base model) shown at x=1
+                    g["surprisal"],
+                    color=color,
+                    ls=ls,
+                    marker="o",
+                    label=label,
+                )
+                if len(g):
+                    _step_ticks(ax, g["step"])
             pt = p[p["text_domain"] == td]
             # the neutral fixed-domain prompt pseudo-test as an intercept reference.
             if "s_prompt_neutral" in pt.columns and len(pt):
@@ -464,24 +381,23 @@ def mean_surprisal_over_steps(
                     label="neutral prompt",
                 )
             ax.set_xscale("log")
-            if len(g):
-                _step_ticks(ax, g["step"])
-            # column header = fine-tune domain (top row); row header (stimulus
-            # domain) folded into leftmost ylabel; scope + model go to suptitle.
+            # column header = model (top row); stimulus domain folded into the
+            # leftmost ylabel; scope goes to the suptitle.
             if i == 0:
-                ax.set_title(f"{md} fine-tune")
+                ax.set_title(MODEL_LABELS.get(b["slug"], b["slug"]))
             if i == len(text_domains) - 1:
                 ax.set_xlabel("training steps (log)")
             if j == 0:
                 ax.set_ylabel(f"{td} stimuli\nmean surprisal (bits)")
     scope = "expert terms" if expert_terms_only else "all words"
-    fig.suptitle(f"{MODEL_LABELS.get(slug, slug)} — {scope}")
+    # y>1 keeps the suptitle clear of the top-row (a) letters / column titles.
+    fig.suptitle(f"mean surprisal — {scope}", y=1.02)
     _panel_letters(axes)
-    _shared_legend(fig, axes, ncol=2)
+    _shared_legend(fig, axes, ncol=3)
     suffix = "_expert-terms" if expert_terms_only else ""
-    _save(fig, f"fig3_mean_surprisal_{slug}{suffix}", out_dir)
+    _save(fig, f"fig3_mean_surprisal{suffix}", out_dir)
     plt.close(fig)
-    return means
+    return pd.concat(all_means, ignore_index=True)
 
 
 def delta_ll_curves(results: pd.DataFrame, out_dir: Path = FIGURES_DIR) -> pd.DataFrame:
