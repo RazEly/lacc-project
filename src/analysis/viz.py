@@ -314,8 +314,9 @@ def mean_surprisal_over_steps(
     domain (physics top, biology bottom), columns = LM (one per bundle, e.g.
     GPT-2 / Llama). Each panel overlays BOTH fine-tune domains on that stimulus
     set — the in-domain fine-tune (model domain = stimulus domain) solid, the
-    out-of-domain fine-tune dotted — plus an intercept line for the neutral
-    fixed-domain prompt pseudo-test. ``expert_terms_only`` restricts the mean to
+    out-of-domain fine-tune dotted — plus intercept lines for the neutral
+    fixed-domain prompt pseudo-test (dashed) and the domain-matched prompt
+    (dotted, e.g. physics prompt on physics stimuli). ``expert_terms_only`` restricts the mean to
     words annotated as expert technical terms in PoTeC."""
     w = words[WORD_KEY + ["text_domain", "is_expert_technical_term"]].drop_duplicates(
         WORD_KEY
@@ -379,6 +380,16 @@ def mean_surprisal_over_steps(
                     color=PROMPT_COLORS["neutral"],
                     ls="--",
                     label="neutral prompt",
+                )
+            # the domain-matched prompt (physics prompt on physics stimuli, etc.)
+            # as a dotted intercept — color follows the stimulus domain.
+            aligned_col = f"s_prompt_{td}"
+            if aligned_col in pt.columns and len(pt):
+                ax.axhline(
+                    pt[aligned_col].mean(),
+                    color=PROMPT_COLORS.get(td, "tab:orange"),
+                    ls=":",
+                    label=f"{td} prompt",
                 )
             ax.set_xscale("log")
             # column header = model (top row); stimulus domain folded into the
