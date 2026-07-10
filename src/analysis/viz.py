@@ -100,12 +100,15 @@ def _shared_legend(fig, axes, ncol: int = 4) -> None:
                 seen.add(lab)
                 handles.append(h)
                 labels.append(lab)
+    # Anchor the legend's TOP to the figure's bottom edge so it grows downward,
+    # clear of the bottom-row xlabels regardless of how many rows it wraps to
+    # (savefig bbox="tight" expands the canvas to include it).
     fig.legend(
         handles,
         labels,
-        loc="lower center",
+        loc="upper center",
         ncol=ncol,
-        bbox_to_anchor=(0.5, -0.02),
+        bbox_to_anchor=(0.5, 0),
         frameon=False,
     )
 
@@ -357,6 +360,9 @@ def mean_surprisal_over_steps(
         p = b["prompt_surp"].merge(dom, on=WORD_KEY)
         for i, td in enumerate(text_domains):
             ax = axes[i, j]
+            # set the scale before _step_ticks: set_xscale resets tick locators,
+            # wiping the custom step labels if called after.
+            ax.set_xscale("log")
             for md in model_domains:
                 g = means[
                     (means["domain"] == md) & (means["text_domain"] == td)
@@ -391,7 +397,6 @@ def mean_surprisal_over_steps(
                     ls=":",
                     label=f"{td} prompt",
                 )
-            ax.set_xscale("log")
             # column header = model (top row); stimulus domain folded into the
             # leftmost ylabel; scope goes to the suptitle.
             if i == 0:

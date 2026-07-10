@@ -30,6 +30,10 @@
 \maketitle
 
 \begin{abstract}
+% TODO: abstract, one paragraph, max 150 words.
+
+\textbf{Keywords:}
+% TODO: keywords separated by semicolons
 \end{abstract}
 
 \section{Introduction}
@@ -39,19 +43,16 @@
 Surprisal theory () establishes the connection between human reading time to surprisal and remains consistent across different language models.
 Previous works () explore the relationship by using statistical language models (n-grams), and more recent works have explored it using modern-day large language models ().
 
-\subsection{Richer Models - Poorer Fit}
-
 It has also been established () that while the linear relationship holds, richer parameter models provide a poorer fit to human reading times.
 
-\subsection{Domain-Expertise}
+\subsection{Domain Expertise}
 
 In this project, we continue exploring the surprisal theory, in the context of reading differences between domain-experts and novices.
 [It is safe to assume] that domain experts would read texts taken from their own field of expertise faster than novices, who have not been exposed to said domain as thoroughly, if at all.
 
 We will be using the Potsdam Textbook Corpus (Jakobi et al., 2025), that pairs eye-tracking-while-reading data with domain-labeled physics and biology university-textbook texts. The corpus contains reading data from physics and biology students, reading texts from both domains. We will be treating students reading texts in their own domain of study as "experts" and compare their gaze patterns with students of the other domain.
 
-\subsubsection{Article Quote}
-
+% TODO: placeholder — verbatim quote from source article; paraphrase and cite before submission.
 Processing difficulties due to limited lexical knowledge manifest in online measures like reading behavior. For instance, encountering individual unfamiliar or infrequent words leads to slower reading and increased revisits (Just \& Carpenter, 1980; Lowell \& Morris, 2014). This holds for familiarity with the vocabulary of specific domains as well. Scientific texts frequently incorporate specialized and less common vocabulary, requiring the understanding of domain-specific concepts and relations between them.
 
 Jian and Ko (2014) report that readers with a higher level of background knowledge in physics have shorter first-pass reading times and lower regression rates and spent less time rereading in comparison to lower-knowledge readers. Additionally, encountering information that is inconsistent with the domain knowledge of the reader shows effects on neural and behavioral measures, eliciting a greater N400 amplitude (Troyer \& Kutas, 2018; Troyer et al., 2020) or longer reading with more regressions (van Moort et al., 2020).
@@ -63,11 +64,10 @@ Modern LLMs have their own form of "domain-expertise", which often come in the f
 [The cognitive motivation is clear -] fine-tuning techniques () often freeze earlier layers of LLMs, adapting only the later layers to the desired domain, similar to how we would imagine a human studying - an update of one's knowledge base without a complete overhaul of one's existing knowledge.
 While we do not attempt to make the claim that the two processes are the same, [they provide motivation]
 
-\subsubsection{Article Quote}
-
+% TODO: placeholder — verbatim quote from source article; paraphrase and cite before submission.
 adapters offer a parameter-efficient method for transferring the learned features and learning the new domain. In our study, we use the so-called bottleneck adapters (Houlsby et al., 2019). During training, the layers of the pre-trained model are frozen and remain intact, while the weights of the adapters are updated with respect to the loss function on the training data. The role of the adapter weights is to provide transformations of frozen pre-trained LM given the target domain. For even larger pre-trained LM, full fine-tuning is associated with high computational costs, while adapters achieve a similar performance (Pfeiffer et al., 2020) with fewer resources.
 
-\subsection{Zero Shot Learning}
+\subsection{Zero-Shot Learning}
 
 An additional angle that we wish to explore in this study is the effects of a prior prompt on the predictive power of surprisal.
 Crafted instructions, often referred to as "prompt engineering" is a standard practice in improving LLMs performance on downstream tasks, and was explored in numerous papers [large language models are zero-shot reasoners, gpt-3 paper]
@@ -76,7 +76,7 @@ Crafted instructions, often referred to as "prompt engineering" is a standard pr
 
 As far as we're aware no attempt has been made to leverage this quality to examine the change in the predictive power of surprisal on reading time as caused by a prior prompt.
 
-\subsection{Previous Work + Our Study}
+\subsection{The Present Study}
 
 A recent study has analyzed the relation between fine-tuned language models and domain-expertise ().
 In this paper, the researchers explore the effect of aligned-surprisal on a linear mixed-effects regression model fit, with respect to both text-domain-alignment (the surprisal values are taken from two models, chosen according to the text domain that is being read) and reader-domain alignment (the surprisal values are taken from two models, aligned with the readers' domain of expertise).
@@ -94,13 +94,11 @@ We then include prior prompts, aligned by readers' domain of expertise and exami
 
 We have included a detailed comparison in the appendix comparing our methodology to aforementioned paper. [!!!]
 
-\subsection{Main Findings}
+% TODO: one-paragraph preview of the main findings (replaces the former "Main Findings" subsection).
 
-\section{Data}
+\section{Methods}
 
 \subsection{PoTeC Dataset}
-
-\subsubsection{Overview}
 
 PoTeC is an eye-tracking-while-reading dataset using stimulus materials adapted from German university-level textbooks on either physics or biology.
 
@@ -113,33 +111,12 @@ In total, the dataset contains 142,125 data points (75 participants $\times$ (95
 
 In addition, each stimuli text is labeled in one of three levels: common words, generally known, and domain-specific words (labeled levels 0, 1 and 2).
 
-\subsubsection{Data Cleaning Methods}
+\subsubsection{Preprocessing}
 
 For each reader, the first and last words in every sentence are dropped from the analysis. In addition, words with TFT=0 were dropped as well.
 We have aggregated the dataset per-reader, calculating each participant's mean total-fixation-time, and removed data points of TFT over 3 times the standard deviation of said participants
 
-\subsubsection{Data Points After Cleaning}
-
-This results in a final dataset of 123,879 reader$\times$word data points. The cleaning funnel and the final breakdown by text domain and reader expertise are:
-
-\begin{table}[H]
-  \begin{center}
-    \caption{Data-cleaning funnel.}
-    \label{tab:cleaning-funnel}
-    \vskip 0.12in
-    \small
-    \begin{tabular}{lr}
-      \hline
-      Cleaning stage & Data points \\
-      \hline
-      Raw (75 readers $\times$ merged reading measures) & 142,125 \\
-      After dropping sentence-edge words & 140,325 \\
-      After dropping skips (TFT = 0) & 126,382 \\
-      After per-reader 3$\cdot$SD outlier removal & 123,879 \\
-      \hline
-    \end{tabular}
-  \end{center}
-\end{table}
+This results in a final dataset of 123,879 reader$\times$word data points: from 142,125 raw data points (75 readers $\times$ merged reading measures), 140,325 remain after dropping sentence-edge words, 126,382 after dropping skips (TFT = 0), and 123,879 after per-reader 3$\cdot$SD outlier removal. The final breakdown by text domain and reader expertise is given in Table~\ref{tab:breakdown}.
 
 \begin{table}[H]
   \begin{center}
@@ -167,7 +144,7 @@ We used \texttt{wikipediaapi} to scrape two domain-specific datasets, and one ne
 For the initial search, we used expert-labeled terms from the PoTeC dataset. To enrich the initial list even further we used additional hand-picked seeds, consisting of course names from a standard B.Sc University curriculum from each domain (for example: Quantenmechanik, Thermodynamik for physics; Zellbiologie, Genetik for biology).
 Upon visiting some term's Wikipedia page, our scraper collects all links within that article and uses them to further enrich the article pool.
 We set the search depth to 2, to avoid domain drift and simplify future data cleaning tasks.
-The initial scraping results consisted of approximately 6,000 articles from both domains. We then observed the pool of documents, deleted duplicates, and removed articles outside of the desired domain. In addition, math symbols and references were stripped from the text.
+The initial scraping results consisted of approximately 6,000 articles from both domains. We then observed the pool of documents, deleted duplicates, and removed articles outside of the desired domain. In addition, math symbols and references were stripped from the text. Corpus statistics are given in Table~\ref{tab:corpora}.
 
 \begin{table}[H]
   \begin{center}
@@ -194,19 +171,14 @@ The model achieves a perplexity of 35.93 on the biology test-set and 43.00 on th
 The second model used is \texttt{LLaMmlein-1B} (), a German-only Llama based model.
 It's Initial perplexity is 11.58 on the biology test-set, 14.14 on the physics test-set.
 
-\section{Experiments and Results}
-
-\subsection{Fine-Tuning Methodology}
-
-\subsubsection{LoRA Fine-Tuning}
+\subsection{LoRA Fine-Tuning}
 
 To tune the domain-specific models, we used the LoRA methodology, implemented using the \texttt{adapters} library.
 Each domain of the scraped corpus was split to a training and a test set (0.95, 0.05).
 We saved checkpoints every $4^n$ steps, up to $4,096$ training steps, evaluating the models using the held-out test perplexity on both domains,
-such that each model is evaluated on both in-domain and out-of-domain data.
+such that each model is evaluated on both in-domain and out-of-domain data (Figure~\ref{fig:perplexity}).
+The exact training hyperparameters are listed in the appendix.
 
-To calculate the surprisal estimates of each model, we tokenized the stimuli text and calculated the surprisal per-token.
-The suprisal of a word is then calculated as the sum of its subtokens' surprisal.
 \begin{figure*}[t]
   \begin{center}
     \includegraphics[width=\linewidth]{../../figures/fig1_perplexity.png}
@@ -215,11 +187,7 @@ The suprisal of a word is then calculated as the sum of its subtokens' surprisal
   \label{fig:perplexity}
 \end{figure*}
 
-\subsubsection{Number of Parameters Used}
-
-The exact training hyperparameters are listed in the appendix.
-
-\subsection{Zero-Shot (Prompting)}
+\subsection{Prompt-Based Domain Priors}
 
 Establishing a role-driven prompting methodology proved to be a challenging task;
 While observing the change in surprisal for a role prompt such as "You are a Physics/Biology expert." might be a desirable research question by itself, the models we used were not trained on instruction-following or chat data (), and therefore using such prompts would have been inappropriate in the context of this study.
@@ -238,15 +206,20 @@ Previous studies () have found that longer context affects human reading-time fi
 To combat this confounding factor, we introduced a new pseudo-baseline, using our scraped "neutral" corpus, with no domain-specific data, we repeated the above process, only this time providing the same prior text to each reader, regardless of their domain. For this variant, the prior passages of the "neutral" corpus are unrelated to the stimuli text, essentially creating noise.
 This allows us to compare the effect of a domain-aligned prompt to a neutral prompt, while keeping the context and prior length as constants.
 
-\begin{figure}[H]
+\subsection{Surprisal Estimation}
+
+To calculate the surprisal estimates of each model, we tokenized the stimuli text and calculated the surprisal per-token.
+The suprisal of a word is then calculated as the sum of its subtokens' surprisal (Figure~\ref{fig:sentence-overlay}).
+
+\begin{figure*}[t]
   \begin{center}
-    \includegraphics[width=\linewidth]{../../figures/fig2_sentence_overlay_german-gpt2_b0.png}
+    \includegraphics[width=0.9\textwidth]{../../figures/fig2_sentence_overlay_german-gpt2_b0.png}
   \end{center}
   \caption{Per-word raw surprisal over one example sentence (german-gpt2): baseline, one fine-tuned checkpoint, and one prompted variant.}
   \label{fig:sentence-overlay}
-\end{figure}
+\end{figure*}
 
-\subsection{Linear Regression Fit}
+\subsection{Mixed-Effects Analysis}
 
 We used the \texttt{pymer4} package to bridge between R's \texttt{lme4} package and python to fit a linear mixed-effects model to the selected reading measure, with the following features:
 
@@ -263,12 +236,9 @@ We used the \texttt{pymer4} package to bridge between R's \texttt{lme4} package 
 the fitted model is of the form:
 \begin{equation}
 \resizebox{\columnwidth}{!}{$Log\,TFT \sim Length + LogFreq + Position + Expertise * Terminology + (1 | SubjectID) + (1 + Expertise | WordID)$}
-\tag{2}
 \end{equation}
 
 The terminology and expertise indicators were sum-coded (-1, 1)
-
-\subsection{Methodology}
 
 We start by fitting a baseline model, with no surprisal term, then fit a second model with the surprisal term included.
 We then compare the two models using a likelihood ratio test, to determine whether the surprisal term improves the model fit.
@@ -277,7 +247,11 @@ We then introduce an aligned-surprisal term, where the surprisal is estimated by
 Such term is calculated for each of the training checkpoints - steps of $4^n$.
 We then fit the linear mixed-effects model with all fine-tuned variants of the surprisal terms and the two prompt-based variants (aligned, and neutral),
 
-\subsection{Results}
+\section{Results}
+
+Each surprisal arm is compared to the no-surprisal baseline model by likelihood-ratio test (n = 123,821).
+$\Delta$LL is the log-likelihood gain over the no-surprisal baseline, $\chi^2 = 2\cdot\Delta$LL. Aligned checkpoints are indexed by training step.
+Figure~\ref{fig:mean-surprisal} shows mean surprisal over training steps, and Figure~\ref{fig:delta-ll} shows $\Delta$LL per arm; full model comparisons are given in Tables~\ref{tab:gpt-results} and~\ref{tab:llama-results}.
 
 \begin{figure*}[t]
   \begin{center}
@@ -295,17 +269,14 @@ We then fit the linear mixed-effects model with all fine-tuned variants of the s
   \label{fig:delta-ll}
 \end{figure*}
 
-\subsubsection{GPT Results}
-
-Each surprisal arm is compared to the no-surprisal baseline model by likelihood-ratio test (n = 123,821).
-$\Delta$LL is the log-likelihood gain over the no-surprisal baseline, $\chi^2 = 2\cdot\Delta$LL. Aligned checkpoints are indexed by training step.
+\subsection{GerPT-2}
 
 \begin{table*}[t]
   \begin{center}
     \caption{GPT-2 (GerPT-2) linear mixed-model results.}
     \label{tab:gpt-results}
     \vskip 0.12in
-    \resizebox{\textwidth}{!}{%
+    \small
     \begin{tabular}{lrrrrr}
       \hline
       Arm & $\Delta$LL & $\chi^2$ & p (LRT) & AIC & $\beta$ surprisal (SE) \\
@@ -320,18 +291,18 @@ $\Delta$LL is the log-likelihood gain over the no-surprisal baseline, $\chi^2 = 
       Prompted (aligned prior) & 113.23 & 226.46 & 3.5e-51 & 213058.82 & 0.0138 (0.00086) \\
       Prompt (neutral prior) & 111.46 & 222.91 & 2.1e-50 & 213062.37 & 0.0136 (0.00086) \\
       \hline
-    \end{tabular}}
+    \end{tabular}
   \end{center}
 \end{table*}
 
-\subsubsection{Llama Results}
+\subsection{LLaMmlein-1B}
 
 \begin{table*}[t]
   \begin{center}
     \caption{LLaMmlein-1B linear mixed-model results.}
     \label{tab:llama-results}
     \vskip 0.12in
-    \resizebox{\textwidth}{!}{%
+    \small
     \begin{tabular}{lrrrrr}
       \hline
       Arm & $\Delta$LL & $\chi^2$ & p (LRT) & AIC & $\beta$ surprisal (SE) \\
@@ -346,7 +317,7 @@ $\Delta$LL is the log-likelihood gain over the no-surprisal baseline, $\chi^2 = 
       Prompted (aligned prior) & 76.07 & 152.14 & 5.9e-35 & 213133.13 & 0.0155 (0.00119) \\
       Prompted (neutral prior) & 69.40 & 138.80 & 4.9e-32 & 213146.48 & 0.0148 (0.00118) \\
       \hline
-    \end{tabular}}
+    \end{tabular}
   \end{center}
 \end{table*}
 
@@ -356,13 +327,18 @@ $\Delta$LL is the log-likelihood gain over the no-surprisal baseline, $\chi^2 = 
 
 \subsection{Theoretical Implications}
 
-\subsection{Limitations of the Work}
+\subsection{Limitations and Future Work}
 
-\subsection{Future Work}
+\section{Acknowledgments}
 
-\section{Bibliography}
+% TODO: AI-use declaration only in the initial submission (per CogSci template); full
+% acknowledgments (contributions, funding) in the final submission.
 
-\section{Appendix}
+\printbibliography
+
+\appendix
+
+\section{Appendix A: Training Details}
 
 \begin{itemize}
   \item fine-tuning hyperparameters (GPT-2, Llama)
