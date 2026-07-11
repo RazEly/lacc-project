@@ -1,7 +1,6 @@
 # data + assets (downloaded / large)
 data/
 build/
-figures/
 # python
 __pycache__/
 *.py[cod]
